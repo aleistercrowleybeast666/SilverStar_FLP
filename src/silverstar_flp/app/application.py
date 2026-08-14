@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from PySide6.QtCore import QSettings, QStandardPaths, Qt
+from PySide6.QtWidgets import QApplication
+
+from silverstar_flp.plugins.registry import builtin_registry
+from silverstar_flp.ui.main_window import MainWindow
+from silverstar_flp.version import __version__
+
+
+def _Logging_Configure() -> Path:
+    data_directory = Path(
+        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+    )
+    data_directory.mkdir(parents=True, exist_ok=True)
+    log_path = data_directory / "silverstar_flp.log"
+    handler = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    return log_path
+
+
+def _Arguments_Parse(arguments: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="SilverStar Flight Log Processor GUI")
+    parser.add_argument("path", nargs="?", type=Path, help="SSLOG0 BIN or .ssflp project")
+    parser.add_argument("--lang", choices=("zh_CN", "en_US"))
+    parser.add_argument("--theme", choices=("light", "dark"))
+    parser.add_argument("--version", action="version", version=__version__)
+    return parser.parse_args(arguments)
+
+
+def main(arguments: list[str] | None = None) -> int:
+    options = _Arguments_Parse(list(arguments) if arguments is not None else sys.argv[1:])
+    QApplication.setOrganizationName("SilverStar")
+    QApplication.setApplicationName("SilverStar_FLP")
+    QApplication.setApplicationVersion(__version__)
+    application = QApplication([sys.argv[0]])
+    application.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, False)
+    log_path = _Logging_Configure()
+
+    def exception_hook(exception_type, exception, exception_traceback) -> None:
+        logging.critical(
+            "Unhandled exception",
+            exc_info=(exception_type, exception, exception_traceback),
+        )
+        sys.__excepthook__(exception_type, exception, exception_traceback)
+
+    sys.excepthook = exception_hook
+    settings = QSettings("SilverStar", "SilverStar_FLP")
+    language = options.lang or str(settings.value("language", "zh_CN"))
+    theme = options.theme or str(settings.value("theme", "light"))
+    initial_path = options.path
+    window = MainWindow(
+        builtin_registry(), language=language, theme=theme, initial_path=initial_path
+    )
+    window.show()
+    logging.info("SilverStar_FLP %s started; log=%s", __version__, log_path)
+    return int(application.exec())
