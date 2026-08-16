@@ -13,14 +13,16 @@ from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultSto
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
+    TRAJECTORY_LANDING_COLOR,
     TRAJECTORY_POST_DEPLOY_COLOR,
     TRAJECTORY_PRE_DEPLOY_COLOR,
     RocketFaceColors_Get,
+    TrajectoryEventMesh_Get,
     TrajectoryMarkerWorldSizes_Get,
     TrajectoryPhaseColor_Get,
 )
 from silverstar_flp.plugins.algorithms.pure_ins.plugin import PureInsAlgorithmPlugin
-from silverstar_flp.plugins.api.algorithm import ReplayRequest
+from silverstar_flp.plugins.api.algorithm import ReplayMode, ReplayRequest
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from silverstar_flp.ui.pages.charts import (
     FlightPage,
@@ -37,6 +39,14 @@ def test_trajectory_marker_sizes_are_world_scaled_and_phase_color_changes() -> N
     small_sizes = np.asarray(TrajectoryMarkerWorldSizes_Get(small))
     large_sizes = np.asarray(TrajectoryMarkerWorldSizes_Get(large))
     assert np.allclose(large_sizes, small_sizes * 500.0)
+    assert np.isclose(small_sizes[0], 0.014)
+    assert np.isclose(small_sizes[1], 0.010)
+    assert small_sizes[0] > small_sizes[1]
+    vertices, faces = TrajectoryEventMesh_Get(np.asarray((4.0, 5.0, 6.0)), 0.14)
+    assert vertices.shape == (6, 3)
+    assert faces.shape == (8, 3)
+    assert np.allclose(np.ptp(vertices, axis=0), 0.14)
+    assert np.allclose(np.mean(vertices, axis=0), (4.0, 5.0, 6.0))
     assert TrajectoryPhaseColor_Get(99, 100) == TRAJECTORY_PRE_DEPLOY_COLOR
     assert TrajectoryPhaseColor_Get(100, 100) == TRAJECTORY_POST_DEPLOY_COLOR
 
@@ -75,6 +85,7 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
     assert len(page.quaternion_plot.listDataItems()) == 8
     assert len(page.euler_plot.listDataItems()) == 6
     assert page._deploy_timestamp_us == START_TIMESTAMP_US + 110_000
+    assert page._end_timestamp_us == START_TIMESTAMP_US + 160_100
     assert page.playback_slider.parent() is not None
     assert page.reset_charts_button.text() == "Reset Charts"
     page.velocity_plot.setXRange(200.0, 201.0, padding=0)
@@ -104,6 +115,8 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
     )
 
     if hasattr(page, "pre_deploy_line"):
+        bounds_count = resolver.TrajectoryBoundsCalculationCount_Get(entry.source_id)
+        fit_count = page._trajectory_camera_fit_count
         page.trajectory_view.opts["distance"] = 123.0
         page.playback_slider.setValue(2500)
         application.processEvents()
@@ -112,16 +125,22 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
             QColor(TRAJECTORY_PRE_DEPLOY_COLOR).getRgbF(),
         )
         assert page.current_marker.pxMode is False
-        assert page.deploy_marker.pxMode is False
+        assert page.deploy_marker.__class__.__name__ == "GLMeshItem"
+        assert page.landing_marker.__class__.__name__ == "GLMeshItem"
+        assert not page.landing_marker.visible()
+        assert page.current_marker.pos.shape[0] == 1
         assert not hasattr(page, "deploy_marker_outline")
     page.playback_slider.setValue(10000)
     application.processEvents()
     if hasattr(page, "pre_deploy_line"):
         assert page.trajectory_view.opts["distance"] == 123.0
+        assert page._trajectory_camera_fit_count == fit_count
+        assert resolver.TrajectoryBoundsCalculationCount_Get(entry.source_id) == bounds_count
         assert page.pre_deploy_line.pos.shape[0] > 0
         assert page.post_deploy_line.pos.shape[0] > 0
         assert np.allclose(page.pre_deploy_line.pos[0], np.zeros(3), atol=1.0e-5)
-        assert page.landing_marker.pos.shape[0] == 1
+        assert page.landing_marker.visible()
+        assert page.current_marker.pos.shape[0] == 0
         assert page.rocket_mesh is not None
         assert not hasattr(page, "start_marker")
         assert len(page._trajectory_text_items) == 3
@@ -130,23 +149,43 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
             dtype=np.float32,
         )
         assert np.allclose(_RocketFaceColors_Get("light"), expected_light_faces)
-        assert page.deploy_marker.pos.shape[0] == 1
-        assert np.allclose(
-            page.deploy_marker.color,
-            QColor(TRAJECTORY_DEPLOY_COLOR).getRgbF(),
-        )
-        assert np.allclose(
-            page.current_marker.color,
-            QColor(TRAJECTORY_POST_DEPLOY_COLOR).getRgbF(),
-        )
-        valid_values = np.asarray(page._position.values)[page._position.valid]
+        assert page._deploy_marker_vertices.shape == (6, 3)
+        assert page._landing_marker_vertices.shape == (6, 3)
+        assert page._trajectory_bounds is not None
         expected_sizes = TrajectoryMarkerWorldSizes_Get(
-            valid_values - page._trajectory_origin
+            np.asarray(
+                (
+                    page._trajectory_bounds.min_enu,
+                    page._trajectory_bounds.max_enu,
+                )
+            )
         )
         assert np.allclose(page._trajectory_marker_sizes, expected_sizes)
-        assert np.isclose(page.deploy_marker.size, expected_sizes[0])
+        assert np.allclose(
+            np.ptp(page._deploy_marker_vertices, axis=0),
+            expected_sizes[0],
+        )
         assert np.isclose(page.current_marker.size, expected_sizes[1])
+        deploy_face_colors = page.deploy_marker.opts["meshdata"].faceColors()
+        assert np.allclose(
+            deploy_face_colors,
+            np.tile(
+                QColor(TRAJECTORY_DEPLOY_COLOR).getRgbF(),
+                (deploy_face_colors.shape[0], 1),
+            ),
+        )
+        assert np.allclose(deploy_face_colors[:, 3], 1.0)
+        landing_face_colors = page.landing_marker.opts["meshdata"].faceColors()
+        assert np.allclose(
+            landing_face_colors,
+            np.tile(
+                QColor(TRAJECTORY_LANDING_COLOR).getRgbF(),
+                (landing_face_colors.shape[0], 1),
+            ),
+        )
+        assert np.allclose(landing_face_colors[:, 3], 1.0)
         assert page.deploy_marker.depthValue() > page.current_marker.depthValue()
+        assert page.landing_marker.depthValue() > page.current_marker.depthValue()
         page.Theme_Apply("dark")
         expected_background = (17 / 255, 24 / 255, 39 / 255)
         assert np.allclose(
@@ -157,6 +196,124 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
             page.trajectory_view.opts["bgcolor"][:3],
             expected_background,
         )
+        assert np.allclose(
+            page.deploy_marker.opts["meshdata"].faceColors()[:, 3],
+            1.0,
+        )
+        assert np.allclose(
+            page.landing_marker.opts["meshdata"].faceColors()[:, 3],
+            1.0,
+        )
+    page.close()
+
+
+def test_recorded_recomputed_and_what_if_share_landing_marker_lifecycle(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_marker_sources.BIN")
+    )
+    plugin = PureInsAlgorithmPlugin()
+    recomputed = plugin.run(dataset, ReplayRequest())
+    what_if = plugin.run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.WHAT_IF,
+            parameters={"gravity_mps2": 9.7},
+        ),
+    )
+    store = ReplayResultStore()
+    recomputed_entry = store.Result_Add(recomputed, algorithm_name="Pure INS")
+    what_if_entry = store.Result_Add(what_if, algorithm_name="Pure INS")
+    resolver = ChannelResolver(dataset, store)
+    page = FlightPage(Translator("en_US"))
+
+    for source_id in (
+        ReplayResultStore.RECORDED_SOURCE_ID,
+        recomputed_entry.source_id,
+        what_if_entry.source_id,
+    ):
+        assert store.ActiveSource_Set(source_id)
+        page.Dataset_Set(dataset, resolver)
+        page.show()
+        application.processEvents()
+        if not hasattr(page, "landing_marker"):
+            continue
+        page.playback_slider.setValue(8000)
+        application.processEvents()
+        assert page.current_marker.pos.shape[0] == 1
+        assert not page.landing_marker.visible()
+        page.playback_slider.setValue(10000)
+        application.processEvents()
+        assert page.current_marker.pos.shape[0] == 0
+        assert page.landing_marker.visible()
+        assert page._landing_marker_vertices.shape == (6, 3)
+    page.close()
+
+
+def test_no_landing_trajectory_uses_source_end_and_keeps_current_visible(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(
+            tmp_path / "SYNTHETIC_no_landing_3d.BIN",
+            include_landing_event=False,
+            update_count=10,
+        )
+    )
+    resolver = ChannelResolver(dataset, ReplayResultStore())
+    page = FlightPage(Translator("en_US"))
+    page.Dataset_Set(dataset, resolver)
+    page.show()
+    application.processEvents()
+
+    assert page._end_timestamp_us == START_TIMESTAMP_US + 200_000
+    assert page._trajectory_bounds is not None
+    assert page._trajectory_bounds.sample_count == 10
+    if hasattr(page, "landing_marker"):
+        page.playback_slider.setValue(10000)
+        application.processEvents()
+        assert page.current_marker.pos.shape[0] == 1
+        assert not page.landing_marker.visible()
+        assert page.pre_deploy_line.pos.shape[0] > 0
+        assert page.post_deploy_line.pos.shape[0] > 0
+    page.close()
+
+
+def test_flight_plots_stop_at_landing_while_raw_series_remains_complete(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(
+            tmp_path / "SYNTHETIC_plot_mission_end.BIN",
+            update_count=10,
+            landing_after_update_count=6,
+        )
+    )
+    raw = dataset.Series_Get("imu.corrected.accel_b")
+    assert raw is not None
+    raw_end = int(raw.timestamp_us[-1])
+    landing = START_TIMESTAMP_US + 120_100
+    assert raw_end > landing
+    page = FlightPage(Translator("en_US"))
+    page.Dataset_Set(dataset, ChannelResolver(dataset, ReplayResultStore()))
+    application.processEvents()
+
+    for plot in (
+        page.velocity_plot,
+        page.position_plot,
+        page.acceleration_plot,
+        page.angular_rate_plot,
+        page.quaternion_plot,
+        page.euler_plot,
+    ):
+        for item in plot.listDataItems():
+            assert item.xData is not None
+            assert float(np.nanmax(item.xData)) <= (landing - START_TIMESTAMP_US) * 1.0e-6
+    assert int(raw.timestamp_us[-1]) == raw_end
     page.close()
 
 
@@ -225,5 +382,5 @@ def test_trajectory_hides_deploy_point_when_no_deploy_event(
     application.processEvents()
     assert page._deploy_timestamp_us is None
     if hasattr(page, "deploy_marker"):
-        assert page.deploy_marker.pos.shape[0] == 0
+        assert page._deploy_marker_vertices.shape[0] == 0
     page.close()

@@ -91,6 +91,7 @@ def InertialIncrement_BuildFromCorrectedImu(
     records: tuple[DecodedRecord, ...],
     *,
     start_timestamp_us: int,
+    end_timestamp_us: int | None = None,
     minimum_sample_rate_hz: float = 50.0,
     maximum_sample_rate_hz: float = 500.0,
     tolerance_ratio: float = 0.35,
@@ -104,6 +105,8 @@ def InertialIncrement_BuildFromCorrectedImu(
     for record in sorted(records, key=lambda item: item.record_sequence):
         timestamp = int(record.payload["sample_timestamp_us"])
         if timestamp < start_timestamp_us:
+            continue
+        if end_timestamp_us is not None and timestamp > end_timestamp_us:
             continue
         valid_mask = int(record.payload.get("valid_mask", 0))
         correction_valid = bool(record.payload.get("correction_valid", 0))
@@ -154,7 +157,10 @@ def InertialIncrement_BuildFromCorrectedImu(
 
 
 def InertialIncrement_ReadRecorded(
-    records: tuple[DecodedRecord, ...], *, start_timestamp_us: int
+    records: tuple[DecodedRecord, ...],
+    *,
+    start_timestamp_us: int,
+    end_timestamp_us: int | None = None,
 ) -> tuple[InertialIncrement, ...]:
     increments: list[InertialIncrement] = []
     for record in sorted(records, key=lambda item: item.record_sequence):
@@ -162,6 +168,8 @@ def InertialIncrement_ReadRecorded(
         end_timestamp = int(payload["interval_end_timestamp_us"])
         dt = np.float32(payload["dt_s"])
         if end_timestamp < start_timestamp_us or not np.isfinite(dt) or dt <= 0.0:
+            continue
+        if end_timestamp_us is not None and end_timestamp > end_timestamp_us:
             continue
         increments.append(
             InertialIncrement(

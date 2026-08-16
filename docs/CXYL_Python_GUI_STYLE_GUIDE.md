@@ -732,7 +732,7 @@ Do not place a large `START` text label over the origin if the origin itself alr
 
 This coordinate shift is **presentation-only**. Do not modify the recorded dataset.
 
-### 16.2 Deploy marker
+### 16.2 Event markers
 
 Important event markers should prefer compact point markers over large floating 3D text. For example, parachute deploy can be shown as a point marker.
 
@@ -740,10 +740,14 @@ Recommended:
 - orange point,
 - legend or side explanation.
 
-In an OpenGL trajectory view, event/current markers should use world-space sizing
-(`GLScatterPlotItem(pxMode=False)`). Derive the marker diameter from the characteristic visible
-E/N/U trajectory extent, with a minimum extent guard, so the marker scales with the trajectory
-instead of remaining a fixed-size screen-space circle.
+In an OpenGL trajectory view, event/current markers should use world-space sizing. Derive the
+marker diameter from the cached characteristic visible E/N/U trajectory extent, with a minimum
+extent guard, so the marker scales with the trajectory instead of remaining a fixed-size
+screen-space circle.
+
+Deploy and Landing should use one generic tiny opaque `GLMeshItem` geometry, such as an octahedron,
+when point sprites produce a soft halo or disappear on a Light canvas. Use orange for Deploy and
+purple for Landing, alpha 1.0, and the same trajectory-extent-derived world-diameter policy.
 
 Avoid floating `DEPLOY` text directly in dense 3D geometry when it causes occlusion.
 
@@ -765,12 +769,24 @@ For flight replay, use red for the pre-deploy path and current point, blue for t
 path and current point, orange for the single Deploy point, and a distinct semantic color for
 Landing. The current-point color changes at the Deploy timestamp boundary.
 
+Before Landing, show Current and hide Landing. At and after Landing, hide Current and show the
+opaque Landing mesh. Resolve an event position by interpolation when the series covers its
+timestamp; otherwise allow the nearest valid sample within five typical sample intervals or at
+least 100 ms. This scheduling tolerance is presentation logic, not an invented algorithm sample.
+
 ### 16.4 Camera
 
 As with attitude:
 - fit initially,
 - preserve user zoom during playback,
 - provide Reset View.
+
+Precompute and cache mission-relative trajectory bounds separately for every selectable source,
+including distinct Recorded Pure INS and Recorded estimator layers. Bounds contain minimum,
+maximum, center, span, maximum span, and a bounding radius. Fit only on dataset/source/result
+changes and explicit Reset View. Use the cached center and bounding radius with the actual camera
+FOV and viewport aspect ratio, plus approximately 10–20% margin. Never rescan the full trajectory
+or refit the camera during slider/timer refresh.
 
 ---
 
@@ -812,8 +828,10 @@ For high-rate logs:
 
 The exported trajectory should:
 - start at visual origin,
+- end at Landing when Landing is present,
 - segment pre/post deploy,
-- mark deploy with a point,
+- mark Deploy and Landing with the same semantic opaque meshes as the GUI,
+- hide Current on the final Landing frame,
 - label ENU axes,
 - honor Light/Dark,
 - honor export language.
@@ -1021,6 +1039,14 @@ For current CXYL-style tools:
 - use corrected IMU as the normal replay input,
 - rebuild inertial increments internally,
 - keep recorded increments for validation/data exploration if useful.
+
+Normal mission Replay uses one centralized boundary object. Its start is mission START; its end is
+the first valid Landing event at or after START, or the active input/source end when Landing is
+absent. Do not feed post-Landing IMU or measurements into normal INS/KF/ESKF replay, and do not
+invent a synthetic sample exactly at Landing. The last discrete solution may legitimately be a few
+milliseconds early. Keep post-Landing raw records available in the immutable dataset, Data
+Explorer, and raw exports. Flight plots, the 3D slider, static trajectory export, and replay GIF use
+the same boundary.
 
 This also keeps the interface compatible with future algorithms such as ESKF_15 / ESKF_24 that should not depend on a pre-recorded increment stream.
 
@@ -1304,6 +1330,9 @@ For every release or major UI refactor verify:
 - wheel zoom works during playback
 - camera does not reset every frame
 - deploy marker remains visible on the Light canvas and does not occlude trajectory
+- Landing is a visible opaque purple mesh on Light and Dark canvases
+- Current disappears when Landing appears
+- the complete mission trajectory fits initially without wheel adjustment
 - start is visual origin
 
 ### Plots
@@ -1333,6 +1362,11 @@ Add tests where practical for:
 - page-level chart reset after manual range changes
 - OpenGL camera state not reset during playback refresh
 - Light-mode deploy marker visibility
+- Light-mode Landing mesh visibility and Current/Landing lifecycle
+- source-specific trajectory-bounds caching without playback rescans
+- FOV/aspect camera fitting for vertical, horizontal, long-thin, and short trajectories
+- START-to-Landing Replay, plots, static PNG, and GIF with no-Landing fallback
+- post-Landing raw-data preservation
 - GUI/export rocket face-color consistency
 - export language
 - Light/Dark export

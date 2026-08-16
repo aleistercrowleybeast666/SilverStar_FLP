@@ -24,9 +24,16 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   color; after the base sixteen colors, generate additional HSV colors.
 - Attitude uses the shared GSHC-proportion and GSHC face-color rocket mesh plus the existing WXYZ
   Body-to-ENU quaternion helper. Trajectory coordinates are relative to mission START. Pre-deploy
-  path/current are red, post-deploy path/current are blue, and Deploy is one orange world-space
-  point whose size follows trajectory extent; do not add outlines or floating event text.
-- Playback updates geometry only. It must not reset orbit, pan, or zoom. Reset View is the explicit
-  camera reset operation.
+  path/current are red, post-deploy path/current are blue, and Deploy is one small opaque orange
+  world-space mesh. Landing is the same small opaque mesh geometry in purple. Both sizes follow the
+  cached mission-trajectory extent; do not add outlines or floating event text. At Landing, hide
+  Current and show Landing.
+- Normal Replay, Flight plots, the 3D slider, trajectory PNG, and replay GIF use START-to-Landing as
+  their mission horizon. Without a valid Landing event, use the active source's valid end. Raw logs,
+  Data Explorer channels, and raw CSV remain complete and immutable.
+- Cache mission-relative `TrajectoryBounds` separately for Recorded Pure INS, Recorded KF_6, and
+  every Recomputed/What-if result. Initial/Reset View fitting uses cached center and bounding radius
+  with the OpenGL view's FOV and aspect ratio plus margin. Playback updates geometry only; it must
+  not rescan bounds or reset orbit, pan, or zoom.
 - Every user-visible Replay fidelity, warning, parameter, provenance, result, and source label must
   exist in both `zh_CN.json` and `en_US.json`; keep raw diagnostic IDs in tooltips.

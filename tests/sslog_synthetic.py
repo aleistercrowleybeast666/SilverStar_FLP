@@ -416,7 +416,9 @@ def AnalysisFlight_Build(
     include_deploy_detail: bool = True,
     include_deploy_event: bool = True,
     include_kf6: bool = True,
+    include_landing_event: bool = True,
     update_count: int = 8,
+    landing_after_update_count: int | None = None,
     process_accel_std_mps2: tuple[float, float, float] = (1.5, 1.5, 2.0),
     nis_profile: tuple[float, float, float, float, float, float, float] = (
         6.635,
@@ -558,7 +560,19 @@ def AnalysisFlight_Build(
             0x02,
             Event_Payload(0x2B, arg0=0x02, arg1=Float_U32(-2.13)),
         )
-    add(START_TIMESTAMP_US + update_count * 20_000 + 100, 0x02, Event_Payload(0x2A))
+    landing_update_count = (
+        update_count
+        if landing_after_update_count is None
+        else landing_after_update_count
+    )
+    if not 0 <= landing_update_count <= update_count:
+        raise ValueError("landing_after_update_count_out_of_range")
+    if include_landing_event:
+        add(
+            START_TIMESTAMP_US + landing_update_count * 20_000 + 100,
+            0x02,
+            Event_Payload(0x2A),
+        )
 
     builder = SyntheticSslogBuilder()
     for timestamp_us, record_type, payload, valid_flags in sorted(

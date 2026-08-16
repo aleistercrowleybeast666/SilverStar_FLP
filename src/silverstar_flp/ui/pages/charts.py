@@ -27,13 +27,22 @@ from silverstar_flp.core.analysis_source import (
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector, Quaternion_ToEulerEnuDeg
+from silverstar_flp.core.mission import MissionReplayBounds
+from silverstar_flp.core.trajectory import (
+    TrajectoryBounds,
+    TrajectoryCameraDistance_Get,
+    TrajectoryOrigin_Get,
+    TrajectoryPosition_At,
+    TrajectoryPosition_NearEvent,
+)
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
     TRAJECTORY_LANDING_COLOR,
     TRAJECTORY_POST_DEPLOY_COLOR,
     TRAJECTORY_PRE_DEPLOY_COLOR,
     RocketFaceColors_Get,
-    TrajectoryMarkerWorldSizes_Get,
+    TrajectoryEventMesh_Get,
+    TrajectoryMarkerWorldSizesFromExtent_Get,
     TrajectoryPhaseColor_Get,
 )
 from silverstar_flp.ui.theme import Plot_Colors
@@ -157,6 +166,7 @@ def _Series_Plot(
     series: TimeSeries | None,
     start_timestamp_us: int,
     *,
+    end_timestamp_us: int | None = None,
     colors: TraceColorAllocator,
     prefix: str = "",
     width: float = 1.4,
@@ -164,7 +174,10 @@ def _Series_Plot(
 ) -> None:
     if series is None or series.count == 0:
         return
-    selected = np.flatnonzero(series.timestamp_us >= np.uint64(start_timestamp_us))
+    selected_mask = series.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
+    if end_timestamp_us is not None:
+        selected_mask &= series.timestamp_us <= np.uint64(max(end_timestamp_us, 0))
+    selected = np.flatnonzero(selected_mask)
     if selected.size == 0:
         return
     selected = selected[:: max(1, selected.size // 6000)]
@@ -279,56 +292,20 @@ def _NearestIndex(timestamps: np.ndarray, timestamp_us: int) -> int:
 
 
 def _Position_At(series: TimeSeries, timestamp_us: int) -> np.ndarray | None:
-    values = np.asarray(series.values, dtype=np.float64)
-    valid = series.valid & np.all(np.isfinite(values), axis=1)
-    timestamps = series.timestamp_us[valid].astype(np.float64)
-    points = values[valid]
-    if (
-        timestamps.size == 0
-        or timestamp_us < timestamps[0]
-        or timestamp_us > timestamps[-1]
-    ):
-        return None
-    return np.asarray(
-        [np.interp(float(timestamp_us), timestamps, points[:, axis]) for axis in range(3)],
-        dtype=np.float32,
-    )
+    position = TrajectoryPosition_At(series, timestamp_us)
+    return None if position is None else np.asarray(position, dtype=np.float32)
 
 
 def _Position_NearEvent(series: TimeSeries, timestamp_us: int) -> np.ndarray | None:
-    interpolated = _Position_At(series, timestamp_us)
-    if interpolated is not None:
-        return interpolated
-    values = np.asarray(series.values, dtype=np.float64)
-    valid = series.valid & np.all(np.isfinite(values), axis=1)
-    timestamps = series.timestamp_us[valid]
-    points = values[valid]
-    if timestamps.size == 0:
-        return None
-    intervals = np.diff(timestamps.astype(np.int64))
-    typical_interval = float(np.median(intervals)) if intervals.size else 0.0
-    tolerance_us = max(int(typical_interval * 5.0), 100_000)
-    index = _NearestIndex(timestamps, timestamp_us)
-    if abs(int(timestamps[index]) - timestamp_us) > tolerance_us:
-        return None
-    return np.asarray(points[index], dtype=np.float32)
+    position = TrajectoryPosition_NearEvent(series, timestamp_us)
+    return None if position is None else np.asarray(position, dtype=np.float32)
 
 
 def _TrajectoryOrigin_Get(series: TimeSeries, start_timestamp_us: int) -> np.ndarray:
-    interpolated = _Position_At(series, start_timestamp_us)
-    if interpolated is not None:
-        return interpolated
-    values = np.asarray(series.values, dtype=np.float64)
-    valid = series.valid & np.all(np.isfinite(values), axis=1)
-    post_start = np.flatnonzero(
-        valid & (series.timestamp_us >= np.uint64(max(start_timestamp_us, 0)))
+    return np.asarray(
+        TrajectoryOrigin_Get(series, start_timestamp_us),
+        dtype=np.float32,
     )
-    if post_start.size:
-        return np.asarray(values[post_start[0]], dtype=np.float32)
-    available = np.flatnonzero(valid)
-    if available.size:
-        return np.asarray(values[available[0]], dtype=np.float32)
-    return np.zeros(3, dtype=np.float32)
 
 
 class FlightPage(QWidget):
@@ -343,12 +320,17 @@ class FlightPage(QWidget):
         self._playback_time_us = 0
         self._position: TimeSeries | None = None
         self._attitude: TimeSeries | None = None
+        self._mission_bounds: MissionReplayBounds | None = None
+        self._trajectory_bounds: TrajectoryBounds | None = None
         self._deploy_timestamp_us: int | None = None
         self._landing_timestamp_us: int | None = None
         self._trajectory_origin = np.zeros(3, dtype=np.float32)
         self._trajectory_camera_center = np.zeros(3, dtype=np.float32)
         self._trajectory_camera_distance = 40.0
-        self._trajectory_marker_sizes = (0.035, 0.028, 0.028)
+        self._trajectory_marker_sizes = (0.014, 0.010, 0.010)
+        self._deploy_marker_vertices = np.empty((0, 3), dtype=np.float32)
+        self._landing_marker_vertices = np.empty((0, 3), dtype=np.float32)
+        self._trajectory_camera_fit_count = 0
 
         layout = QVBoxLayout(self)
         source_row = QHBoxLayout()
@@ -501,9 +483,49 @@ class FlightPage(QWidget):
             ]
             self.pre_deploy_line = gl.GLLinePlotItem(width=3.0, antialias=True)
             self.post_deploy_line = gl.GLLinePlotItem(width=3.0, antialias=True)
-            self.deploy_marker = gl.GLScatterPlotItem(size=0.035, pxMode=False)
-            self.landing_marker = gl.GLScatterPlotItem(size=0.028, pxMode=False)
-            self.current_marker = gl.GLScatterPlotItem(size=0.028, pxMode=False)
+            deploy_vertices, deploy_faces = TrajectoryEventMesh_Get(
+                np.zeros(3, dtype=np.float32),
+                self._trajectory_marker_sizes[0],
+            )
+            deploy_colors = np.tile(
+                np.asarray(QColor(TRAJECTORY_DEPLOY_COLOR).getRgbF(), dtype=np.float32),
+                (deploy_faces.shape[0], 1),
+            )
+            self.deploy_marker = gl.GLMeshItem(
+                meshdata=gl.MeshData(
+                    vertexes=deploy_vertices.astype(np.float32),
+                    faces=deploy_faces,
+                    faceColors=deploy_colors,
+                ),
+                smooth=False,
+                computeNormals=False,
+                drawEdges=False,
+                shader=None,
+            )
+            self.deploy_marker.setGLOptions("opaque")
+            self.deploy_marker.setVisible(False)
+            landing_vertices, landing_faces = TrajectoryEventMesh_Get(
+                np.zeros(3, dtype=np.float32),
+                self._trajectory_marker_sizes[2],
+            )
+            landing_colors = np.tile(
+                np.asarray(QColor(TRAJECTORY_LANDING_COLOR).getRgbF(), dtype=np.float32),
+                (landing_faces.shape[0], 1),
+            )
+            self.landing_marker = gl.GLMeshItem(
+                meshdata=gl.MeshData(
+                    vertexes=landing_vertices.astype(np.float32),
+                    faces=landing_faces,
+                    faceColors=landing_colors,
+                ),
+                smooth=False,
+                computeNormals=False,
+                drawEdges=False,
+                shader=None,
+            )
+            self.landing_marker.setGLOptions("opaque")
+            self.landing_marker.setVisible(False)
+            self.current_marker = gl.GLScatterPlotItem(size=0.010, pxMode=False)
             self.current_marker.setDepthValue(28)
             self.landing_marker.setDepthValue(29)
             self.deploy_marker.setDepthValue(30)
@@ -633,6 +655,8 @@ class FlightPage(QWidget):
         velocity = self._resolver.Series_Get("navigation.velocity_enu", source_id)
         position = self._resolver.Series_Get("navigation.position_enu", source_id)
         attitude = self._resolver.Series_Get("attitude.q_nb", source_id)
+        self._mission_bounds = self._resolver.MissionReplayBounds_Get(source_id)
+        end = self._mission_bounds.end_timestamp_us
         if source.kind == AnalysisSourceKind.RECORDED:
             for channel_id, plot in (
                 ("navigation.velocity_enu", self.velocity_plot),
@@ -643,6 +667,7 @@ class FlightPage(QWidget):
                         plot,
                         layer.series,
                         start,
+                        end_timestamp_us=end,
                         colors=color_allocators[plot],
                         prefix=f"{_RecordedSolution_Label(self._translator, layer.solution_id)} · ",
                         width=1.7,
@@ -653,6 +678,7 @@ class FlightPage(QWidget):
                 self.velocity_plot,
                 velocity,
                 start,
+                end_timestamp_us=end,
                 colors=color_allocators[self.velocity_plot],
                 prefix=active_prefix,
                 width=1.9,
@@ -661,6 +687,7 @@ class FlightPage(QWidget):
                 self.position_plot,
                 position,
                 start,
+                end_timestamp_us=end,
                 colors=color_allocators[self.position_plot],
                 prefix=active_prefix,
                 width=1.9,
@@ -674,6 +701,7 @@ class FlightPage(QWidget):
                         plot,
                         layer.series,
                         start,
+                        end_timestamp_us=end,
                         colors=color_allocators[plot],
                         prefix=f"{_RecordedSolution_Label(self._translator, layer.solution_id)} · ",
                         reference=True,
@@ -687,6 +715,7 @@ class FlightPage(QWidget):
             self.quaternion_plot,
             attitude,
             start,
+            end_timestamp_us=end,
             colors=color_allocators[self.quaternion_plot],
             prefix=attitude_prefix,
             width=1.7,
@@ -696,6 +725,7 @@ class FlightPage(QWidget):
                 self.euler_plot,
                 _EulerSeries_Create(attitude),
                 start,
+                end_timestamp_us=end,
                 colors=color_allocators[self.euler_plot],
                 prefix=attitude_prefix,
                 width=1.7,
@@ -706,6 +736,7 @@ class FlightPage(QWidget):
                 self.quaternion_plot,
                 recorded_attitude,
                 start,
+                end_timestamp_us=end,
                 colors=color_allocators[self.quaternion_plot],
                 prefix=f"{self._translator.Text_Get('flight.recorded_reference')} · ",
                 reference=True,
@@ -715,6 +746,7 @@ class FlightPage(QWidget):
                     self.euler_plot,
                     _EulerSeries_Create(recorded_attitude),
                     start,
+                    end_timestamp_us=end,
                     colors=color_allocators[self.euler_plot],
                     prefix=f"{self._translator.Text_Get('flight.recorded_reference')} · ",
                     reference=True,
@@ -723,6 +755,7 @@ class FlightPage(QWidget):
             self.acceleration_plot,
             self._resolver.RecordedSeries_Get("imu.corrected.accel_b"),
             start,
+            end_timestamp_us=end,
             colors=color_allocators[self.acceleration_plot],
             prefix=f"{self._translator.Text_Get('status.recorded')} · ",
         )
@@ -730,6 +763,7 @@ class FlightPage(QWidget):
             self.angular_rate_plot,
             self._resolver.RecordedSeries_Get("imu.corrected.gyro_b"),
             start,
+            end_timestamp_us=end,
             colors=color_allocators[self.angular_rate_plot],
             prefix=f"{self._translator.Text_Get('status.recorded')} · ",
         )
@@ -737,23 +771,13 @@ class FlightPage(QWidget):
         self._attitude = attitude
         self._deploy_timestamp_us = _Event_Timestamp(self._dataset, 0x29)
         self._landing_timestamp_us = _Event_Timestamp(self._dataset, 0x2A)
+        self._trajectory_bounds = self._resolver.TrajectoryBounds_Get(source_id)
         self._trajectory_origin = (
-            _TrajectoryOrigin_Get(position, start)
-            if position is not None and position.count
+            np.asarray(self._trajectory_bounds.origin_enu, dtype=np.float32)
+            if self._trajectory_bounds is not None
             else np.zeros(3, dtype=np.float32)
         )
-        end_candidates = [
-            int(series.timestamp_us[-1])
-            for series in (self._position, self._attitude)
-            if series is not None and series.count
-        ]
-        self._end_timestamp_us = max(end_candidates, default=start)
-        if (
-            self._landing_timestamp_us is not None
-            and self._landing_timestamp_us >= self._end_timestamp_us
-            and self._landing_timestamp_us - self._end_timestamp_us <= 100_000
-        ):
-            self._end_timestamp_us = self._landing_timestamp_us
+        self._end_timestamp_us = end
         self._playback_time_us = start
         self.playback_slider.blockSignals(True)
         self.playback_slider.setValue(0)
@@ -780,6 +804,21 @@ class FlightPage(QWidget):
             elevation=18.0,
             azimuth=-50.0,
         )
+        if self._trajectory_bounds is not None:
+            self._trajectory_camera_center = np.asarray(
+                self._trajectory_bounds.center_enu,
+                dtype=np.float32,
+            )
+            aspect_ratio = max(float(self.trajectory_view.width()), 1.0) / max(
+                float(self.trajectory_view.height()),
+                1.0,
+            )
+            self._trajectory_camera_distance = TrajectoryCameraDistance_Get(
+                self._trajectory_bounds,
+                horizontal_fov_deg=float(self.trajectory_view.opts.get("fov", 60.0)),
+                aspect_ratio=aspect_ratio,
+            )
+            self._trajectory_camera_fit_count += 1
         center = self._trajectory_camera_center
         self.trajectory_view.setCameraPosition(
             pos=QVector3D(float(center[0]), float(center[1]), float(center[2])),
@@ -796,31 +835,22 @@ class FlightPage(QWidget):
             (0.2, 0.9, 0.35, 1.0),
             (0.2, 0.5, 1.0, 1.0),
         )
-        valid_values = np.empty((0, 3), dtype=np.float32)
-        if self._position is not None and self._position.count:
-            raw_values = np.asarray(self._position.values, dtype=np.float32)
-            valid = (
-                self._position.valid
-                & np.all(np.isfinite(raw_values), axis=1)
-                & (
-                    self._position.timestamp_us
-                    >= np.uint64(max(self._start_timestamp_us, 0))
-                )
+        if self._trajectory_bounds is not None:
+            spans = np.asarray(self._trajectory_bounds.span_enu, dtype=np.float32)
+            extent = max(float(self._trajectory_bounds.max_span), 1.0)
+            self._trajectory_camera_center = np.asarray(
+                self._trajectory_bounds.center_enu,
+                dtype=np.float32,
             )
-            valid_values = raw_values[valid] - self._trajectory_origin
-        if valid_values.size:
-            minimum = np.min(valid_values, axis=0)
-            maximum = np.max(valid_values, axis=0)
-            spans = maximum - minimum
-            extent = max(float(np.max(spans)), 1.0)
-            self._trajectory_camera_center = (minimum + maximum) * 0.5
-            self._trajectory_camera_distance = max(extent * 1.8, 8.0)
+            self._trajectory_marker_sizes = TrajectoryMarkerWorldSizesFromExtent_Get(
+                self._trajectory_bounds.max_span
+            )
         else:
             spans = np.ones(3, dtype=np.float32)
             extent = 4.0
             self._trajectory_camera_center = np.zeros(3, dtype=np.float32)
             self._trajectory_camera_distance = 8.0
-        self._trajectory_marker_sizes = TrajectoryMarkerWorldSizes_Get(valid_values)
+            self._trajectory_marker_sizes = TrajectoryMarkerWorldSizesFromExtent_Get(1.0)
         axis_length = max(float(np.max(spans)) * 0.2, 1.0)
         for axis, item in enumerate(self._trajectory_world_items):
             endpoint = np.zeros(3, dtype=np.float32)
@@ -943,8 +973,10 @@ class FlightPage(QWidget):
         if self._position is None or self._position.count == 0:
             self.pre_deploy_line.setData(pos=empty)
             self.post_deploy_line.setData(pos=empty)
-            self.deploy_marker.setData(pos=empty)
-            self.landing_marker.setData(pos=empty)
+            self.deploy_marker.setVisible(False)
+            self._deploy_marker_vertices = empty
+            self.landing_marker.setVisible(False)
+            self._landing_marker_vertices = empty
             self.current_marker.setData(pos=empty)
             return
         raw_values = np.asarray(self._position.values, dtype=np.float32)
@@ -960,8 +992,10 @@ class FlightPage(QWidget):
         if points.size == 0:
             self.pre_deploy_line.setData(pos=empty)
             self.post_deploy_line.setData(pos=empty)
-            self.deploy_marker.setData(pos=empty)
-            self.landing_marker.setData(pos=empty)
+            self.deploy_marker.setVisible(False)
+            self._deploy_marker_vertices = empty
+            self.landing_marker.setVisible(False)
+            self._landing_marker_vertices = empty
             self.current_marker.setData(pos=empty)
             return
         stride = max(1, len(points) // 10000)
@@ -987,11 +1021,18 @@ class FlightPage(QWidget):
         current = points[-1]
         current_color = TrajectoryPhaseColor_Get(timestamp_us, deploy)
         deploy_size, current_size, landing_size = self._trajectory_marker_sizes
-        self.current_marker.setData(
-            pos=np.asarray([current], dtype=np.float32),
-            color=QColor(current_color).getRgbF(),
-            size=current_size,
+        landing_reached = (
+            self._landing_timestamp_us is not None
+            and timestamp_us >= self._landing_timestamp_us
         )
+        if landing_reached:
+            self.current_marker.setData(pos=empty)
+        else:
+            self.current_marker.setData(
+                pos=np.asarray([current], dtype=np.float32),
+                color=QColor(current_color).getRgbF(),
+                size=current_size,
+            )
         deploy_point = (
             _Position_At(self._position, deploy)
             if deploy is not None and timestamp_us >= deploy
@@ -999,16 +1040,27 @@ class FlightPage(QWidget):
         )
         if deploy_point is not None:
             deploy_point = deploy_point - self._trajectory_origin
-        deploy_positions = (
-            np.asarray([deploy_point], dtype=np.float32)
-            if deploy_point is not None
-            else empty
-        )
-        self.deploy_marker.setData(
-            pos=deploy_positions,
-            color=QColor(TRAJECTORY_DEPLOY_COLOR).getRgbF(),
-            size=deploy_size,
-        )
+        if deploy_point is None:
+            self.deploy_marker.setVisible(False)
+            self._deploy_marker_vertices = empty
+        else:
+            deploy_vertices, deploy_faces = TrajectoryEventMesh_Get(
+                deploy_point,
+                deploy_size,
+            )
+            deploy_colors = np.tile(
+                np.asarray(QColor(TRAJECTORY_DEPLOY_COLOR).getRgbF(), dtype=np.float32),
+                (deploy_faces.shape[0], 1),
+            )
+            self._deploy_marker_vertices = deploy_vertices.astype(np.float32)
+            self.deploy_marker.setMeshData(
+                meshdata=gl.MeshData(
+                    vertexes=self._deploy_marker_vertices,
+                    faces=deploy_faces,
+                    faceColors=deploy_colors,
+                )
+            )
+            self.deploy_marker.setVisible(True)
         landing_point = (
             _Position_NearEvent(self._position, self._landing_timestamp_us)
             if self._landing_timestamp_us is not None
@@ -1017,15 +1069,27 @@ class FlightPage(QWidget):
         )
         if landing_point is not None:
             landing_point = landing_point - self._trajectory_origin
-        self.landing_marker.setData(
-            pos=(
-                np.asarray([landing_point], dtype=np.float32)
-                if landing_point is not None
-                else empty
-            ),
-            color=QColor(TRAJECTORY_LANDING_COLOR).getRgbF(),
-            size=landing_size,
-        )
+        if landing_point is None:
+            self.landing_marker.setVisible(False)
+            self._landing_marker_vertices = empty
+        else:
+            landing_vertices, landing_faces = TrajectoryEventMesh_Get(
+                landing_point,
+                landing_size,
+            )
+            landing_colors = np.tile(
+                np.asarray(QColor(TRAJECTORY_LANDING_COLOR).getRgbF(), dtype=np.float32),
+                (landing_faces.shape[0], 1),
+            )
+            self._landing_marker_vertices = landing_vertices.astype(np.float32)
+            self.landing_marker.setMeshData(
+                meshdata=gl.MeshData(
+                    vertexes=self._landing_marker_vertices,
+                    faces=landing_faces,
+                    faceColors=landing_colors,
+                )
+            )
+            self.landing_marker.setVisible(True)
 
     def Theme_Apply(self, theme: str) -> None:
         self._theme = theme

@@ -7,6 +7,10 @@ import numpy as np
 
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
+from silverstar_flp.core.mission import (
+    MissionReplayBounds_Get,
+    MissionReplayEndReason,
+)
 from silverstar_flp.plugins.algorithms.pure_ins.mechanization import (
     InertialIncrement_BuildFromCorrectedImu,
     InertialIncrement_ReadRecorded,
@@ -165,12 +169,19 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
         start_timestamp = dataset.start_timestamp_us or initial_record.timestamp_us
         initial_q = np.asarray(initial_record.payload["q_nb"], dtype=np.float32)
         config = Mechanization_ConfigurationGet(dataset)
+        mission_bounds = MissionReplayBounds_Get(dataset)
+        replay_input_end = (
+            mission_bounds.end_timestamp_us
+            if mission_bounds.end_reason == MissionReplayEndReason.LANDING
+            else None
+        )
         task_context.Progress_Report(0.05, "replay.inputs")
         source_diagnostics: Mapping[str, Any] = {}
         if request.input_source == SOURCE_CORRECTED_IMU:
             increments, build_diagnostics = InertialIncrement_BuildFromCorrectedImu(
                 dataset.Records_Get("IMU_CORRECTED"),
                 start_timestamp_us=start_timestamp,
+                end_timestamp_us=replay_input_end,
                 minimum_sample_rate_hz=config["minimum_sample_rate_hz"],
                 maximum_sample_rate_hz=config["maximum_sample_rate_hz"],
             )
@@ -182,6 +193,16 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             increments = InertialIncrement_ReadRecorded(
                 dataset.Records_Get("INERTIAL_INCREMENT"),
                 start_timestamp_us=start_timestamp,
+                end_timestamp_us=replay_input_end,
+            )
+        if mission_bounds.end_reason == MissionReplayEndReason.SOURCE_END:
+            mission_bounds = MissionReplayBounds_Get(
+                dataset,
+                source_end_timestamp_us=(
+                    increments[-1].interval_end_timestamp_us
+                    if increments
+                    else start_timestamp
+                ),
             )
         task_context.Cancel_RaiseIfRequested()
         gravity = float(dataset.header.get("gravity_mps2", 9.78))
@@ -270,6 +291,8 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
                 "input_increment_count": len(increments),
                 "output_count": len(outputs),
                 "start_timestamp_us": start_timestamp,
+                "mission_end_timestamp_us": mission_bounds.end_timestamp_us,
+                "mission_end_reason": mission_bounds.end_reason.value,
                 "software_quaternion_propagation": True,
                 "initial_velocity_policy": "zero_matches_firmware_pure_ins",
                 **dict(source_diagnostics),

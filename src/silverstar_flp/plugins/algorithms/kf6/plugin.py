@@ -13,6 +13,10 @@ from silverstar_flp.core.math import (
     Quaternion_PropagateBodyIncrement,
     Quaternion_RotateVector,
 )
+from silverstar_flp.core.mission import (
+    MissionReplayBounds_Get,
+    MissionReplayEndReason,
+)
 from silverstar_flp.plugins.algorithms.kf6.filter import (
     Kf6Filter,
     Kf6GnssEpoch,
@@ -391,10 +395,17 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         system_config = dataset.Records_Get("SYSTEM_CONFIG")[0]
         start_timestamp = dataset.start_timestamp_us or initial.timestamp_us
         mechanism_config = Mechanization_ConfigurationGet(dataset)
+        mission_bounds = MissionReplayBounds_Get(dataset)
+        replay_input_end = (
+            mission_bounds.end_timestamp_us
+            if mission_bounds.end_reason == MissionReplayEndReason.LANDING
+            else None
+        )
         if request.input_source == SOURCE_CORRECTED_IMU:
             increments, build_diagnostics = InertialIncrement_BuildFromCorrectedImu(
                 dataset.Records_Get("IMU_CORRECTED"),
                 start_timestamp_us=start_timestamp,
+                end_timestamp_us=replay_input_end,
                 minimum_sample_rate_hz=mechanism_config["minimum_sample_rate_hz"],
                 maximum_sample_rate_hz=mechanism_config["maximum_sample_rate_hz"],
             )
@@ -406,10 +417,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             increments = InertialIncrement_ReadRecorded(
                 dataset.Records_Get("INERTIAL_INCREMENT"),
                 start_timestamp_us=start_timestamp,
+                end_timestamp_us=replay_input_end,
             )
             source_diagnostics = {}
         if not increments:
             raise ValueError("replay_no_valid_inertial_increment")
+        if mission_bounds.end_reason == MissionReplayEndReason.SOURCE_END:
+            mission_bounds = MissionReplayBounds_Get(
+                dataset,
+                source_end_timestamp_us=increments[-1].interval_end_timestamp_us,
+            )
         parameters = self._Parameters_Resolve(dataset, request)
         filter_instance = Kf6Filter.Kf6_Create(
             process_accel_std_mps2=np.asarray(
@@ -481,6 +498,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "input_increment_count": len(increments),
                 "measurement_count": len(schedule),
                 "output_count": len(snapshots),
+                "mission_end_timestamp_us": mission_bounds.end_timestamp_us,
+                "mission_end_reason": mission_bounds.end_reason.value,
                 "predict_count": filter_instance.predict_count,
                 "health_flags": filter_instance.health_flags,
                 "reacquire_count": filter_instance.reacquire_count,
@@ -550,6 +569,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         dataset: FlightDataset, increments: tuple[InertialIncrement, ...]
     ) -> tuple[tuple[_ScheduledMeasurement, ...], bool]:
         increment_timestamps = [item.interval_end_timestamp_us for item in increments]
+        first_increment_timestamp = increment_timestamps[0]
+        last_increment_timestamp = increment_timestamps[-1]
         states = dataset.Records_Get("KF6_STATE")
         gnss_application: dict[int, int] = {}
         baro_application: dict[int, int] = {}
@@ -578,6 +599,12 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                         continue
                     application_timestamp = increment_timestamps[index]
                     inferred_any = True
+                if not (
+                    first_increment_timestamp
+                    <= application_timestamp
+                    <= last_increment_timestamp
+                ):
+                    continue
                 scheduled.append(
                     _ScheduledMeasurement(
                         application_timestamp_us=int(application_timestamp),

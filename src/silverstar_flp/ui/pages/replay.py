@@ -204,8 +204,7 @@ class ReplayPage(QWidget):
         self._Algorithm_Refresh()
 
     def _Algorithm_Refresh(self) -> None:
-        while self.parameters_form.rowCount():
-            self.parameters_form.takeRow(0)
+        self._ParameterForm_Clear()
         for widget in (*self._parameter_labels.values(), *self._parameter_widgets.values()):
             widget.deleteLater()
         self._parameter_widgets = {}
@@ -283,16 +282,28 @@ class ReplayPage(QWidget):
         self.parameter_group_combo.blockSignals(False)
 
     def _ParameterForm_Refresh(self, *_args: object) -> None:
-        while self.parameters_form.rowCount():
-            self.parameters_form.takeRow(0)
+        self._ParameterForm_Clear()
         group_key = self.parameter_group_combo.currentData()
         for parameter_id, parameter in self._parameter_specs.items():
             current_group = parameter.group_key or "parameter_group.general"
-            if current_group == group_key:
-                self.parameters_form.addRow(
-                    self._parameter_labels[parameter_id],
-                    self._parameter_widgets[parameter_id],
-                )
+            if current_group != group_key:
+                continue
+            label = self._parameter_labels[parameter_id]
+            editor = self._parameter_widgets[parameter_id]
+            label.show()
+            editor.show()
+            self.parameters_form.addRow(label, editor)
+        self.parameters_form.invalidate()
+        self.parameters_form.activate()
+        self.parameters_group.updateGeometry()
+
+    def _ParameterForm_Clear(self) -> None:
+        for widget in (*self._parameter_labels.values(), *self._parameter_widgets.values()):
+            widget.hide()
+            self.parameters_form.removeWidget(widget)
+        while self.parameters_form.rowCount():
+            self.parameters_form.takeRow(0)
+        self.parameters_form.invalidate()
 
     def _Parameters_Reset(self) -> None:
         for parameter_id, editor in self._parameter_widgets.items():

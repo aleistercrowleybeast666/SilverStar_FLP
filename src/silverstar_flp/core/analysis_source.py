@@ -6,6 +6,13 @@ from enum import StrEnum
 from types import MappingProxyType
 
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
+from silverstar_flp.core.mission import (
+    MissionReplayBounds,
+)
+from silverstar_flp.core.mission import (
+    MissionReplayBounds_Get as _MissionReplayBounds_Get,
+)
+from silverstar_flp.core.trajectory import TrajectoryBounds, TrajectoryBounds_Calculate
 from silverstar_flp.plugins.api.algorithm import (
     AlgorithmResult,
     ReplayFidelity,
@@ -211,6 +218,126 @@ class ChannelResolver:
     def __init__(self, dataset: FlightDataset, store: ReplayResultStore) -> None:
         self.dataset = dataset
         self.store = store
+        self._mission_bounds_cache: dict[str, MissionReplayBounds] = {}
+        self._trajectory_bounds_cache: dict[str, TrajectoryBounds] = {}
+        self._trajectory_bounds_calculation_count: dict[str, int] = {}
+        self._TrajectoryBounds_Prime()
+
+    @staticmethod
+    def _SeriesValidEndTimestamp_Get(series: TimeSeries | None) -> int | None:
+        if series is None or series.count == 0:
+            return None
+        valid_indices = series.valid.nonzero()[0]
+        if valid_indices.size == 0:
+            return None
+        return int(series.timestamp_us[valid_indices[-1]])
+
+    def _RecordedPositionSolution_Get(self) -> str | None:
+        for solution in ("kf6", "pure_ins"):
+            if self.RecordedSeries_Get(
+                "navigation.position_enu",
+                solution=solution,
+            ) is not None:
+                return solution
+        return None
+
+    def _SourceCacheKey_Get(
+        self,
+        source_id: str | None,
+        solution: str | None,
+    ) -> tuple[str, AnalysisSource, str | None]:
+        source = self.Source_Get(source_id)
+        if source.kind != AnalysisSourceKind.RECORDED:
+            return source.source_id, source, None
+        resolved_solution = solution or self._RecordedPositionSolution_Get()
+        cache_suffix = resolved_solution or "unavailable"
+        return f"recorded:{cache_suffix}", source, resolved_solution
+
+    def MissionReplayBounds_Get(
+        self,
+        source_id: str | None = None,
+        *,
+        solution: str | None = None,
+    ) -> MissionReplayBounds:
+        key, source, resolved_solution = self._SourceCacheKey_Get(source_id, solution)
+        cached = self._mission_bounds_cache.get(key)
+        if cached is not None:
+            return cached
+        if source.kind == AnalysisSourceKind.RECORDED:
+            candidates = (
+                self.RecordedSeries_Get(
+                    "navigation.position_enu",
+                    solution=resolved_solution,
+                ),
+                self.RecordedSeries_Get("attitude.q_nb"),
+            )
+        else:
+            candidates = (
+                self.Series_Get("navigation.position_enu", source.source_id),
+                self.Series_Get("attitude.q_nb", source.source_id),
+            )
+        source_ends = tuple(
+            timestamp
+            for series in candidates
+            if (timestamp := self._SeriesValidEndTimestamp_Get(series)) is not None
+        )
+        bounds = _MissionReplayBounds_Get(
+            self.dataset,
+            source_end_timestamp_us=max(source_ends, default=None),
+        )
+        self._mission_bounds_cache[key] = bounds
+        return bounds
+
+    def TrajectoryBounds_Get(
+        self,
+        source_id: str | None = None,
+        *,
+        solution: str | None = None,
+    ) -> TrajectoryBounds | None:
+        key, source, resolved_solution = self._SourceCacheKey_Get(source_id, solution)
+        cached = self._trajectory_bounds_cache.get(key)
+        if cached is not None:
+            return cached
+        if source.kind == AnalysisSourceKind.RECORDED:
+            position = self.RecordedSeries_Get(
+                "navigation.position_enu",
+                solution=resolved_solution,
+            )
+        else:
+            position = self.Series_Get("navigation.position_enu", source.source_id)
+        if position is None or position.count == 0:
+            return None
+        bounds = TrajectoryBounds_Calculate(
+            position,
+            self.MissionReplayBounds_Get(
+                source.source_id,
+                solution=resolved_solution,
+            ),
+        )
+        self._trajectory_bounds_cache[key] = bounds
+        self._trajectory_bounds_calculation_count[key] = (
+            self._trajectory_bounds_calculation_count.get(key, 0) + 1
+        )
+        return bounds
+
+    def TrajectoryBoundsCalculationCount_Get(
+        self,
+        source_id: str | None = None,
+        *,
+        solution: str | None = None,
+    ) -> int:
+        key, _, _ = self._SourceCacheKey_Get(source_id, solution)
+        return self._trajectory_bounds_calculation_count.get(key, 0)
+
+    def _TrajectoryBounds_Prime(self) -> None:
+        for solution in ("pure_ins", "kf6"):
+            self.TrajectoryBounds_Get(
+                ReplayResultStore.RECORDED_SOURCE_ID,
+                solution=solution,
+            )
+        for entry in self.store.Entries_Get():
+            if entry.analysis_ready:
+                self.TrajectoryBounds_Get(entry.source_id)
 
     def Source_Get(self, source_id: str | None = None) -> AnalysisSource:
         if source_id is None:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFormLayout
 
 from silverstar_flp.core.analysis_source import ReplayResultStore
 from silverstar_flp.core.i18n import Translator
@@ -156,6 +156,95 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
         page._parameter_widgets["nis_1d_soft"].value(),
         recorded_nis[0],
     )
+    assert not page.parameter_modified_label.isVisible()
+    page.close()
+
+
+def test_what_if_group_switch_removes_residual_rows_and_preserves_values(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    recorded_process = (2.25, 3.5, 4.75)
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(
+            tmp_path / "SYNTHETIC_parameter_group_switch.BIN",
+            process_accel_std_mps2=recorded_process,
+        )
+    )
+    page = ReplayPage(Translator("en_US"), builtin_registry())
+    page.Dataset_Set(dataset, ReplayResultStore())
+    page.algorithm_combo.setCurrentIndex(
+        page.algorithm_combo.findData("silverstar.algorithm.kf6")
+    )
+    page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.WHAT_IF))
+    page.show()
+    application.processEvents()
+
+    edited_values = {
+        "process_accel_std_e": 1.8,
+        "process_accel_std_n": 1.7,
+        "process_accel_std_u": 2.3,
+    }
+    for parameter_id, value in edited_values.items():
+        page._parameter_widgets[parameter_id].setValue(value)
+
+    group_keys = tuple(
+        page.parameter_group_combo.itemData(index)
+        for index in range(page.parameter_group_combo.count())
+    )
+    expected_ids = {
+        group_key: tuple(
+            parameter_id
+            for parameter_id, spec in page._parameter_specs.items()
+            if (spec.group_key or "parameter_group.general") == group_key
+        )
+        for group_key in group_keys
+    }
+    for _ in range(20):
+        for group_key in group_keys:
+            page.parameter_group_combo.setCurrentIndex(
+                page.parameter_group_combo.findData(group_key)
+            )
+            application.processEvents()
+            visible_ids = expected_ids[group_key]
+            assert page.parameters_form.rowCount() == len(visible_ids)
+            attached_widgets = []
+            for row, parameter_id in enumerate(visible_ids):
+                label = page._parameter_labels[parameter_id]
+                editor = page._parameter_widgets[parameter_id]
+                assert page.parameters_form.itemAt(
+                    row,
+                    QFormLayout.ItemRole.LabelRole,
+                ).widget() is label
+                assert page.parameters_form.itemAt(
+                    row,
+                    QFormLayout.ItemRole.FieldRole,
+                ).widget() is editor
+                assert label.isVisible()
+                assert editor.isVisible()
+                attached_widgets.extend((label, editor))
+            assert len(attached_widgets) == len(
+                {id(widget) for widget in attached_widgets}
+            )
+            hidden_ids = set(page._parameter_specs) - set(visible_ids)
+            for parameter_id in hidden_ids:
+                label = page._parameter_labels[parameter_id]
+                editor = page._parameter_widgets[parameter_id]
+                assert page.parameters_form.indexOf(label) == -1
+                assert page.parameters_form.indexOf(editor) == -1
+                assert not label.isVisible()
+                assert not editor.isVisible()
+
+    for parameter_id, value in edited_values.items():
+        assert math.isclose(page._parameter_widgets[parameter_id].value(), value)
+    assert page.parameter_modified_label.isVisible()
+    page.parameter_reset_button.click()
+    application.processEvents()
+    for axis, expected in zip("enu", recorded_process, strict=True):
+        assert math.isclose(
+            page._parameter_widgets[f"process_accel_std_{axis}"].value(),
+            expected,
+        )
     assert not page.parameter_modified_label.isVisible()
     page.close()
 

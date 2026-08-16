@@ -11,6 +11,7 @@ from silverstar_flp.core.dataset import TimeSeries
 from silverstar_flp.core.project import Project_Load, Project_Save, ProjectDocument
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
+    TRAJECTORY_LANDING_COLOR,
     TRAJECTORY_POST_DEPLOY_COLOR,
     TRAJECTORY_PRE_DEPLOY_COLOR,
     RocketFaceColors_Get,
@@ -212,23 +213,28 @@ def test_export_3d_uses_unique_colors_rocket_mesh_and_mission_relative_points(
     )
     labels = {artist.get_label() for artist in trajectory_axis.collections}
     assert "Mission Start" not in labels
-    assert {"Deploy", "Landing", "Current Position"} <= labels
+    assert {"Deploy", "Landing"} <= labels
+    assert "Current Position" not in labels
     deploy_collection = next(
         artist for artist in trajectory_axis.collections if artist.get_label() == "Deploy"
     )
-    current_collection = next(
+    landing_collection = next(
         artist
         for artist in trajectory_axis.collections
-        if artist.get_label() == "Current Position"
+        if artist.get_label() == "Landing"
     )
     from matplotlib.colors import to_rgba
 
     assert np.allclose(deploy_collection.get_facecolor()[0], to_rgba(TRAJECTORY_DEPLOY_COLOR))
     assert np.allclose(deploy_collection.get_edgecolor()[0], to_rgba(TRAJECTORY_DEPLOY_COLOR))
+    assert isinstance(deploy_collection, Poly3DCollection)
+    assert deploy_collection.get_alpha() == 1.0
     assert np.allclose(
-        current_collection.get_facecolor()[0],
-        to_rgba(TRAJECTORY_POST_DEPLOY_COLOR),
+        landing_collection.get_facecolor()[0],
+        to_rgba(TRAJECTORY_LANDING_COLOR),
     )
+    assert isinstance(landing_collection, Poly3DCollection)
+    assert landing_collection.get_alpha() == 1.0
     assert trajectory_axis.lines[0].get_color() == TRAJECTORY_PRE_DEPLOY_COLOR
     assert trajectory_axis.lines[1].get_color() == TRAJECTORY_POST_DEPLOY_COLOR
     assert not trajectory_axis.texts
@@ -241,6 +247,30 @@ def test_export_3d_uses_unique_colors_rocket_mesh_and_mission_relative_points(
     assert np.allclose(origin, position.values[post_start[0]])
     assert np.array_equal(position.values, raw_before)
     plt.close(trajectory_figure)
+
+    active_figure = plt.figure()
+    active_axis = active_figure.add_subplot(111, projection="3d")
+    exporter._Trajectory_AxisDraw(
+        active_axis,
+        dataset,
+        position,
+        ExportLanguage.EN,
+        ExportTheme.LIGHT,
+        current_timestamp_us=start + 130_000,
+    )
+    active_labels = {artist.get_label() for artist in active_axis.collections}
+    assert "Current Position" in active_labels
+    assert "Landing" not in active_labels
+    current_collection = next(
+        artist
+        for artist in active_axis.collections
+        if artist.get_label() == "Current Position"
+    )
+    assert np.allclose(
+        current_collection.get_facecolor()[0],
+        to_rgba(TRAJECTORY_POST_DEPLOY_COLOR),
+    )
+    plt.close(active_figure)
 
     attitude_figure = plt.figure()
     attitude_axis = attitude_figure.add_subplot(111, projection="3d")
@@ -350,3 +380,10 @@ def test_gif_frame_targets_are_uniform_in_mission_time_and_capped_at_60() -> Non
     assert targets[-1] == timestamps[-1]
     intervals = np.diff(targets.astype(np.int64))
     assert int(intervals.max() - intervals.min()) <= 1
+    cropped_targets = FlightExporter._ReplayFrameTimestamps_Get(
+        attitude,
+        position,
+        1_000_000,
+        end_timestamp_us=int(timestamps[50]),
+    )
+    assert cropped_targets[-1] == timestamps[50]

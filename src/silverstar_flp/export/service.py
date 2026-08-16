@@ -23,12 +23,26 @@ from silverstar_flp.core.analysis_source import (
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.math import Quaternion_RotateVector
+from silverstar_flp.core.mission import (
+    MissionReplayBounds,
+    MissionReplayBounds_Get,
+    MissionReplayEndReason,
+)
+from silverstar_flp.core.trajectory import (
+    TrajectoryBounds,
+    TrajectoryBounds_Calculate,
+    TrajectoryOrigin_Get,
+    TrajectoryPosition_At,
+    TrajectoryPosition_NearEvent,
+)
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
     TRAJECTORY_LANDING_COLOR,
     TRAJECTORY_POST_DEPLOY_COLOR,
     TRAJECTORY_PRE_DEPLOY_COLOR,
     RocketFaceColors_Get,
+    TrajectoryEventMesh_Get,
+    TrajectoryMarkerWorldSizesFromExtent_Get,
     TrajectoryPhaseColor_Get,
 )
 from silverstar_flp.export.plot_metadata import (
@@ -204,8 +218,14 @@ def _Event_Timestamp(dataset: FlightDataset, event_id: int) -> int | None:
     return None
 
 
-def _Series_Crop(series: TimeSeries, start_timestamp_us: int) -> TimeSeries:
+def _Series_Crop(
+    series: TimeSeries,
+    start_timestamp_us: int,
+    end_timestamp_us: int | None = None,
+) -> TimeSeries:
     mask = series.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
+    if end_timestamp_us is not None:
+        mask &= series.timestamp_us <= np.uint64(max(end_timestamp_us, 0))
     return TimeSeries(
         timestamp_us=series.timestamp_us[mask],
         values=np.asarray(series.values)[mask],
@@ -239,6 +259,8 @@ class FlightExporter:
         failures: list[ExportFailure] = []
         store = self._Store_Prepare(replay_store, algorithm_results or {})
         resolver = ChannelResolver(dataset, store)
+        mission_bounds = resolver.MissionReplayBounds_Get()
+        trajectory_bounds = resolver.TrajectoryBounds_Get()
         channels = resolver.ExplorerChannels_Get()
         if requested.selected_channels:
             selected = set(requested.selected_channels)
@@ -350,6 +372,8 @@ class FlightExporter:
                     path,
                     language,
                     requested.theme,
+                    mission_bounds=mission_bounds,
+                    trajectory_bounds=trajectory_bounds,
                 ),
             )
         if requested.include_attitude_gif:
@@ -372,6 +396,8 @@ class FlightExporter:
                     language,
                     requested.theme,
                     task_context,
+                    mission_bounds=mission_bounds,
+                    trajectory_bounds=trajectory_bounds,
                 ),
             )
 
@@ -600,6 +626,8 @@ class FlightExporter:
         ylabel: str,
         language: ExportLanguage,
         theme: ExportTheme,
+        *,
+        end_timestamp_us: int | None = None,
     ) -> None:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
@@ -611,7 +639,7 @@ class FlightExporter:
         plotted = 0
         start = dataset.start_timestamp_us or 0
         for series, prefix, line_style in layers:
-            cropped = _Series_Crop(series, start)
+            cropped = _Series_Crop(series, start, end_timestamp_us)
             if cropped.count == 0:
                 continue
             time = self._Time_Get(dataset, cropped)
@@ -663,6 +691,7 @@ class FlightExporter:
     ) -> None:
         labels = _LABELS[language]
         active = resolver.store.ActiveSource_Get()
+        mission_bounds = resolver.MissionReplayBounds_Get(active.source_id)
 
         def flight_layers(channel_id: str) -> tuple[tuple[TimeSeries, str, str], ...]:
             recorded_solutions = resolver.RecordedSolutionLayers_Get(channel_id)
@@ -737,6 +766,7 @@ class FlightExporter:
                     y,
                     language,
                     theme,
+                    end_timestamp_us=mission_bounds.end_timestamp_us,
                 ),
             )
 
@@ -781,6 +811,7 @@ class FlightExporter:
                     y,
                     language,
                     theme,
+                    end_timestamp_us=mission_bounds.end_timestamp_us,
                 ),
             )
 
@@ -938,73 +969,21 @@ class FlightExporter:
 
     @staticmethod
     def _Position_At(position: TimeSeries, timestamp_us: int) -> np.ndarray | None:
-        if position.count == 0:
-            return None
-        values = np.asarray(position.values, dtype=np.float64)
-        if values.ndim != 2 or values.shape[1] != 3:
-            return None
-        valid = position.valid & np.all(np.isfinite(values), axis=1)
-        timestamps = position.timestamp_us[valid].astype(np.float64)
-        values = values[valid]
-        if timestamps.size == 0:
-            return None
-        if timestamp_us < timestamps[0] or timestamp_us > timestamps[-1]:
-            return None
-        if timestamp_us == timestamps[0]:
-            return values[0].copy()
-        if timestamp_us == timestamps[-1]:
-            return values[-1].copy()
-        upper = int(np.searchsorted(timestamps, float(timestamp_us), side="right"))
-        lower = upper - 1
-        span = timestamps[upper] - timestamps[lower]
-        ratio = 0.0 if span <= 0.0 else (timestamp_us - timestamps[lower]) / span
-        return values[lower] + ratio * (values[upper] - values[lower])
+        return TrajectoryPosition_At(position, timestamp_us)
 
     @staticmethod
     def _Position_NearEvent(
         position: TimeSeries,
         timestamp_us: int,
     ) -> np.ndarray | None:
-        interpolated = FlightExporter._Position_At(position, timestamp_us)
-        if interpolated is not None:
-            return interpolated
-        values = np.asarray(position.values, dtype=np.float64)
-        valid = position.valid & np.all(np.isfinite(values), axis=1)
-        timestamps = position.timestamp_us[valid].astype(np.int64)
-        points = values[valid]
-        if timestamps.size == 0:
-            return None
-        intervals = np.diff(timestamps)
-        typical_interval = float(np.median(intervals)) if intervals.size else 0.0
-        tolerance_us = max(int(typical_interval * 5.0), 100_000)
-        index = int(np.argmin(np.abs(timestamps - timestamp_us)))
-        if abs(int(timestamps[index]) - timestamp_us) > tolerance_us:
-            return None
-        return points[index].copy()
+        return TrajectoryPosition_NearEvent(position, timestamp_us)
 
     @staticmethod
     def _TrajectoryOrigin_Get(
         position: TimeSeries,
         start_timestamp_us: int,
     ) -> np.ndarray:
-        interpolated = FlightExporter._Position_At(position, start_timestamp_us)
-        if interpolated is not None:
-            return interpolated
-        values = np.asarray(position.values, dtype=np.float64)
-        valid = position.valid & np.all(np.isfinite(values), axis=1)
-        post_start = np.flatnonzero(
-            valid
-            & (
-                position.timestamp_us
-                >= np.uint64(max(start_timestamp_us, 0))
-            )
-        )
-        if post_start.size:
-            return values[post_start[0]].copy()
-        available = np.flatnonzero(valid)
-        if available.size:
-            return values[available[0]].copy()
-        return np.zeros(3, dtype=np.float64)
+        return TrajectoryOrigin_Get(position, start_timestamp_us)
 
     @staticmethod
     def _TrajectorySegments_Get(
@@ -1041,11 +1020,30 @@ class FlightExporter:
         theme: ExportTheme,
         *,
         current_timestamp_us: int | None = None,
+        mission_bounds: MissionReplayBounds | None = None,
+        trajectory_bounds: TrajectoryBounds | None = None,
     ) -> None:
         background, foreground, _ = self._Plot_Configure(theme)
-        start = dataset.start_timestamp_us or int(position.timestamp_us[0])
-        origin = self._TrajectoryOrigin_Get(position, start)
-        cropped = _Series_Crop(position, start)
+        source_end = int(position.timestamp_us[-1])
+        resolved_mission = mission_bounds or MissionReplayBounds_Get(
+            dataset,
+            source_end_timestamp_us=source_end,
+        )
+        resolved_bounds = trajectory_bounds or TrajectoryBounds_Calculate(
+            position,
+            resolved_mission,
+        )
+        start = resolved_mission.start_timestamp_us
+        display_timestamp = min(
+            (
+                resolved_mission.end_timestamp_us
+                if current_timestamp_us is None
+                else current_timestamp_us
+            ),
+            resolved_mission.end_timestamp_us,
+        )
+        origin = np.asarray(resolved_bounds.origin_enu, dtype=np.float64)
+        cropped = _Series_Crop(position, start, display_timestamp)
         cropped_values = np.asarray(cropped.values, dtype=np.float64)
         finite_valid = cropped.valid & np.all(np.isfinite(cropped_values), axis=1)
         cropped = TimeSeries(
@@ -1058,21 +1056,16 @@ class FlightExporter:
             columns=cropped.columns,
             metadata=cropped.metadata,
         )
-        if current_timestamp_us is not None:
-            mask = cropped.timestamp_us <= np.uint64(current_timestamp_us)
-            cropped = TimeSeries(
-                timestamp_us=cropped.timestamp_us[mask],
-                values=np.asarray(cropped.values)[mask],
-                unit=cropped.unit,
-                quantity=cropped.quantity,
-                source=cropped.source,
-                valid=cropped.valid[mask],
-                columns=cropped.columns,
-                metadata=cropped.metadata,
-            )
         if cropped.count == 0:
             raise ValueError("trajectory_has_no_post_start_samples")
         values = np.asarray(cropped.values, dtype=np.float64) - origin
+        full_values = np.asarray(
+            (resolved_bounds.min_enu, resolved_bounds.max_enu),
+            dtype=np.float64,
+        )
+        deploy_size, _, landing_size = TrajectoryMarkerWorldSizesFromExtent_Get(
+            resolved_bounds.max_span
+        )
         deploy = _Event_Timestamp(dataset, _EVENT_DEPLOY)
         landing = _Event_Timestamp(dataset, _EVENT_LANDING)
         pre, post = self._TrajectorySegments_Get(cropped, deploy)
@@ -1099,56 +1092,59 @@ class FlightExporter:
             point = self._Position_At(position, deploy)
             if point is not None:
                 point = point - origin
-                axis.scatter(
-                    *point,
-                    color=TRAJECTORY_DEPLOY_COLOR,
+                deploy_vertices, deploy_faces = TrajectoryEventMesh_Get(
+                    point,
+                    deploy_size,
+                )
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+                deploy_marker = Poly3DCollection(
+                    [deploy_vertices[face] for face in deploy_faces],
+                    facecolors=TRAJECTORY_DEPLOY_COLOR,
                     edgecolors=TRAJECTORY_DEPLOY_COLOR,
-                    linewidths=0.6,
-                    s=55,
-                    marker="o",
-                    depthshade=False,
+                    linewidths=0.25,
+                    alpha=1.0,
                     label=labels["deploy"],
                 )
-        landing_reached = current_timestamp_us is None or (
-            landing is not None and landing <= current_timestamp_us
-        )
+                axis.add_collection3d(deploy_marker)
+        landing_reached = landing is not None and landing <= display_timestamp
         if landing is not None and landing_reached:
             point = self._Position_NearEvent(position, landing)
             if point is not None:
                 point = point - origin
-                axis.scatter(
-                    *point,
-                    color=TRAJECTORY_LANDING_COLOR,
-                    s=48,
-                    marker="o",
+                landing_vertices, landing_faces = TrajectoryEventMesh_Get(
+                    point,
+                    landing_size,
+                )
+                from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+                landing_marker = Poly3DCollection(
+                    [landing_vertices[face] for face in landing_faces],
+                    facecolors=TRAJECTORY_LANDING_COLOR,
+                    edgecolors=TRAJECTORY_LANDING_COLOR,
+                    linewidths=0.25,
+                    alpha=1.0,
                     label=labels["landing"],
                 )
-        axis.scatter(
-            *values[-1],
-            color=TrajectoryPhaseColor_Get(
-                int(cropped.timestamp_us[-1]),
-                deploy,
-            ),
-            s=38,
-            marker="o",
-            label=labels["current"],
-        )
+                axis.add_collection3d(landing_marker)
+        if not landing_reached:
+            axis.scatter(
+                *values[-1],
+                color=TrajectoryPhaseColor_Get(
+                    int(cropped.timestamp_us[-1]),
+                    deploy,
+                ),
+                s=38,
+                marker="o",
+                label=labels["current"],
+            )
         axis.set_facecolor(background)
         axis.set_xlabel("E (m)", color=foreground)
         axis.set_ylabel("N (m)", color=foreground)
         axis.set_zlabel("U (m)", color=foreground)
         axis.tick_params(colors=foreground)
         axis.legend(facecolor=background, labelcolor=foreground, framealpha=0.78)
-        full_values = np.asarray(position.values, dtype=np.float64)
-        valid_values = (
-            full_values[
-                position.valid
-                & np.all(np.isfinite(full_values), axis=1)
-                & (position.timestamp_us >= np.uint64(max(start, 0)))
-            ]
-            - origin
-        )
-        self._Axis3d_Equal(axis, valid_values)
+        self._Axis3d_Equal(axis, full_values)
 
     def _Trajectory_Write(
         self,
@@ -1157,6 +1153,9 @@ class FlightExporter:
         path: Path,
         language: ExportLanguage,
         theme: ExportTheme,
+        *,
+        mission_bounds: MissionReplayBounds | None = None,
+        trajectory_bounds: TrajectoryBounds | None = None,
     ) -> None:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
@@ -1165,7 +1164,15 @@ class FlightExporter:
         figure = plt.figure(figsize=(8, 7), dpi=150)
         figure.patch.set_facecolor(background)
         axis = figure.add_subplot(111, projection="3d")
-        self._Trajectory_AxisDraw(axis, dataset, position, language, theme)
+        self._Trajectory_AxisDraw(
+            axis,
+            dataset,
+            position,
+            language,
+            theme,
+            mission_bounds=mission_bounds,
+            trajectory_bounds=trajectory_bounds,
+        )
         title = _LABELS[language]["trajectory"]
         if bool(dataset.metadata.get("synthetic", False)):
             title += f" · {_LABELS[language]['synthetic']}"
@@ -1193,15 +1200,18 @@ class FlightExporter:
         position: TimeSeries,
         start_timestamp_us: int,
         maximum_frames: int = 60,
+        end_timestamp_us: int | None = None,
     ) -> np.ndarray:
         if maximum_frames <= 0:
             raise ValueError("maximum_frames_must_be_positive")
-        attitude_times = attitude.timestamp_us[
-            attitude.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
-        ]
-        position_times = position.timestamp_us[
-            position.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
-        ]
+        attitude_mask = attitude.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
+        position_mask = position.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
+        if end_timestamp_us is not None:
+            end = np.uint64(max(end_timestamp_us, 0))
+            attitude_mask &= attitude.timestamp_us <= end
+            position_mask &= position.timestamp_us <= end
+        attitude_times = attitude.timestamp_us[attitude_mask]
+        position_times = position.timestamp_us[position_mask]
         if attitude_times.size == 0 or position_times.size == 0:
             return np.asarray([], dtype=np.uint64)
         start = max(int(attitude_times[0]), int(position_times[0]), start_timestamp_us)
@@ -1320,6 +1330,9 @@ class FlightExporter:
         language: ExportLanguage,
         theme: ExportTheme,
         context: TaskContext,
+        *,
+        mission_bounds: MissionReplayBounds | None = None,
+        trajectory_bounds: TrajectoryBounds | None = None,
     ) -> None:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
@@ -1355,19 +1368,33 @@ class FlightExporter:
         )
         if attitude.count == 0 or position.count == 0:
             raise ValueError("no_valid_attitude_or_position_samples")
-        start = dataset.start_timestamp_us or max(
-            int(attitude.timestamp_us[0]),
-            int(position.timestamp_us[0]),
+        source_end = max(
+            int(attitude.timestamp_us[-1]),
+            int(position.timestamp_us[-1]),
         )
+        resolved_mission = mission_bounds or MissionReplayBounds_Get(
+            dataset,
+            source_end_timestamp_us=source_end,
+        )
+        resolved_bounds = trajectory_bounds or TrajectoryBounds_Calculate(
+            position,
+            resolved_mission,
+        )
+        start = resolved_mission.start_timestamp_us
         frame_timestamps = self._ReplayFrameTimestamps_Get(
             attitude,
             position,
             start,
             maximum_frames=60,
+            end_timestamp_us=resolved_mission.end_timestamp_us,
         )
         if frame_timestamps.size == 0:
             raise ValueError("no_common_post_start_attitude_and_position")
-        landing = _Event_Timestamp(dataset, _EVENT_LANDING)
+        landing = (
+            resolved_mission.end_timestamp_us
+            if resolved_mission.end_reason == MissionReplayEndReason.LANDING
+            else None
+        )
         if (
             landing is not None
             and landing > int(frame_timestamps[-1])
@@ -1409,6 +1436,8 @@ class FlightExporter:
                     language,
                     theme,
                     current_timestamp_us=timestamp_us,
+                    mission_bounds=resolved_mission,
+                    trajectory_bounds=resolved_bounds,
                 )
                 trajectory_axis.set_title(labels["trajectory_panel"], color=foreground)
                 elapsed = (timestamp_us - start) * 1.0e-6
