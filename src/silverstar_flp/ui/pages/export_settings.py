@@ -233,6 +233,7 @@ class ExportDialog(QDialog):
             return
         options = ExportOptions(
             language=self.export_language_combo.currentData(),
+            ui_language=self._translator.language,
             theme=self.export_theme_combo.currentData(),
             include_overview=self.overview_check.isChecked(),
             include_diagnostics=self.diagnostics_check.isChecked(),
@@ -246,9 +247,12 @@ class ExportDialog(QDialog):
         self.result_label.setText(self._translator.Text_Get("export.running"))
         self.exportRequested.emit(Path(folder_text), options)
 
-    def Result_Set(self, count: int) -> None:
+    def Result_Set(self, count: int, failure_count: int = 0) -> None:
         self.export_button.setEnabled(True)
-        self.result_label.setText(self._translator.Text_Get("export.complete", count=count))
+        code = "export.complete_with_failures" if failure_count else "export.complete"
+        self.result_label.setText(
+            self._translator.Text_Get(code, count=count, failures=failure_count)
+        )
 
     def Result_Error(self, message: str) -> None:
         self.export_button.setEnabled(True)
@@ -268,11 +272,15 @@ class ExportDialog(QDialog):
 
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
-        language = self.export_language_combo.currentData() or ExportLanguage.ZH
+        language = self.export_language_combo.currentData() or ExportLanguage.FOLLOW_UI
         theme = self.export_theme_combo.currentData() or ExportTheme.LIGHT
 
         self.export_language_combo.blockSignals(True)
         self.export_language_combo.clear()
+        self.export_language_combo.addItem(
+            translator.Text_Get("export.language_follow_ui"),
+            ExportLanguage.FOLLOW_UI,
+        )
         self.export_language_combo.addItem(
             translator.Text_Get("export.language_zh"), ExportLanguage.ZH
         )

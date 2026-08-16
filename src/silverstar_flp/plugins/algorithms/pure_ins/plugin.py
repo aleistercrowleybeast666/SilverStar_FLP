@@ -68,6 +68,10 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
                 20.0,
                 "m/s^2",
                 "parameter.gravity",
+                label_key="parameter.gravity_mps2",
+                group_key="parameter_group.process_model",
+                tooltip_key="parameter.tooltip.gravity_mps2",
+                step=0.01,
             ),
         ),
         standard_outputs=(
@@ -84,10 +88,15 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
         ),
     )
 
+    def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
+        return {
+            "gravity_mps2": float(dataset.header.get("gravity_mps2", 9.78)),
+        }
+
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
     ) -> AlgorithmAvailability:
-        source = input_source or SOURCE_RECORDED_INCREMENT
+        source = input_source or SOURCE_CORRECTED_IMU
         missing: list[str] = []
         warnings: list[str] = []
         supported: list[str] = []

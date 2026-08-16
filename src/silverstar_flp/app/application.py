@@ -9,9 +9,9 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QStandardPaths, Qt
 from PySide6.QtWidgets import QApplication
 
+from silverstar_flp.app.version import PRODUCT_NAME, __version__
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
-from silverstar_flp.version import __version__
 
 
 def _Logging_Configure() -> Path:
@@ -40,7 +40,7 @@ def _Arguments_Parse(arguments: list[str]) -> argparse.Namespace:
 def main(arguments: list[str] | None = None) -> int:
     options = _Arguments_Parse(list(arguments) if arguments is not None else sys.argv[1:])
     QApplication.setOrganizationName("SilverStar")
-    QApplication.setApplicationName("SilverStar_FLP")
+    QApplication.setApplicationName(PRODUCT_NAME)
     QApplication.setApplicationVersion(__version__)
     application = QApplication([sys.argv[0]])
     application.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, False)
@@ -62,5 +62,5 @@ def main(arguments: list[str] | None = None) -> int:
         builtin_registry(), language=language, theme=theme, initial_path=initial_path
     )
     window.show()
-    logging.info("SilverStar_FLP %s started; log=%s", __version__, log_path)
+    logging.info("%s %s started; log=%s", PRODUCT_NAME, __version__, log_path)
     return int(application.exec())

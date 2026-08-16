@@ -5,7 +5,7 @@ SilverStar_FLP is a Windows desktop application and command-line toolkit for Sil
 and KF6 navigation chains from `START`, compares recorded and recomputed results, visualizes the
 flight, and exports timestamp-faithful data products.
 
-Version: **0.1.0-dev**
+Version: **v0.0.2**
 
 > Raw `.BIN` logs are opened read-only. A `.ssflp` project stores references, replay settings,
 > notes, and UI state; it never embeds or rewrites the raw log.
@@ -39,22 +39,40 @@ Then choose **Open Flight Log** and select a flight-controller `.BIN` file. You 
 python main.py D:\logs\flight.BIN
 ```
 
-Language, theme, import, and export controls are in the dark-blue top bar. Import and export open
-focused option dialogs instead of occupying navigation pages. The six analysis pages are:
+The dark-blue brand header shows the localized application name, `v0.0.2`, developer credit,
+language, and theme. The File menu provides Import, Export, Save Project, Save Project As, and
+Open Project as one contiguous action group; the compact toolbar provides Import, Export, Save
+Project, and Open Project.
+Import and export use focused option dialogs. The five analysis pages are:
 
-1. Overview — mission summary, apogee estimate, integrity status, and events.
-2. Flight — altitude/velocity plots and an ENU 3D trajectory.
-3. Attitude / IMU — software attitude, reference-only hardware quaternion, IMU, and 3D attitude.
-4. Navigation — recorded/recomputed position, velocity, covariance, innovations, and NIS.
-5. Replay — Pure INS or KF6, explicit input source, Recorded configuration or What-if.
-6. Data Explorer — all standard channels and every decoded record field.
+1. Overview — mission/file summary, flight metrics, deploy altitude/reason, calibration model,
+   initial alignment result, and translated event timeline.
+2. Replay — Pure INS or KF6 from the fixed corrected-IMU input, using Recorded configuration or
+   What-if parameters. Every run is retained. A dedicated **Analysis Data Source** selector begins
+   with Recorded data and exposes only complete, successful runs.
+3. Flight — START-cropped ENU velocity/position, corrected IMU, authoritative software attitude,
+   and a themed 3D attitude/trajectory replay with its own playback controls. Before Deploy the
+   path/current point are red; after Deploy they are blue; Deploy is one extent-scaled orange
+   world-space point. Recorded Pure INS and Recorded KF_6 remain separate, simultaneously visible
+   curve layers.
+4. State Estimation — metadata-selected estimator state groups, covariance as 1-sigma or Pii,
+   measurement-group innovations/NIS/noise/age, and generic sequential-update results. The page
+   contains no KF6-specific channel IDs, so future estimator groups and sensors can be declared by
+   a plugin without page-code changes.
+5. Data Explorer — all recorded and uniquely named replay channels plus every decoded record.
 
-The Replay page scrolls when its What-if parameter form is taller than the available window.
+The Replay page groups What-if parameters into Process Model, Initial Covariance, Measurement
+Noise, and Consistency Gating. It marks edited values and resets them to the values recorded in
+the log rather than schema defaults; the form scrolls when taller than the available window.
 Every combo box uses a conventional downward popup with at most ten visible rows; longer lists
-scroll inside the popup.
+scroll inside the popup. Flight and State Estimation each provide a page-level **Reset Charts**
+button that restores every 2D chart on the page after manual zooming or panning.
 
-Chinese and English interface text and Light/Dark themes are built in. Export language is an
-independent choice; `_ZH` and `_EN` products contain matching image text.
+Chinese and English interface text and Light/Dark themes are built in. Export language defaults
+to **Follow UI**, with explicit Simplified Chinese and English choices. Standard PNG plots,
+the deploy-segmented mission-relative ENU trajectory, and the combined attitude/trajectory GIF use
+matching `_ZH` or `_EN` filenames and localized titles, axes, and legends. The GUI and export
+share the same rocket attitude model, START-relative origin, and deploy/landing/current markers.
 
 ## What the parser supports
 
@@ -79,7 +97,9 @@ attitude. After that boundary, the mission attitude is propagated entirely in so
 hardware quaternion remains a diagnostic reference and is never used as the authoritative
 post-START replay attitude.
 
-Pure INS has two explicit, non-interchangeable sources:
+The Replay GUI always uses **Corrected IMU** and does not present an input-source selector. The
+algorithm API and CLI retain two explicit, non-interchangeable sources for validation and
+advanced workflows:
 
 - **Corrected IMU**: trapezoidal subintervals, two-sample coning/sculling, quaternion propagation,
   Body-to-ENU specific force, gravity removal, velocity, and trapezoidal position.
@@ -127,8 +147,11 @@ python -m pytest -q
 The repository fixtures are generated in memory and are explicitly named **SYNTHETIC**. Tests
 cover all current payload layouts, unknown records/versions, CRC recovery, sync recovery,
 truncated tails, sequence gaps, stationary Pure INS through both input chains, KF6 covariance and
-NIS rejection, quaternion sign-invariant error, deploy replay, project immutability, export, and a
-headless six-page GUI/top-bar/dialog smoke test.
+NIS rejection, calibration/alignment/deploy summaries, replay-result coexistence, active-source
+readiness and return-to-Recorded behavior, Flight/State Estimation read-only source displays,
+dual Recorded navigation layers, unique plot colors, camera preservation, relative-origin 3D
+rendering, rocket PNG/GIF export, the <=60-frame combined GIF, partial export failures, project
+immutability, and a headless five-page GUI smoke test.
 
 No real flight log is included. Phase 2 requires frozen real logs and host-C golden vectors from
 the matching flight-controller build; this is tracked in [TARGETS.md](TARGETS.md).

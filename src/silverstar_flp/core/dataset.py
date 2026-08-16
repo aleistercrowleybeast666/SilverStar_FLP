@@ -105,12 +105,12 @@ class FlightDataset:
 
     @property
     def start_timestamp_us(self) -> int | None:
-        initial = self.Records_Get("INITIAL_STATE")
-        if initial:
-            return initial[0].timestamp_us
         for record in self.Records_Get("EVENT"):
             if int(record.payload.get("event_id", 0)) == 0x03:
                 return record.timestamp_us
+        initial = self.Records_Get("INITIAL_STATE")
+        if initial:
+            return initial[0].timestamp_us
         return None
 
     @property

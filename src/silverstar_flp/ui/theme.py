@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ctypes
+import sys
+
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 LIGHT_STYLESHEET = """
 QMainWindow, QWidget#centralRoot, QStackedWidget, QScrollArea,
@@ -25,7 +28,18 @@ QLabel#headerTitle {
     font-weight: 700;
     padding: 4px 2px;
 }
-QLabel#headerFile { color: #DCEAFF; }
+QLabel#headerVersion {
+    color: #DCEAFF;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 2px;
+}
+QLabel#headerCredit {
+    color: #DCEAFF;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 2px;
+}
 QLabel#headerControlLabel { color: #FFFFFF; font-weight: 600; }
 QPushButton#topActionButton {
     background: #1C4F94;
@@ -36,13 +50,17 @@ QPushButton#topActionButton {
 }
 QPushButton#topActionButton:hover { background: #2F6FED; border-color: #9BBCFF; }
 QPushButton#topActionButton:disabled { background: #315A7A; color: #AFC3DC; }
-QComboBox#headerCombo {
-    background: #FFFFFF;
-    color: #172033;
-    border: 1px solid #9BBCFF;
+QComboBox#headerLanguageCombo, QComboBox#headerThemeCombo {
+    background: #1C4F94;
+    color: #FFFFFF;
+    border: 1px solid #6F91BE;
     min-width: 92px;
     min-height: 25px;
     padding: 2px 6px;
+}
+QComboBox#headerLanguageCombo:hover, QComboBox#headerThemeCombo:hover {
+    background: #2F6FED;
+    border-color: #9BBCFF;
 }
 QFrame#sidebar { background: #123A78; border: 0; }
 QListWidget#navigation {
@@ -76,6 +94,9 @@ QGroupBox::title {
     padding: 0 5px;
     color: #123A78;
 }
+QGroupBox[statusLevel="success"] { border: 2px solid #16A34A; background: #F0FDF4; }
+QGroupBox[statusLevel="warning"] { border: 2px solid #D97706; background: #FFFBEB; }
+QGroupBox[statusLevel="error"] { border: 2px solid #DC2626; background: #FEF2F2; }
 QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox,
 QTableWidget, QTreeWidget, QListWidget {
     background: #FFFFFF;
@@ -101,6 +122,25 @@ QComboBox QAbstractItemView::item {
     padding: 3px 6px;
 }
 QComboBox QAbstractItemView::item:selected { background: #2F6FED; color: #FFFFFF; }
+QAbstractItemView#headerComboPopup {
+    background: #123A78;
+    color: #FFFFFF;
+    border: 1px solid #6F91BE;
+    selection-background-color: #2F6FED;
+    selection-color: #FFFFFF;
+    outline: 0;
+}
+QAbstractItemView#headerComboPopup::item {
+    background: #123A78;
+    color: #FFFFFF;
+    min-height: 26px;
+    padding: 3px 6px;
+}
+QAbstractItemView#headerComboPopup::item:hover,
+QAbstractItemView#headerComboPopup::item:selected {
+    background: #2F6FED;
+    color: #FFFFFF;
+}
 QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     background: #E9EDF4;
     color: #596273;
@@ -122,6 +162,25 @@ QTableWidget::item:selected, QListWidget::item:selected {
     background: #2F6FED;
     color: #FFFFFF;
 }
+QTabWidget::pane {
+    background: #FFFFFF;
+    border: 1px solid #315A94;
+    top: -1px;
+}
+QTabBar::tab {
+    background: #123A78;
+    color: #FFFFFF;
+    border: 1px solid #315A94;
+    border-bottom: 0;
+    min-width: 92px;
+    min-height: 28px;
+    padding: 6px 14px;
+    margin-right: 1px;
+    font-weight: 600;
+}
+QTabBar::tab:hover { background: #1C4F94; color: #FFFFFF; }
+QTabBar::tab:selected { background: #D6E6FF; color: #123A78; border-color: #6F91BE; }
+QTabBar::tab:disabled { background: #6B7F9D; color: #D7DFEB; }
 QPushButton {
     background: #FFFFFF;
     color: #172033;
@@ -149,7 +208,29 @@ QMenuBar, QMenuBar#mainMenuBar {
     border: 0;
 }
 QMenuBar::item { background: transparent; color: #FFFFFF; padding: 5px 10px; }
-QMenuBar::item:selected, QMenuBar::item:pressed { background: #2F6FED; color: #FFFFFF; }
+QMenuBar::item:selected, QMenuBar::item:pressed { background: #D6E6FF; color: #123A78; }
+QToolBar, QToolBar#mainToolBar {
+    background: #123A78;
+    color: #FFFFFF;
+    border: 0;
+    spacing: 4px;
+    padding: 3px;
+}
+QToolButton, QToolBar#mainToolBar QToolButton {
+    background: #123A78;
+    color: #FFFFFF;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 5px 9px;
+}
+QToolButton:hover, QToolBar#mainToolBar QToolButton:hover {
+    background: #2F6FED;
+    color: #FFFFFF;
+}
+QToolButton:pressed, QToolBar#mainToolBar QToolButton:pressed {
+    background: #D6E6FF;
+    color: #123A78;
+}
 QMenu { background: #FFFFFF; color: #111827; border: 1px solid #8F9BAD; }
 QMenu::item { padding: 6px 26px; }
 QMenu::item:selected { background: #2F6FED; color: #FFFFFF; }
@@ -181,7 +262,18 @@ QFrame#headerBar {
     border-bottom: 1px solid #234A76;
 }
 QLabel#headerTitle { color: #F8FAFC; font-size: 20px; font-weight: 700; padding: 4px 2px; }
-QLabel#headerFile { color: #C8D8EC; }
+QLabel#headerVersion {
+    color: #C8D8EC;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 2px;
+}
+QLabel#headerCredit {
+    color: #C8D8EC;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 2px;
+}
 QLabel#headerControlLabel { color: #F8FAFC; font-weight: 600; }
 QPushButton#topActionButton {
     background: #163B6C;
@@ -192,13 +284,17 @@ QPushButton#topActionButton {
 }
 QPushButton#topActionButton:hover { background: #3B82F6; border-color: #60A5FA; }
 QPushButton#topActionButton:disabled { background: #172E4D; color: #647C9B; }
-QComboBox#headerCombo {
+QComboBox#headerLanguageCombo, QComboBox#headerThemeCombo {
     background: #163B6C;
     color: #F8FAFC;
     border: 1px solid #4F6F99;
     min-width: 92px;
     min-height: 25px;
     padding: 2px 6px;
+}
+QComboBox#headerLanguageCombo:hover, QComboBox#headerThemeCombo:hover {
+    background: #3B82F6;
+    border-color: #60A5FA;
 }
 QFrame#sidebar { background: #0B2447; border: 0; }
 QListWidget#navigation {
@@ -232,6 +328,9 @@ QGroupBox::title {
     padding: 0 5px;
     color: #93C5FD;
 }
+QGroupBox[statusLevel="success"] { border: 2px solid #22C55E; background: #102A20; }
+QGroupBox[statusLevel="warning"] { border: 2px solid #F59E0B; background: #302711; }
+QGroupBox[statusLevel="error"] { border: 2px solid #EF4444; background: #321717; }
 QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox,
 QTableWidget, QTreeWidget, QListWidget {
     background: #182235;
@@ -257,6 +356,25 @@ QComboBox QAbstractItemView::item {
     padding: 3px 6px;
 }
 QComboBox QAbstractItemView::item:selected { background: #3B82F6; color: #FFFFFF; }
+QAbstractItemView#headerComboPopup {
+    background: #0B2447;
+    color: #F8FAFC;
+    border: 1px solid #4F6F99;
+    selection-background-color: #3B82F6;
+    selection-color: #FFFFFF;
+    outline: 0;
+}
+QAbstractItemView#headerComboPopup::item {
+    background: #0B2447;
+    color: #F8FAFC;
+    min-height: 26px;
+    padding: 3px 6px;
+}
+QAbstractItemView#headerComboPopup::item:hover,
+QAbstractItemView#headerComboPopup::item:selected {
+    background: #3B82F6;
+    color: #FFFFFF;
+}
 QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     background: #172033;
     color: #64748B;
@@ -279,6 +397,25 @@ QTableWidget::item:selected, QListWidget::item:selected {
     background: #3B82F6;
     color: #FFFFFF;
 }
+QTabWidget::pane {
+    background: #111827;
+    border: 1px solid #234A76;
+    top: -1px;
+}
+QTabBar::tab {
+    background: #0B2447;
+    color: #FFFFFF;
+    border: 1px solid #234A76;
+    border-bottom: 0;
+    min-width: 92px;
+    min-height: 28px;
+    padding: 6px 14px;
+    margin-right: 1px;
+    font-weight: 600;
+}
+QTabBar::tab:hover { background: #163B6C; color: #FFFFFF; }
+QTabBar::tab:selected { background: #60A5FA; color: #0B2447; border-color: #93C5FD; }
+QTabBar::tab:disabled { background: #334155; color: #94A3B8; }
 QPushButton {
     background: #1E293B;
     color: #E5E7EB;
@@ -302,7 +439,29 @@ QLabel#warningLabel {
 }
 QMenuBar, QMenuBar#mainMenuBar { background: #0B2447; color: #F8FAFC; border: 0; }
 QMenuBar::item { background: transparent; color: #F8FAFC; padding: 5px 10px; }
-QMenuBar::item:selected, QMenuBar::item:pressed { background: #3B82F6; color: #FFFFFF; }
+QMenuBar::item:selected, QMenuBar::item:pressed { background: #60A5FA; color: #0B2447; }
+QToolBar, QToolBar#mainToolBar {
+    background: #0B2447;
+    color: #F8FAFC;
+    border: 0;
+    spacing: 4px;
+    padding: 3px;
+}
+QToolButton, QToolBar#mainToolBar QToolButton {
+    background: #0B2447;
+    color: #F8FAFC;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 5px 9px;
+}
+QToolButton:hover, QToolBar#mainToolBar QToolButton:hover {
+    background: #3B82F6;
+    color: #FFFFFF;
+}
+QToolButton:pressed, QToolBar#mainToolBar QToolButton:pressed {
+    background: #60A5FA;
+    color: #0B2447;
+}
 QMenu { background: #182235; color: #E5E7EB; border: 1px solid #475569; }
 QMenu::item { padding: 6px 26px; }
 QMenu::item:selected { background: #3B82F6; color: #FFFFFF; }
@@ -318,6 +477,38 @@ QScrollBar::handle:horizontal { background: #475569; min-width: 28px; border-rad
 QScrollBar::handle:horizontal:hover { background: #64748B; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 """
+
+
+def _ColorRef_Get(color_hex: str) -> int:
+    color = QColor(color_hex)
+    return color.red() | (color.green() << 8) | (color.blue() << 16)
+
+
+def WindowCaption_Apply(window: QWidget, theme: str) -> None:
+    """Use the brand blue for the native Windows caption when DWM supports it."""
+
+    if sys.platform != "win32":
+        return
+    caption_color = "#0B2447" if theme == "dark" else "#123A78"
+    text_color = "#F8FAFC" if theme == "dark" else "#FFFFFF"
+    attributes = (
+        (34, caption_color),  # DWMWA_BORDER_COLOR
+        (35, caption_color),  # DWMWA_CAPTION_COLOR
+        (36, text_color),  # DWMWA_TEXT_COLOR
+    )
+    try:
+        handle = ctypes.c_void_p(int(window.winId()))
+        setter = ctypes.WinDLL("dwmapi").DwmSetWindowAttribute
+        for attribute, color_hex in attributes:
+            value = ctypes.c_uint32(_ColorRef_Get(color_hex))
+            setter(
+                handle,
+                ctypes.c_uint32(attribute),
+                ctypes.byref(value),
+                ctypes.sizeof(value),
+            )
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
+        return
 
 
 def Theme_Apply(application: QApplication, theme: str) -> None:

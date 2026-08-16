@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult
@@ -84,13 +85,16 @@ class DataExplorerPage(QWidget):
     def Dataset_Set(
         self,
         dataset: FlightDataset,
-        results: Mapping[str, AlgorithmResult] | None = None,
+        results: ReplayResultStore | Mapping[str, AlgorithmResult] | None = None,
     ) -> None:
         self._dataset = dataset
-        self._channels = dict(dataset.series)
-        for result_name, result in (results or {}).items():
-            for channel_id, series in result.channels.items():
-                self._channels[f"{result_name}.{channel_id}"] = series
+        if isinstance(results, ReplayResultStore):
+            self._channels = ChannelResolver(dataset, results).ExplorerChannels_Get()
+        else:
+            self._channels = dict(dataset.series)
+            for result_name, result in (results or {}).items():
+                for channel_id, series in result.channels.items():
+                    self._channels[f"{result_name}.{channel_id}"] = series
         checked_before = {
             self.channel_list.item(index).data(Qt.ItemDataRole.UserRole)
             for index in range(self.channel_list.count())

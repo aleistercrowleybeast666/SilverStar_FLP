@@ -45,6 +45,18 @@ def test_pure_ins_stationary_replay_uses_software_quaternion_and_real_dt(
     assert np.all(np.diff(timestamps) == 20_000)
 
 
+def test_replay_defaults_to_corrected_imu_while_increment_support_remains_internal(
+    stationary_dataset,
+) -> None:
+    request = ReplayRequest()
+    assert request.input_source == "corrected_imu"
+    for plugin in (PureInsAlgorithmPlugin(), Kf6AlgorithmPlugin()):
+        availability = plugin.availability(stationary_dataset)
+        assert availability.available
+        assert "corrected_imu" in availability.supported_input_sources
+        assert "recorded_inertial_increment" in availability.supported_input_sources
+
+
 def test_pure_ins_never_silently_falls_back_to_other_source(tmp_path: Path) -> None:
     path = StationaryFlight_Build(
         tmp_path / "SYNTHETIC_increment_only.BIN", include_corrected_imu=False

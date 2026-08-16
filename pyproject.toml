@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "silverstar-flp"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "SilverStar SSLOG0 flight-log parser, navigation replay, visualization, and export"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,9 @@ sslog = "silverstar_flp.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.dynamic]
+version = {attr = "silverstar_flp.app.version.__version__"}
+
 [tool.setuptools.package-data]
 silverstar_flp = ["i18n/*.json"]
 
@@ -49,4 +52,3 @@ extend-exclude = [".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-

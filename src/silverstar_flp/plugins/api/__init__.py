@@ -3,10 +3,13 @@ from silverstar_flp.plugins.api.algorithm import (
     AlgorithmMetadata,
     AlgorithmPlugin,
     AlgorithmResult,
+    EstimatorVisualizationSpec,
+    MeasurementGroupSpec,
     ParameterSpec,
     ReplayFidelity,
     ReplayMode,
     ReplayRequest,
+    StateGroupSpec,
 )
 from silverstar_flp.plugins.api.log_parser import LogParserMetadata, LogParserPlugin, ParserError
 
@@ -15,11 +18,14 @@ __all__ = [
     "AlgorithmMetadata",
     "AlgorithmPlugin",
     "AlgorithmResult",
+    "EstimatorVisualizationSpec",
     "LogParserMetadata",
     "LogParserPlugin",
+    "MeasurementGroupSpec",
     "ParameterSpec",
     "ParserError",
     "ReplayFidelity",
     "ReplayMode",
     "ReplayRequest",
+    "StateGroupSpec",
 ]

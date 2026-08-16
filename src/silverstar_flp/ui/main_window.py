@@ -19,13 +19,15 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSlider,
     QStackedWidget,
     QStatusBar,
+    QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
+from silverstar_flp.app.version import PRODUCT_NAME, __version__
+from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.project import Project_Load, Project_Save, ProjectDocument
@@ -33,16 +35,15 @@ from silverstar_flp.export.service import ExportManifest, FlightExporter
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
 from silverstar_flp.plugins.registry import PluginRegistry
 from silverstar_flp.ui.pages import (
-    AttitudeImuPage,
     DataExplorerPage,
     ExportDialog,
     FlightPage,
     ImportDialog,
-    NavigationPage,
     OverviewPage,
     ReplayPage,
+    StateEstimationPage,
 )
-from silverstar_flp.ui.theme import Theme_Apply
+from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
 
@@ -50,10 +51,9 @@ from silverstar_flp.ui.workers import FunctionWorker
 class MainWindow(QMainWindow):
     PAGE_CODES = (
         "page.overview",
-        "page.flight",
-        "page.attitude_imu",
-        "page.navigation",
         "page.replay",
+        "page.flight",
+        "page.state_estimation",
         "page.data_explorer",
     )
 
@@ -70,15 +70,15 @@ class MainWindow(QMainWindow):
         self._translator = Translator(language)
         self._theme = theme
         self._dataset: FlightDataset | None = None
-        self._algorithm_results: dict[str, AlgorithmResult] = {}
+        self._replay_store = ReplayResultStore()
+        self._channel_resolver: ChannelResolver | None = None
         self._project = ProjectDocument()
         self._thread_pool = QThreadPool.globalInstance()
         self._active_worker: FunctionWorker | None = None
         self._worker_error_callback = None
-        self._timeline_first_us = 0
-        self._timeline_last_us = 0
         self._settings = QSettings("SilverStar", "SilverStar_FLP")
         self.setAcceptDrops(True)
+        self.setWindowTitle(PRODUCT_NAME)
         self.resize(1480, 920)
         self.setMinimumSize(1080, 700)
         self._Ui_Build()
@@ -103,44 +103,34 @@ class MainWindow(QMainWindow):
         header_layout.setSpacing(8)
         self.title_label = QLabel()
         self.title_label.setObjectName("headerTitle")
-        self.file_label = QLabel()
-        self.file_label.setObjectName("headerFile")
-        self.file_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.import_button = QPushButton()
-        self.import_button.setObjectName("topActionButton")
-        self.import_button.clicked.connect(self._ImportDialog_Show)
-        self.export_button = QPushButton()
-        self.export_button.setObjectName("topActionButton")
-        self.export_button.clicked.connect(self._ExportDialog_Show)
-        self.export_button.setEnabled(False)
+        self.version_label = QLabel(f"v{__version__}")
+        self.version_label.setObjectName("headerVersion")
+        self.credit_label = QLabel()
+        self.credit_label.setObjectName("headerCredit")
         self.language_label = QLabel()
         self.language_label.setObjectName("headerControlLabel")
         self.language_combo = StandardComboBox()
-        self.language_combo.setObjectName("headerCombo")
+        self.language_combo.setObjectName("headerLanguageCombo")
+        self.language_combo.view().setObjectName("headerComboPopup")
         self.language_combo.addItem("简体中文", "zh_CN")
         self.language_combo.addItem("English", "en_US")
         self.language_combo.currentIndexChanged.connect(self._Language_Selected)
         self.theme_label = QLabel()
         self.theme_label.setObjectName("headerControlLabel")
         self.theme_combo = StandardComboBox()
-        self.theme_combo.setObjectName("headerCombo")
+        self.theme_combo.setObjectName("headerThemeCombo")
+        self.theme_combo.view().setObjectName("headerComboPopup")
         self.theme_combo.addItem("浅色", "light")
         self.theme_combo.addItem("深色", "dark")
         self.theme_combo.currentIndexChanged.connect(self._Theme_Selected)
-        self.cancel_button = QPushButton()
-        self.cancel_button.setObjectName("topActionButton")
-        self.cancel_button.clicked.connect(self._Task_Cancel)
-        self.cancel_button.setVisible(False)
         header_layout.addWidget(self.title_label)
-        header_layout.addWidget(self.file_label, 1)
-        header_layout.addWidget(self.import_button)
-        header_layout.addWidget(self.export_button)
-        header_layout.addSpacing(4)
+        header_layout.addWidget(self.version_label)
+        header_layout.addWidget(self.credit_label)
+        header_layout.addStretch(1)
         header_layout.addWidget(self.language_label)
         header_layout.addWidget(self.language_combo)
         header_layout.addWidget(self.theme_label)
         header_layout.addWidget(self.theme_combo)
-        header_layout.addWidget(self.cancel_button)
         root_layout.addWidget(header)
 
         body = QWidget()
@@ -166,54 +156,43 @@ class MainWindow(QMainWindow):
         content_layout = QVBoxLayout(content)
         self.pages = QStackedWidget()
         self.overview_page = OverviewPage(self._translator)
-        self.flight_page = FlightPage(self._translator)
-        self.attitude_page = AttitudeImuPage(self._translator)
-        self.navigation_page = NavigationPage(self._translator)
         self.replay_page = ReplayPage(self._translator, self._registry)
+        self.flight_page = FlightPage(self._translator)
+        self.state_estimation_page = StateEstimationPage(
+            self._translator,
+            self._registry,
+        )
         self.explorer_page = DataExplorerPage(self._translator)
         self._page_widgets = (
             self.overview_page,
-            self.flight_page,
-            self.attitude_page,
-            self.navigation_page,
             self.replay_page,
+            self.flight_page,
+            self.state_estimation_page,
             self.explorer_page,
         )
         for page in self._page_widgets:
             self.pages.addWidget(page)
         content_layout.addWidget(self.pages, 1)
-
-        self.timeline_frame = QFrame()
-        timeline_layout = QHBoxLayout(self.timeline_frame)
-        self.start_boundary_label = QLabel("START")
-        self.start_boundary_label.setStyleSheet(
-            "background:#F97316;color:white;border-radius:4px;padding:4px 8px;font-weight:700;"
-        )
-        self.timeline_slider = QSlider(Qt.Orientation.Horizontal)
-        self.timeline_slider.setRange(0, 10000)
-        self.timeline_slider.valueChanged.connect(self._Timeline_Changed)
-        self.timeline_time_label = QLabel("—")
-        self.timeline_time_label.setMinimumWidth(180)
-        timeline_layout.addWidget(self.start_boundary_label)
-        timeline_layout.addWidget(self.timeline_slider, 1)
-        timeline_layout.addWidget(self.timeline_time_label)
-        self.timeline_frame.setVisible(False)
-        content_layout.addWidget(self.timeline_frame)
         body_layout.addWidget(content, 1)
         root_layout.addWidget(body, 1)
         self.setCentralWidget(central)
 
         status_bar = QStatusBar()
         self.status_label = QLabel()
+        self.cancel_button = QPushButton()
+        self.cancel_button.clicked.connect(self._Task_Cancel)
+        self.cancel_button.setVisible(False)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setFixedWidth(240)
         self.progress_bar.setVisible(False)
         status_bar.addWidget(self.status_label, 1)
+        status_bar.addPermanentWidget(self.cancel_button)
         status_bar.addPermanentWidget(self.progress_bar)
         self.setStatusBar(status_bar)
 
         self.replay_page.replayRequested.connect(self._Replay_Start)
+        self.replay_page.analysisSourceRequested.connect(self._AnalysisSource_Set)
         self.import_dialog = ImportDialog(self._translator, self)
         self.import_dialog.importRequested.connect(self.Path_Open)
         self.export_dialog = ExportDialog(self._translator, self)
@@ -235,11 +214,22 @@ class MainWindow(QMainWindow):
         self.save_project_action = QAction(self)
         self.save_project_action.setShortcut("Ctrl+S")
         self.save_project_action.triggered.connect(self._Project_Save)
+        self.save_project_as_action = QAction(self)
+        self.save_project_as_action.setShortcut("Ctrl+Shift+S")
+        self.save_project_as_action.triggered.connect(self._Project_SaveAs)
         self.file_menu.addAction(self.import_action)
         self.file_menu.addAction(self.export_action)
-        self.file_menu.addSeparator()
-        self.file_menu.addAction(self.open_project_action)
         self.file_menu.addAction(self.save_project_action)
+        self.file_menu.addAction(self.save_project_as_action)
+        self.file_menu.addAction(self.open_project_action)
+        self.toolbar = QToolBar(self)
+        self.toolbar.setObjectName("mainToolBar")
+        self.toolbar.setMovable(False)
+        self.toolbar.addAction(self.import_action)
+        self.toolbar.addAction(self.export_action)
+        self.toolbar.addAction(self.save_project_action)
+        self.toolbar.addAction(self.open_project_action)
+        self.addToolBar(self.toolbar)
 
     def _Page_Select(self, index: int) -> None:
         if 0 <= index < self.pages.count():
@@ -289,7 +279,6 @@ class MainWindow(QMainWindow):
         if parser is None:
             self._Error_Show(self._translator.Text_Get("error.parser_unrecognized"))
             return
-        self.file_label.setText(str(source_path))
         self.status_label.setText(self._translator.Text_Get("status.loading"))
         worker = FunctionWorker(lambda context: parser.parse(source_path, context))
         self._Task_Start(
@@ -300,45 +289,29 @@ class MainWindow(QMainWindow):
 
     def _Dataset_Set(self, dataset: FlightDataset) -> None:
         self._dataset = dataset
-        self._algorithm_results.clear()
-        self.export_button.setEnabled(True)
+        self._replay_store.Clear()
+        self._channel_resolver = ChannelResolver(dataset, self._replay_store)
         self.export_action.setEnabled(True)
         self._project.LogReference_Add(dataset.source_path)
-        self.file_label.setText(str(dataset.source_path))
         self.status_label.setText(
             self._translator.Text_Get(
-                "status.loaded", count=dataset.diagnostics.decoded_record_count
+                "status.loaded_file",
+                name=dataset.source_path.name,
+                count=dataset.diagnostics.decoded_record_count,
             )
         )
         self._Pages_Refresh()
-        first = dataset.diagnostics.first_timestamp_us
-        last = dataset.diagnostics.last_timestamp_us
-        if first is not None and last is not None and last >= first:
-            self._timeline_first_us = first
-            self._timeline_last_us = last
-            start = dataset.start_timestamp_us
-            self.start_boundary_label.setText(
-                f"START  {(start - first) * 1.0e-6:.3f} s"
-                if start is not None
-                else self._translator.Text_Get("status.start_unavailable")
-            )
-            self.timeline_frame.setVisible(True)
-            if start is not None and last > first:
-                slider_value = int((start - first) * 10000 / (last - first))
-                self.timeline_slider.setValue(max(0, min(10000, slider_value)))
-        self.setWindowTitle(
-            f"{self._translator.Text_Get('app.title')} — {dataset.source_path.name}"
-        )
 
     def _Pages_Refresh(self) -> None:
-        if self._dataset is None:
+        if self._dataset is None or self._channel_resolver is None:
             return
         self.overview_page.Dataset_Set(self._dataset)
-        self.flight_page.Dataset_Set(self._dataset, self._algorithm_results)
-        self.attitude_page.Dataset_Set(self._dataset, self._algorithm_results)
-        self.navigation_page.Dataset_Set(self._dataset, self._algorithm_results)
-        self.replay_page.Dataset_Set(self._dataset, self._algorithm_results)
-        self.explorer_page.Dataset_Set(self._dataset, self._algorithm_results)
+        self.replay_page.Dataset_Set(self._dataset, self._replay_store)
+        self.flight_page.Dataset_Set(self._dataset, self._channel_resolver)
+        self.state_estimation_page.Dataset_Set(
+            self._dataset, self._channel_resolver
+        )
+        self.explorer_page.Dataset_Set(self._dataset, self._replay_store)
 
     def _Replay_Start(self, algorithm_id: str, request: ReplayRequest) -> None:
         if self._dataset is None:
@@ -355,16 +328,30 @@ class MainWindow(QMainWindow):
 
     def _Replay_ResultSet(self, result: AlgorithmResult) -> None:
         display_name = self._registry.Algorithm_Get(result.algorithm_id).metadata.display_name
-        self._algorithm_results[display_name] = result
-        self.replay_page.Result_Set(result)
-        if self._dataset is not None:
-            self.flight_page.Dataset_Set(self._dataset, self._algorithm_results)
-            self.attitude_page.Dataset_Set(self._dataset, self._algorithm_results)
-            self.navigation_page.Dataset_Set(self._dataset, self._algorithm_results)
-            self.explorer_page.Dataset_Set(self._dataset, self._algorithm_results)
+        entry = self._replay_store.Result_Add(result, algorithm_name=display_name)
+        self.replay_page.Result_Set(entry)
+        self._Pages_Refresh()
         self.status_label.setText(
-            self._translator.Text_Get("replay.complete", fidelity=result.fidelity.value)
+            self._translator.Text_Get(
+                "replay.complete",
+                fidelity=self._translator.Text_Get(
+                    f"replay.fidelity.{result.fidelity.value.lower()}"
+                ),
+            )
         )
+
+    def _AnalysisSource_Set(self, source_id: str) -> None:
+        if not self._replay_store.ActiveSource_Set(source_id):
+            return
+        self._Pages_Refresh()
+        if self._channel_resolver is not None:
+            source = self._channel_resolver.Source_Get(source_id)
+            self.status_label.setText(
+                self._translator.Text_Get(
+                    "status.analysis_source_changed",
+                    value=self._translator.Text_Get(f"status.{source.kind.value}"),
+                )
+            )
 
     def _Export_Start(self, output_path: Path, options: Any) -> None:
         if self._dataset is None:
@@ -373,14 +360,13 @@ class MainWindow(QMainWindow):
         selected = self.explorer_page.ExportChannels_Get()
         options = replace(options, selected_channels=selected)
         dataset = self._dataset
-        results = dict(self._algorithm_results)
         exporter = FlightExporter()
         worker = FunctionWorker(
             lambda context: exporter.export(
                 dataset,
                 output_path,
                 options=options,
-                algorithm_results=results,
+                replay_store=self._replay_store,
                 context=context,
             )
         )
@@ -391,9 +377,14 @@ class MainWindow(QMainWindow):
         )
 
     def _Export_ResultSet(self, manifest: ExportManifest) -> None:
-        self.export_dialog.Result_Set(len(manifest.files))
+        self.export_dialog.Result_Set(len(manifest.files), len(manifest.failures))
+        code = "export.complete_with_failures" if manifest.failures else "export.complete"
         self.status_label.setText(
-            self._translator.Text_Get("export.complete", count=len(manifest.files))
+            self._translator.Text_Get(
+                code,
+                count=len(manifest.files),
+                failures=len(manifest.failures),
+            )
         )
 
     def _Task_Start(self, worker, result_callback, error_callback) -> None:
@@ -413,10 +404,11 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.cancel_button.setEnabled(True)
         self.cancel_button.setVisible(True)
-        self.import_button.setEnabled(False)
-        self.export_button.setEnabled(False)
         self.import_action.setEnabled(False)
         self.export_action.setEnabled(False)
+        self.open_project_action.setEnabled(False)
+        self.save_project_action.setEnabled(False)
+        self.save_project_as_action.setEnabled(False)
         self._thread_pool.start(worker)
 
     def _Task_Progress(self, progress: float, code: str) -> None:
@@ -432,10 +424,11 @@ class MainWindow(QMainWindow):
     def _Task_Finish(self) -> None:
         self.progress_bar.setVisible(False)
         self.cancel_button.setVisible(False)
-        self.import_button.setEnabled(True)
-        self.export_button.setEnabled(self._dataset is not None)
         self.import_action.setEnabled(True)
         self.export_action.setEnabled(self._dataset is not None)
+        self.open_project_action.setEnabled(True)
+        self.save_project_action.setEnabled(True)
+        self.save_project_as_action.setEnabled(True)
         self.export_dialog.Task_Finish()
         self.replay_page.Task_Finish()
         self._active_worker = None
@@ -445,23 +438,6 @@ class MainWindow(QMainWindow):
         if self._active_worker is not None:
             self._active_worker.Worker_Cancel()
             self.cancel_button.setEnabled(False)
-
-    def _Timeline_Changed(self, value: int) -> None:
-        if self._timeline_last_us <= self._timeline_first_us:
-            return
-        timestamp = int(
-            self._timeline_first_us
-            + (self._timeline_last_us - self._timeline_first_us) * value / 10000
-        )
-        start = (
-            self._dataset.start_timestamp_us
-            if self._dataset is not None and self._dataset.start_timestamp_us is not None
-            else self._timeline_first_us
-        )
-        self.timeline_time_label.setText(
-            f"t = {(timestamp - start) * 1.0e-6:.6f} s · {timestamp} µs"
-        )
-        self.attitude_page.Timeline_Set(timestamp)
 
     def _ProjectDialog_Open(self) -> None:
         selected, _ = QFileDialog.getOpenFileName(
@@ -484,29 +460,41 @@ class MainWindow(QMainWindow):
             self._Error_Show(str(exc))
 
     def _Project_Save(self) -> None:
-        if self._project.project_path is None:
-            selected, _ = QFileDialog.getSaveFileName(
-                self,
-                self._translator.Text_Get("action.save_project"),
-                str(Path.cwd() / "flight.ssflp"),
-                "SilverStar project (*.ssflp)",
-            )
-            if not selected:
-                return
-            path = Path(selected)
-            if path.suffix.lower() != ".ssflp":
-                path = path.with_suffix(".ssflp")
-        else:
-            path = self._project.project_path
+        path = self._project.project_path
+        if path is None:
+            path = self._ProjectPath_Select("action.save_project")
+        if path is not None:
+            self._Project_Write(path)
+
+    def _Project_SaveAs(self) -> None:
+        path = self._ProjectPath_Select("action.save_project_as")
+        if path is not None:
+            self._Project_Write(path)
+
+    def _ProjectPath_Select(self, title_key: str) -> Path | None:
+        suggested_path = self._project.project_path or Path.cwd() / "flight.ssflp"
+        selected, _ = QFileDialog.getSaveFileName(
+            self,
+            self._translator.Text_Get(title_key),
+            str(suggested_path),
+            "SilverStar project (*.ssflp)",
+        )
+        if not selected:
+            return None
+        path = Path(selected)
+        return path if path.suffix.lower() == ".ssflp" else path.with_suffix(".ssflp")
+
+    def _Project_Write(self, path: Path) -> None:
         try:
             self._project.replay_configurations = {
-                name: {
-                    "algorithm_id": result.algorithm_id,
-                    "input_source": result.input_source,
-                    "parameters": dict(result.parameters),
-                    "fidelity": result.fidelity.value,
+                entry.result_id: {
+                    "algorithm_id": entry.algorithm_id,
+                    "mode": entry.mode.value,
+                    "input_source": entry.input_source,
+                    "parameters": dict(entry.parameters),
+                    "fidelity": entry.fidelity.value,
                 }
-                for name, result in self._algorithm_results.items()
+                for entry in self._replay_store.Entries_Get()
             }
             Project_Save(self._project, path)
             self.status_label.setText(self._translator.Text_Get("status.project_saved", path=path))
@@ -542,8 +530,8 @@ class MainWindow(QMainWindow):
         self.theme_combo.blockSignals(False)
 
         self.title_label.setText(self._translator.Text_Get("app.title"))
-        self.import_button.setText(self._translator.Text_Get("action.import"))
-        self.export_button.setText(self._translator.Text_Get("action.export"))
+        self.version_label.setText(f"v{__version__}")
+        self.credit_label.setText(self._translator.Text_Get("app.credit"))
         self.language_label.setText(self._translator.Text_Get("label.interface_language"))
         self.theme_label.setText(self._translator.Text_Get("label.theme"))
         self.cancel_button.setText(self._translator.Text_Get("action.cancel"))
@@ -552,6 +540,9 @@ class MainWindow(QMainWindow):
         self.export_action.setText(self._translator.Text_Get("action.export"))
         self.open_project_action.setText(self._translator.Text_Get("action.open_project"))
         self.save_project_action.setText(self._translator.Text_Get("action.save_project"))
+        self.save_project_as_action.setText(
+            self._translator.Text_Get("action.save_project_as")
+        )
         for index in range(self.navigation_list.count()):
             item = self.navigation_list.item(index)
             page_code = str(item.data(Qt.ItemDataRole.UserRole))
@@ -561,20 +552,16 @@ class MainWindow(QMainWindow):
         self.import_dialog.Language_Apply(self._translator)
         self.export_dialog.Language_Apply(self._translator)
         if self._dataset is None:
-            self.file_label.setText(self._translator.Text_Get("status.no_data"))
             self.status_label.setText(self._translator.Text_Get("status.ready"))
-            self.setWindowTitle(self._translator.Text_Get("app.title"))
         else:
-            self._Pages_Refresh()
             self.status_label.setText(
                 self._translator.Text_Get(
-                    "status.loaded",
+                    "status.loaded_file",
+                    name=self._dataset.source_path.name,
                     count=self._dataset.diagnostics.decoded_record_count,
                 )
             )
-            self.setWindowTitle(
-                f"{self._translator.Text_Get('app.title')} — {self._dataset.source_path.name}"
-            )
+        self.setWindowTitle(PRODUCT_NAME)
 
     def Theme_Apply(self, theme: str) -> None:
         if theme not in ("light", "dark"):
@@ -589,9 +576,9 @@ class MainWindow(QMainWindow):
         application = QApplication.instance()
         if application is not None:
             Theme_Apply(application, theme)
+        WindowCaption_Apply(self, theme)
         self.flight_page.Theme_Apply(theme)
-        self.attitude_page.Theme_Apply(theme)
-        self.navigation_page.Theme_Apply(theme)
+        self.state_estimation_page.Theme_Apply(theme)
         self.export_dialog.Theme_Set(theme)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:

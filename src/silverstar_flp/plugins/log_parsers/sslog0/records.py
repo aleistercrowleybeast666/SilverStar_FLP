@@ -341,6 +341,16 @@ def _Payload_Kf6DiagnosticDecode(payload: bytes) -> dict[str, Any]:
     }
     reader.skip(7)
     reader.finish()
+    result["update_results"] = (
+        result["position_update_result"],
+        result["velocity_update_result"],
+        result["baro_update_result"],
+    )
+    result["measurement_r_scale"] = (
+        result["position_r_scale"],
+        result["velocity_r_scale"],
+        result["baro_r_scale"],
+    )
     return result
 
 
@@ -758,6 +768,36 @@ RECORD_DEFINITIONS = {
                 _Channel("kf6.recorded.nis.position", "last_position_nis", "1", "nis"),
                 _Channel("kf6.recorded.nis.velocity", "last_velocity_nis", "1", "nis"),
                 _Channel("kf6.recorded.nis.baro", "last_baro_nis", "1", "nis"),
+                _Channel(
+                    "kf6.recorded.measurement_result_flags",
+                    "measurement_result_flags",
+                    "bitmask",
+                    "status",
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_age.gnss",
+                    "gnss_measurement_age_us",
+                    "us",
+                    "time",
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_age.baro",
+                    "baro_measurement_age_us",
+                    "us",
+                    "time",
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_sequence.gnss",
+                    "gnss_sequence",
+                    "1",
+                    "sequence",
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_sequence.baro",
+                    "baro_sequence",
+                    "1",
+                    "sequence",
+                ),
             ),
         ),
         RecordDefinition(0x05, "SYSTEM_CONFIG", (0,), (176,), _Payload_SystemConfigDecode),
@@ -838,6 +878,38 @@ RECORD_DEFINITIONS = {
                     "m^2/s^2",
                     "variance",
                     ENU,
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_r.baro",
+                    "baro_variance_r",
+                    "m^2",
+                    "variance",
+                ),
+                _Channel(
+                    "kf6.recorded.measurement_r_scale",
+                    "measurement_r_scale",
+                    "1",
+                    "scale",
+                    ("GNSS position", "GNSS velocity", "Barometer"),
+                ),
+                _Channel(
+                    "kf6.recorded.update_result",
+                    "update_results",
+                    "enum",
+                    "update_result",
+                    ("GNSS position", "GNSS velocity", "Barometer"),
+                ),
+                _Channel(
+                    "kf6.recorded.velocity_valid_mask",
+                    "gnss_velocity_valid_mask",
+                    "bitmask",
+                    "status",
+                ),
+                _Channel(
+                    "kf6.recorded.velocity_update_dimension",
+                    "velocity_update_dimension",
+                    "1",
+                    "dimension",
                 ),
             ),
         ),

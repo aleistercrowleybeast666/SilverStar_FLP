@@ -9,6 +9,16 @@ PROJECT_FORMAT = "SilverStar_FLP_Project"
 PROJECT_VERSION = 1
 
 
+def _LogReference_Encode(log_path: Path, project_path: Path | None) -> str:
+    path = Path(log_path).resolve()
+    if project_path is None:
+        return str(path)
+    try:
+        return str(path.relative_to(project_path.parent.resolve()))
+    except ValueError:
+        return str(path)
+
+
 @dataclass(slots=True)
 class ProjectDocument:
     log_references: list[str] = field(default_factory=list)
@@ -28,12 +38,7 @@ class ProjectDocument:
         return tuple(self._Reference_Decode(reference) for reference in self.log_references)
 
     def _Reference_Encode(self, log_path: Path) -> str:
-        if self.project_path is None:
-            return str(log_path)
-        try:
-            return str(log_path.relative_to(self.project_path.parent.resolve()))
-        except ValueError:
-            return str(log_path)
+        return _LogReference_Encode(log_path, self.project_path)
 
     def _Reference_Decode(self, reference: str) -> Path:
         path = Path(reference)
@@ -45,11 +50,14 @@ class ProjectDocument:
 def Project_Save(document: ProjectDocument, path: Path) -> None:
     project_path = Path(path).resolve()
     project_path.parent.mkdir(parents=True, exist_ok=True)
-    document.project_path = project_path
+    resolved_log_paths = document.LogPaths_Resolve()
+    encoded_log_references = [
+        _LogReference_Encode(log_path, project_path) for log_path in resolved_log_paths
+    ]
     payload = {
         "format": PROJECT_FORMAT,
         "version": PROJECT_VERSION,
-        "log_references": list(document.log_references),
+        "log_references": encoded_log_references,
         "active_log_index": document.active_log_index,
         "replay_configurations": document.replay_configurations,
         "notes": document.notes,
@@ -58,6 +66,8 @@ def Project_Save(document: ProjectDocument, path: Path) -> None:
     temporary_path = project_path.with_suffix(project_path.suffix + ".tmp")
     temporary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary_path.replace(project_path)
+    document.project_path = project_path
+    document.log_references = encoded_log_references
 
 
 def Project_Load(path: Path) -> ProjectDocument:

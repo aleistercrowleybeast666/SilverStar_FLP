@@ -36,10 +36,25 @@ def Event_Payload(event_id: int, arg0: int = 0, arg1: int = 0) -> bytes:
     return struct.pack("<B3xII", event_id, arg0, arg1)
 
 
-def InitialState_Payload() -> bytes:
+def InitialState_Payload(
+    *,
+    alignment_algorithm: int = 1,
+    q_nb: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+    alignment_samples: int = 200,
+) -> bytes:
     payload = bytearray()
-    payload += struct.pack("<BBBBHHHH", 1, 1, 1, 3, 200, 10, 20, 0)
-    payload += struct.pack("<4f", 1.0, 0.0, 0.0, 0.0)
+    payload += struct.pack(
+        "<BBBBHHHH",
+        alignment_algorithm,
+        1,
+        1,
+        3,
+        alignment_samples,
+        10,
+        20,
+        0,
+    )
+    payload += struct.pack("<4f", *q_nb)
     payload += struct.pack("<3f", 0.0, 0.0, GRAVITY_MPS2)
     payload += struct.pack("<3f", 0.0, 0.0, 0.0)
     payload += struct.pack("<3f", 20.0, 0.0, 40.0)
@@ -54,7 +69,19 @@ def InitialState_Payload() -> bytes:
 
 
 def SystemConfig_Payload(
-    *, imu_corrected_decimation: int = 1, increment_decimation: int = 1
+    *,
+    imu_corrected_decimation: int = 1,
+    increment_decimation: int = 1,
+    process_accel_std_mps2: tuple[float, float, float] = (1.5, 1.5, 2.0),
+    nis_profile: tuple[float, float, float, float, float, float, float] = (
+        6.635,
+        10.828,
+        9.210,
+        13.816,
+        11.345,
+        16.266,
+        10.0,
+    ),
 ) -> bytes:
     payload = bytearray()
     payload += bytes((0, 1, 0, 8))
@@ -63,9 +90,9 @@ def SystemConfig_Payload(
     payload += bytes((1, 1, 1, 1))
     payload += struct.pack("<BB", 1, imu_corrected_decimation)
     payload += struct.pack("<6f", 4.0, 4.0, 9.0, 0.25, 0.25, 0.25)
-    payload += struct.pack("<3f", 1.5, 1.5, 2.0)
+    payload += struct.pack("<3f", *process_accel_std_mps2)
     payload += struct.pack("<5f", 1.0, 1.5, 2.5, 0.3, 5.0)
-    payload += struct.pack("<7f", 6.635, 10.828, 9.210, 13.816, 11.345, 16.266, 10.0)
+    payload += struct.pack("<7f", *nis_profile)
     payload += struct.pack("<II", 0xFFFFFFFF, 0x12345678)
     payload += struct.pack("<10H", 100, 10, 50, 50, 50, 2, 50, 50, 500, 0)
     decimation = [1] * 10
@@ -78,11 +105,34 @@ def SystemConfig_Payload(
 
 
 def MissionConfig_Payload(
-    *, deploy_mask: int = 4, deploy_delay_ms: int = 100, landing_enable: int = 0
+    *,
+    alignment_algorithm: int = 1,
+    deploy_mask: int = 4,
+    deploy_delay_ms: int = 100,
+    landing_enable: int = 0,
+    known_yaw_deg: float = 0.0,
+    magnetic_declination_deg: float = 0.0,
+    apogee_vz_threshold_mps: float = -1.0,
 ) -> bytes:
     payload = bytearray()
-    payload += struct.pack("<8B", 2, 1, 0, deploy_mask, 0, landing_enable, 2, 1)
-    payload += struct.pack("<4f", 0.0, 0.0, 45.0, -1.0)
+    payload += struct.pack(
+        "<8B",
+        2,
+        alignment_algorithm,
+        0,
+        deploy_mask,
+        0,
+        landing_enable,
+        2,
+        1,
+    )
+    payload += struct.pack(
+        "<4f",
+        known_yaw_deg,
+        magnetic_declination_deg,
+        45.0,
+        apogee_vz_threshold_mps,
+    )
     payload += struct.pack("<4I", 20, deploy_delay_ms, 500, 5)
     payload += struct.pack("<fIf", 0.5, 1000, 0.2)
     payload += struct.pack("<f4I3f2I", 1.0, 5, 50, 80, 500, 30.0, 0.1, 0.5, 1000, 200)
@@ -134,16 +184,143 @@ def InertialIncrement_Payload(start_us: int, end_us: int, sequence: int) -> byte
     return payload
 
 
-def PureIns_Payload(update_sequence: int, dt_s: float = 0.02) -> bytes:
+def PureIns_Payload(
+    update_sequence: int,
+    dt_s: float = 0.02,
+    *,
+    q_nb: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+    velocity_enu_mps: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    position_enu_m: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    accel_enu_mps2: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> bytes:
     payload = bytearray()
     payload += struct.pack("<I", update_sequence)
-    payload += struct.pack("<4f", 1.0, 0.0, 0.0, 0.0)
-    payload += struct.pack("<3f", 0.0, 0.0, 0.0)
-    payload += struct.pack("<3f", 0.0, 0.0, 0.0)
-    payload += struct.pack("<3f", 0.0, 0.0, 0.0)
+    payload += struct.pack("<4f", *q_nb)
+    payload += struct.pack("<3f", *velocity_enu_mps)
+    payload += struct.pack("<3f", *position_enu_m)
+    payload += struct.pack("<3f", *accel_enu_mps2)
     payload += struct.pack("<fIBB2x", dt_s, 0, 1, 1)
     assert len(payload) == 68
     return payload
+
+
+def CalibrationResult_Payload(
+    *,
+    mode: int = 2,
+    state: int = 4,
+    ready: int = 1,
+    completed_face_mask: int = 0x3F,
+    samples: int = 190,
+    reject_count: int = 2,
+    retry_count: int = 1,
+) -> bytes:
+    payload = bytearray(
+        struct.pack(
+            "<HHBBBBIIII",
+            1,
+            1,
+            mode,
+            state,
+            ready,
+            completed_face_mask,
+            samples,
+            reject_count,
+            retry_count,
+            17,
+        )
+    )
+    payload += struct.pack("<3f", 0.11, -0.22, 0.33)
+    payload += struct.pack("<3f", 1.01, 0.99, 1.02)
+    payload += struct.pack("<3f", 0.001, -0.002, 0.003)
+    payload += struct.pack("<3f", 1.001, 0.999, 1.002)
+    assert len(payload) == 72
+    return bytes(payload)
+
+
+def AlignmentResult_Payload(
+    *,
+    state: int = 3,
+    ready: int = 1,
+    selected_mask: int = 0x07,
+    ready_mask: int = 0x07,
+    attitude_source: int = 2,
+    q_nb: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+) -> bytes:
+    payload = bytearray()
+    payload += struct.pack(
+        "<7I4B",
+        0x07,
+        selected_mask,
+        0x01,
+        ready_mask,
+        0,
+        0,
+        23,
+        state,
+        0,
+        ready,
+        3,
+    )
+    payload += struct.pack("<Q4f", START_TIMESTAMP_US - 60_000, *q_nb)
+    payload += struct.pack("<iii", 31_0000000, 121_0000000, 100_000)
+    payload += struct.pack("<Iff", 10, 0.5, 0.8)
+    payload += struct.pack("<Iff", 20, 101325.0, 120.0)
+    payload += struct.pack("<4B", 3, 3, 3, attitude_source)
+    assert len(payload) == 96
+    return bytes(payload)
+
+
+def Kf6State_Payload(
+    *,
+    position_enu_m: tuple[float, float, float],
+    velocity_enu_mps: tuple[float, float, float],
+    sequence: int,
+    sample_timestamp_us: int,
+) -> bytes:
+    payload = bytearray()
+    payload += struct.pack("<3f", *position_enu_m)
+    payload += struct.pack("<3f", *velocity_enu_mps)
+    payload += struct.pack("<6f", 1.0, 1.1, 1.2, 0.1, 0.2, 0.3)
+    payload += struct.pack("<3f", *position_enu_m)
+    payload += struct.pack("<3f", *velocity_enu_mps)
+    payload += struct.pack("<4f", position_enu_m[2], 1.2, 2.3, 0.8)
+    payload += struct.pack("<5I", 0x00020100, 0, 0, sequence, sequence)
+    payload += struct.pack("<2Q", sample_timestamp_us - 2_000, sample_timestamp_us - 1_000)
+    payload += struct.pack("<2I4B", 2_000, 1_000, 1, 1, 1, 1)
+    assert len(payload) == 136
+    return bytes(payload)
+
+
+def Kf6Diagnostic_Payload(
+    *,
+    position_update_result: int = 0,
+    velocity_update_result: int = 1,
+    baro_update_result: int = 2,
+) -> bytes:
+    payload = bytearray()
+    payload += struct.pack("<3f", 0.1, -0.2, 0.3)
+    payload += struct.pack("<3f", 0.01, -0.02, 0.03)
+    payload += struct.pack("<f", 0.4)
+    payload += struct.pack("<3f", 4.0, 4.0, 9.0)
+    payload += struct.pack("<3f", 0.25, 0.25, 0.5)
+    payload += struct.pack("<f", 1.0)
+    payload += struct.pack("<3f", 1.2, 2.3, 0.8)
+    payload += struct.pack("<3f", 1.0, 2.0, 3.0)
+    payload += struct.pack("<3f", 1.5, 1.5, 2.0)
+    payload += struct.pack(
+        "<5B7x",
+        0x07,
+        3,
+        position_update_result,
+        velocity_update_result,
+        baro_update_result,
+    )
+    assert len(payload) == 104
+    return bytes(payload)
+
+
+def Float_U32(value: float) -> int:
+    return struct.unpack("<I", struct.pack("<f", value))[0]
 
 
 @dataclass(slots=True)
@@ -227,4 +404,171 @@ def StationaryFlight_Build(
                 end,
                 valid_flags=3,
             )
+    return builder.File_Write(path)
+
+
+def AnalysisFlight_Build(
+    path: Path,
+    *,
+    alignment_algorithm: int = 3,
+    include_calibration: bool = True,
+    include_alignment_result: bool = True,
+    include_deploy_detail: bool = True,
+    include_deploy_event: bool = True,
+    include_kf6: bool = True,
+    update_count: int = 8,
+    process_accel_std_mps2: tuple[float, float, float] = (1.5, 1.5, 2.0),
+    nis_profile: tuple[float, float, float, float, float, float, float] = (
+        6.635,
+        10.828,
+        9.210,
+        13.816,
+        11.345,
+        16.266,
+        10.0,
+    ),
+) -> Path:
+    """Synthetic analysis-rich flight with calibrated/aligned/deploy/KF6 records."""
+
+    scheduled: list[tuple[int, int, bytes, int]] = []
+
+    def add(
+        timestamp_us: int,
+        record_type: int,
+        payload: bytes,
+        valid_flags: int = 0,
+    ) -> None:
+        scheduled.append((timestamp_us, record_type, payload, valid_flags))
+
+    add(
+        START_TIMESTAMP_US - 400_000,
+        0x02,
+        Event_Payload(0x21),
+    )
+    if include_calibration:
+        add(START_TIMESTAMP_US - 300_000, 0x17, CalibrationResult_Payload())
+        add(START_TIMESTAMP_US - 299_900, 0x02, Event_Payload(0x23))
+    add(START_TIMESTAMP_US - 200_000, 0x02, Event_Payload(0x26))
+    if include_alignment_result:
+        attitude_source = (
+            3
+            if alignment_algorithm == 1
+            else 1
+            if alignment_algorithm in (0, 2)
+            else 2
+        )
+        source_mask = 0x0F if alignment_algorithm == 1 else 0x07
+        add(
+            START_TIMESTAMP_US - 100_000,
+            0x18,
+            AlignmentResult_Payload(
+                selected_mask=source_mask,
+                ready_mask=source_mask,
+                attitude_source=attitude_source,
+            ),
+        )
+        add(START_TIMESTAMP_US - 99_900, 0x02, Event_Payload(0x27))
+    add(
+        START_TIMESTAMP_US - 20_000,
+        0x19,
+        MissionConfig_Payload(
+            alignment_algorithm=alignment_algorithm,
+            deploy_mask=0x07,
+            landing_enable=1,
+            known_yaw_deg=12.5,
+            magnetic_declination_deg=3.25,
+            apogee_vz_threshold_mps=-2.0,
+        ),
+    )
+    add(
+        START_TIMESTAMP_US - 10_000,
+        0x05,
+        SystemConfig_Payload(
+            process_accel_std_mps2=process_accel_std_mps2,
+            nis_profile=nis_profile,
+        ),
+    )
+    add(
+        START_TIMESTAMP_US,
+        0x0D,
+        InitialState_Payload(
+            alignment_algorithm=alignment_algorithm,
+            alignment_samples=240,
+        ),
+    )
+    add(START_TIMESTAMP_US, 0x02, Event_Payload(0x03))
+
+    for sample_index in range(update_count * 2 + 1):
+        timestamp = START_TIMESTAMP_US + sample_index * 10_000
+        add(
+            timestamp,
+            0x16,
+            ImuCorrected_Payload(timestamp, sample_index + 1),
+            3,
+        )
+    deploy_timestamp = START_TIMESTAMP_US + 110_000
+    for update_index in range(1, update_count + 1):
+        start = START_TIMESTAMP_US + (update_index - 1) * 20_000
+        end = start + 20_000
+        add(
+            end,
+            0x13,
+            InertialIncrement_Payload(start, end, update_index),
+            3,
+        )
+        pure_position = (
+            float(update_index),
+            float(update_index * 2),
+            float(update_index * 9),
+        )
+        kf_position = (
+            float(update_index * 2),
+            float(update_index * 3),
+            float(update_index * 10),
+        )
+        velocity = (1.0, 2.0, -2.13 if update_index >= 5 else 3.0)
+        add(
+            end,
+            0x07,
+            PureIns_Payload(
+                update_index,
+                velocity_enu_mps=velocity,
+                position_enu_m=pure_position,
+                accel_enu_mps2=(0.1, 0.2, 0.3),
+            ),
+            3,
+        )
+        if include_kf6:
+            add(
+                end,
+                0x04,
+                Kf6State_Payload(
+                    position_enu_m=kf_position,
+                    velocity_enu_mps=velocity,
+                    sequence=update_index,
+                    sample_timestamp_us=end,
+                ),
+            )
+            add(end + 100, 0x08, Kf6Diagnostic_Payload())
+    if include_deploy_event:
+        add(deploy_timestamp, 0x02, Event_Payload(0x29, arg0=0x07))
+    if include_deploy_detail:
+        add(
+            deploy_timestamp + 100,
+            0x02,
+            Event_Payload(0x2B, arg0=0x02, arg1=Float_U32(-2.13)),
+        )
+    add(START_TIMESTAMP_US + update_count * 20_000 + 100, 0x02, Event_Payload(0x2A))
+
+    builder = SyntheticSslogBuilder()
+    for timestamp_us, record_type, payload, valid_flags in sorted(
+        scheduled,
+        key=lambda item: item[0],
+    ):
+        builder.Record_Add(
+            record_type,
+            payload,
+            timestamp_us,
+            valid_flags=valid_flags,
+        )
     return builder.File_Write(path)
