@@ -32,6 +32,7 @@ class StateGroupSpec:
     unit: str
     covariance_channel: str
     covariance_diagonal_indices: tuple[int, ...]
+    file_stem: str = ""
 
     def __post_init__(self) -> None:
         if not self.group_id or not self.label_key or not self.covariance_channel:
@@ -66,6 +67,12 @@ class MeasurementGroupSpec:
     dimension_channel: str = ""
     soft_threshold_parameter_id: str = ""
     hard_threshold_parameter_id: str = ""
+    unit: str = "1"
+    file_stem: str = ""
+    configuration_fields: tuple[str, ...] = ()
+    configuration_provider_indices: tuple[int, ...] = ()
+    measurement_record_names: tuple[str, ...] = ()
+    measurement_validity_channel: str = ""
 
     def __post_init__(self) -> None:
         if not self.measurement_group_id or not self.label_key:
@@ -78,6 +85,31 @@ class MeasurementGroupSpec:
             raise ValueError("measurement_group_channel_index_invalid")
         if self.attempt_mask_bit < 0:
             raise ValueError("measurement_group_attempt_mask_invalid")
+        if any(index < 0 for index in self.configuration_provider_indices):
+            raise ValueError("measurement_group_provider_index_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class FullCovarianceSpec:
+    """Metadata required to reconstruct and export one estimator's full P."""
+
+    channel_id: str
+    file_stem: str
+    state_symbols: tuple[str, ...]
+    state_units: tuple[str, ...]
+    storage: str = "upper_triangle"
+    initial_record_name: str = ""
+    initial_diagonal_field: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.channel_id or not self.file_stem:
+            raise ValueError("full_covariance_identity_required")
+        if not self.state_symbols:
+            raise ValueError("full_covariance_states_required")
+        if len(self.state_symbols) != len(self.state_units):
+            raise ValueError("full_covariance_state_units_mismatch")
+        if self.storage not in ("upper_triangle", "full_matrix"):
+            raise ValueError("full_covariance_storage_invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +118,7 @@ class EstimatorVisualizationSpec:
 
     state_groups: tuple[StateGroupSpec, ...]
     measurement_groups: tuple[MeasurementGroupSpec, ...]
+    full_covariance: FullCovarianceSpec | None = None
 
     def __post_init__(self) -> None:
         state_ids = tuple(group.group_id for group in self.state_groups)

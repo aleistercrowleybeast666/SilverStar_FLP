@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -19,7 +20,12 @@ from PySide6.QtWidgets import (
 )
 
 from silverstar_flp.core.i18n import Translator
-from silverstar_flp.export.service import ExportLanguage, ExportOptions, ExportTheme
+from silverstar_flp.export.service import (
+    ExportLanguage,
+    ExportManifest,
+    ExportOptions,
+    ExportTheme,
+)
 from silverstar_flp.ui.widgets import StandardComboBox
 
 
@@ -136,10 +142,13 @@ class ImportDialog(QDialog):
 
 class ExportDialog(QDialog):
     exportRequested = Signal(object, object)
+    manifestOpenRequested = Signal(object)
 
     def __init__(self, translator: Translator, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._translator = translator
+        self._manifest_path: Path | None = None
+        self._result_manifest: ExportManifest | None = None
         self.setModal(True)
         self.resize(680, 650)
         self.setMinimumSize(560, 500)
@@ -177,6 +186,7 @@ class ExportDialog(QDialog):
         self.diagnostics_check = QCheckBox()
         self.events_check = QCheckBox()
         self.csv_check = QCheckBox()
+        self.full_p_check = QCheckBox()
         self.plots_check = QCheckBox()
         self.trajectory_check = QCheckBox()
         self.gif_check = QCheckBox()
@@ -185,6 +195,7 @@ class ExportDialog(QDialog):
             self.diagnostics_check,
             self.events_check,
             self.csv_check,
+            self.full_p_check,
             self.plots_check,
             self.trajectory_check,
             self.gif_check,
@@ -204,8 +215,23 @@ class ExportDialog(QDialog):
         self.result_label = QLabel("—")
         self.result_label.setWordWrap(True)
         layout.addWidget(self.result_label)
+        self.failure_details_edit = QPlainTextEdit()
+        self.failure_details_edit.setReadOnly(True)
+        self.failure_details_edit.setMaximumHeight(170)
+        self.failure_details_edit.setVisible(False)
+        layout.addWidget(self.failure_details_edit)
 
         button_row = QHBoxLayout()
+        self.failure_details_button = QPushButton()
+        self.failure_details_button.clicked.connect(
+            self._FailureDetails_Toggle
+        )
+        self.failure_details_button.setVisible(False)
+        button_row.addWidget(self.failure_details_button)
+        self.manifest_button = QPushButton()
+        self.manifest_button.clicked.connect(self._ManifestOpen_Request)
+        self.manifest_button.setVisible(False)
+        button_row.addWidget(self.manifest_button)
         button_row.addStretch(1)
         self.close_button = QPushButton()
         self.close_button.clicked.connect(self.reject)
@@ -239,24 +265,123 @@ class ExportDialog(QDialog):
             include_diagnostics=self.diagnostics_check.isChecked(),
             include_events=self.events_check.isChecked(),
             include_csv=self.csv_check.isChecked(),
+            include_full_covariance_keyframes=self.full_p_check.isChecked(),
             include_plots=self.plots_check.isChecked(),
             include_trajectory_3d=self.trajectory_check.isChecked(),
             include_attitude_gif=self.gif_check.isChecked(),
         )
+        self._ManifestPath_Set(None)
         self.export_button.setEnabled(False)
         self.result_label.setText(self._translator.Text_Get("export.running"))
         self.exportRequested.emit(Path(folder_text), options)
 
-    def Result_Set(self, count: int, failure_count: int = 0) -> None:
+    def Result_Set(self, manifest: ExportManifest) -> None:
         self.export_button.setEnabled(True)
-        code = "export.complete_with_failures" if failure_count else "export.complete"
-        self.result_label.setText(
-            self._translator.Text_Get(code, count=count, failures=failure_count)
-        )
+        self._result_manifest = manifest
+        self._ManifestPath_Set(manifest.ManifestPath_Get())
+        self._Result_Render()
 
     def Result_Error(self, message: str) -> None:
         self.export_button.setEnabled(True)
+        self._result_manifest = None
+        self._ManifestPath_Set(None)
+        self._FailureDetails_Clear()
         self.result_label.setText(message)
+
+    def Result_Clear(self) -> None:
+        self._result_manifest = None
+        self.result_label.setText("—")
+        self._ManifestPath_Set(None)
+        self._FailureDetails_Clear()
+
+    def OutputDirectory_Set(self, path: Path) -> None:
+        self.folder_edit.setText(str(Path(path)))
+
+    def _ManifestPath_Set(self, path: Path | None) -> None:
+        self._manifest_path = Path(path) if path is not None else None
+        available = self._manifest_path is not None
+        self.manifest_button.setEnabled(available)
+        self.manifest_button.setVisible(available)
+
+    def _ManifestOpen_Request(self) -> None:
+        if self._manifest_path is not None:
+            self.manifestOpenRequested.emit(self._manifest_path)
+
+    def ManifestOpen_Error(self) -> None:
+        self.result_label.setText(self._translator.Text_Get("export.manifest_open_failed"))
+
+    def _Result_Render(self) -> None:
+        manifest = self._result_manifest
+        if manifest is None:
+            return
+        failure_count = len(manifest.failures)
+        code = (
+            "export.complete_with_failures"
+            if failure_count
+            else "export.complete"
+        )
+        lines = [
+            self._translator.Text_Get(
+                code,
+                count=len(manifest.files),
+                failures=failure_count,
+            )
+        ]
+        if manifest.failures:
+            lines.extend(
+                (
+                    "",
+                    self._translator.Text_Get("export.failed_items"),
+                    *(
+                        f"- {failure.localized_name}"
+                        for failure in manifest.failures
+                    ),
+                )
+            )
+        self.result_label.setText("\n".join(lines))
+        details = []
+        for failure in manifest.failures:
+            details.extend(
+                (
+                    f"[{failure.item_id}] {failure.localized_name}",
+                    (
+                        f"{self._translator.Text_Get('export.error_type')}: "
+                        f"{failure.exception_type}"
+                    ),
+                    (
+                        f"{self._translator.Text_Get('export.error_message')}: "
+                        f"{failure.exception_message}"
+                    ),
+                    "",
+                )
+            )
+        self.failure_details_edit.setPlainText("\n".join(details).rstrip())
+        self.failure_details_button.setVisible(bool(manifest.failures))
+        if not manifest.failures:
+            self.failure_details_edit.setVisible(False)
+        self._FailureDetailsButtonText_Update()
+
+    def _FailureDetails_Clear(self) -> None:
+        self.failure_details_edit.clear()
+        self.failure_details_edit.setVisible(False)
+        self.failure_details_button.setVisible(False)
+        self._FailureDetailsButtonText_Update()
+
+    def _FailureDetails_Toggle(self) -> None:
+        self.failure_details_edit.setVisible(
+            self.failure_details_edit.isHidden()
+        )
+        self._FailureDetailsButtonText_Update()
+
+    def _FailureDetailsButtonText_Update(self) -> None:
+        code = (
+            "action.hide_export_errors"
+            if not self.failure_details_edit.isHidden()
+            else "action.view_export_errors"
+        )
+        self.failure_details_button.setText(
+            self._translator.Text_Get(code)
+        )
 
     def Task_Finish(self) -> None:
         self.export_button.setEnabled(True)
@@ -266,26 +391,32 @@ class ExportDialog(QDialog):
             target = ExportTheme(theme)
         except ValueError:
             return
-        index = self.export_theme_combo.findData(target)
+        index = self.export_theme_combo.findData(target.value)
         if index >= 0:
             self.export_theme_combo.setCurrentIndex(index)
 
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
-        language = self.export_language_combo.currentData() or ExportLanguage.FOLLOW_UI
-        theme = self.export_theme_combo.currentData() or ExportTheme.LIGHT
+        language = str(
+            self.export_language_combo.currentData()
+            or ExportLanguage.FOLLOW_UI.value
+        )
+        theme = str(
+            self.export_theme_combo.currentData()
+            or ExportTheme.LIGHT.value
+        )
 
         self.export_language_combo.blockSignals(True)
         self.export_language_combo.clear()
         self.export_language_combo.addItem(
             translator.Text_Get("export.language_follow_ui"),
-            ExportLanguage.FOLLOW_UI,
+            ExportLanguage.FOLLOW_UI.value,
         )
         self.export_language_combo.addItem(
-            translator.Text_Get("export.language_zh"), ExportLanguage.ZH
+            translator.Text_Get("export.language_zh"), ExportLanguage.ZH.value
         )
         self.export_language_combo.addItem(
-            translator.Text_Get("export.language_en"), ExportLanguage.EN
+            translator.Text_Get("export.language_en"), ExportLanguage.EN.value
         )
         self.export_language_combo.setCurrentIndex(
             max(self.export_language_combo.findData(language), 0)
@@ -294,8 +425,14 @@ class ExportDialog(QDialog):
 
         self.export_theme_combo.blockSignals(True)
         self.export_theme_combo.clear()
-        self.export_theme_combo.addItem(translator.Text_Get("theme.light"), ExportTheme.LIGHT)
-        self.export_theme_combo.addItem(translator.Text_Get("theme.dark"), ExportTheme.DARK)
+        self.export_theme_combo.addItem(
+            translator.Text_Get("theme.light"),
+            ExportTheme.LIGHT.value,
+        )
+        self.export_theme_combo.addItem(
+            translator.Text_Get("theme.dark"),
+            ExportTheme.DARK.value,
+        )
         self.export_theme_combo.setCurrentIndex(max(self.export_theme_combo.findData(theme), 0))
         self.export_theme_combo.blockSignals(False)
 
@@ -311,6 +448,7 @@ class ExportDialog(QDialog):
             "export.item.diagnostics",
             "export.item.events",
             "export.item.csv",
+            "export.item.full_p_keyframes",
             "export.item.plots",
             "export.item.trajectory",
             "export.item.gif",
@@ -318,5 +456,10 @@ class ExportDialog(QDialog):
         for checkbox, code in zip(self._checks, labels, strict=True):
             checkbox.setText(translator.Text_Get(code))
         self.note_label.setText(translator.Text_Get("export.note"))
+        self.manifest_button.setText(
+            translator.Text_Get("action.open_export_manifest")
+        )
+        self._FailureDetailsButtonText_Update()
         self.close_button.setText(translator.Text_Get("action.close"))
         self.export_button.setText(translator.Text_Get("action.export"))
+        self._Result_Render()

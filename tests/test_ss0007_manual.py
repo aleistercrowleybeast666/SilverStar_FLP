@@ -7,6 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
 from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
@@ -24,6 +25,8 @@ from silverstar_flp.plugins.algorithms.pure_ins.mechanization import (
 from silverstar_flp.plugins.algorithms.pure_ins.plugin import PureInsAlgorithmPlugin
 from silverstar_flp.plugins.api.algorithm import ReplayMode, ReplayRequest
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
+from silverstar_flp.plugins.registry import builtin_registry
+from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.pages.charts import FlightPage
 
 
@@ -141,3 +144,81 @@ def test_ss0007_real_log_recorded_recomputed_and_what_if_marker_lifecycle() -> N
         assert resolver.TrajectoryBoundsCalculationCount_Get(source_id) == calculation_count
         assert page._trajectory_camera_fit_count == fit_count
     page.close()
+
+
+def test_ss0007_real_log_gui_worker_exports_gif_manifest_and_metadata_plots(
+    tmp_path: Path,
+) -> None:
+    path_text = os.environ.get("SILVERSTAR_SS0007_PATH")
+    if not path_text:
+        pytest.skip("set SILVERSTAR_SS0007_PATH for the real-log validation gate")
+    path = Path(path_text)
+    if not path.is_file():
+        pytest.skip(f"real-log validation file is unavailable: {path}")
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    dataset = Sslog0ParserPlugin().parse(path)
+    application = QApplication.instance() or QApplication([])
+    window = MainWindow(builtin_registry())
+    window._Dataset_Set(dataset)
+    dialog = window.export_dialog
+    output = tmp_path / "SS0007_GUI_Worker_Export"
+    dialog.folder_edit.setText(str(output))
+    for checkbox in dialog._checks:
+        checkbox.setChecked(False)
+    dialog.full_p_check.setChecked(True)
+    dialog.plots_check.setChecked(True)
+    dialog.trajectory_check.setChecked(True)
+    dialog.gif_check.setChecked(True)
+
+    dialog._Export_Request()
+    worker = window._active_worker
+    assert worker is not None
+    errors: list[tuple[str, str]] = []
+    worker.signals.error.connect(
+        lambda message, traceback_text: errors.append(
+            (message, traceback_text)
+        )
+    )
+    loop = QEventLoop()
+    worker.signals.finished.connect(loop.quit)
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(loop.quit)
+    timeout.start(180_000)
+    loop.exec()
+    timed_out = not timeout.isActive()
+    timeout.stop()
+    application.processEvents()
+
+    fallback = output / "Export_Failures_ZH.txt"
+    fallback_text = (
+        fallback.read_text(encoding="utf-8")
+        if fallback.is_file()
+        else ""
+    )
+    assert not timed_out
+    assert not errors
+    assert window._active_worker is None
+    assert (output / "Flight_Replay_ZH.gif").is_file(), fallback_text
+    assert (output / "Export_Manifest_ZH.json").is_file(), fallback_text
+    assert not fallback.exists(), fallback_text
+    expected_plots = (
+        "KF6_Recorded_Position_Std_1Sigma_ZH.png",
+        "KF6_Recorded_Velocity_Std_1Sigma_ZH.png",
+        "KF6_Recorded_Innovation_GNSS_Position_ZH.png",
+        "KF6_Recorded_Innovation_GNSS_Velocity_ZH.png",
+        "KF6_Recorded_NIS_GNSS_Position_ZH.png",
+        "KF6_Recorded_NIS_GNSS_Velocity_ZH.png",
+        "KF6_Recorded_Measurement_Std_GNSS_Position_ZH.png",
+        "KF6_Recorded_Measurement_Std_GNSS_Velocity_ZH.png",
+    )
+    for name in expected_plots:
+        assert (output / "Plots_ZH" / name).is_file()
+    full_p = output / "KF6_Full_P_Keyframes_ZH.txt"
+    assert full_p.is_file()
+    assert "INITIAL_STATE.p0_diagonal" in full_p.read_text(encoding="utf-8")
+    manifest = dialog._result_manifest
+    assert manifest is not None
+    assert not manifest.failures
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    window.close()

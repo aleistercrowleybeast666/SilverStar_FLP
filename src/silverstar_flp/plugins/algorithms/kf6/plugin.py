@@ -40,6 +40,7 @@ from silverstar_flp.plugins.api.algorithm import (
     AlgorithmPlugin,
     AlgorithmResult,
     EstimatorVisualizationSpec,
+    FullCovarianceSpec,
     MeasurementGroupSpec,
     ParameterSpec,
     ReplayFidelity,
@@ -75,6 +76,9 @@ class _ReplaySnapshot:
     baro_result: int
     attempt_mask: int
     r_scale: np.ndarray
+    position_measurement_variance: np.ndarray
+    velocity_measurement_variance: np.ndarray
+    baro_measurement_variance: float
 
 
 def _Series_Create(
@@ -114,7 +118,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
     metadata = AlgorithmMetadata(
         plugin_id="silverstar.algorithm.kf6",
         version="0.1.0-firmware-SILV0008",
-        display_name="KF6",
+        display_name="KF_6",
         description="Firmware-order 6-state [pE,pN,pU,vE,vN,vU] navigation filter",
         required_records=("INITIAL_STATE", "SYSTEM_CONFIG"),
         optional_records=(
@@ -251,6 +255,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "kf6.update_result",
             "kf6.measurement_attempt_mask",
             "kf6.measurement_r_scale",
+            "kf6.measurement_r.position",
+            "kf6.measurement_r.velocity",
+            "kf6.measurement_r.baro",
         ),
         estimator_visualization=EstimatorVisualizationSpec(
             state_groups=(
@@ -261,6 +268,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     "m",
                     "kf6.covariance.diagonal",
                     (0, 1, 2),
+                    file_stem="Position",
                 ),
                 StateGroupSpec(
                     "velocity",
@@ -269,6 +277,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     "m/s",
                     "kf6.covariance.diagonal",
                     (3, 4, 5),
+                    file_stem="Velocity",
                 ),
             ),
             measurement_groups=(
@@ -289,6 +298,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     attempt_mask_bit=0x01,
                     soft_threshold_parameter_id="nis_3d_soft",
                     hard_threshold_parameter_id="nis_3d_hard",
+                    unit="m",
+                    file_stem="GNSS_Position",
+                    configuration_fields=("configured_gnss_rate_hz",),
+                    measurement_record_names=("GNSS_MEASUREMENT",),
+                    measurement_validity_channel="gnss.measurement.position_enu",
                 ),
                 MeasurementGroupSpec(
                     "gnss_velocity",
@@ -308,6 +322,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     dimension_channel="kf6.velocity_update_dimension",
                     soft_threshold_parameter_id="nis_3d_soft",
                     hard_threshold_parameter_id="nis_3d_hard",
+                    unit="m/s",
+                    file_stem="GNSS_Velocity",
+                    configuration_fields=("configured_gnss_rate_hz",),
+                    measurement_record_names=("GNSS_MEASUREMENT",),
+                    measurement_validity_channel="gnss.measurement.velocity_enu",
                 ),
                 MeasurementGroupSpec(
                     "barometric_altitude",
@@ -326,7 +345,20 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     attempt_mask_bit=0x04,
                     soft_threshold_parameter_id="nis_1d_soft",
                     hard_threshold_parameter_id="nis_1d_hard",
+                    unit="m",
+                    file_stem="Barometer",
+                    configuration_fields=("configured_barometer_rate_hz",),
+                    measurement_record_names=("BARO_MEASUREMENT",),
+                    measurement_validity_channel="baro.measurement.relative_altitude",
                 ),
+            ),
+            full_covariance=FullCovarianceSpec(
+                channel_id="kf6.covariance.upper_triangle",
+                file_stem="KF6_Full_P_Keyframes",
+                state_symbols=("pE", "pN", "pU", "vE", "vN", "vU"),
+                state_units=("m", "m", "m", "m/s", "m/s", "m/s"),
+                initial_record_name="INITIAL_STATE",
+                initial_diagonal_field="p0_diagonal",
             ),
         ),
     )
@@ -692,6 +724,15 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     baro_result=baro_result,
                     attempt_mask=attempt_mask,
                     r_scale=r_scale,
+                    position_measurement_variance=(
+                        filter_instance.last_position_effective_variance.copy()
+                    ),
+                    velocity_measurement_variance=(
+                        filter_instance.last_velocity_effective_variance.copy()
+                    ),
+                    baro_measurement_variance=float(
+                        filter_instance.last_baro_effective_variance
+                    ),
                 )
             )
             if increment_index % 256 == 0:
@@ -917,6 +958,32 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 unit="1",
                 quantity="scale",
                 columns=("GNSS position", "GNSS velocity", "Barometer"),
+            ),
+            "kf6.measurement_r.position": _Series_Create(
+                timestamps,
+                np.asarray(
+                    [item.position_measurement_variance for item in snapshots]
+                ),
+                unit="m^2",
+                quantity="variance",
+                columns=("E", "N", "U"),
+            ),
+            "kf6.measurement_r.velocity": _Series_Create(
+                timestamps,
+                np.asarray(
+                    [item.velocity_measurement_variance for item in snapshots]
+                ),
+                unit="m^2/s^2",
+                quantity="variance",
+                columns=("E", "N", "U"),
+            ),
+            "kf6.measurement_r.baro": _Series_Create(
+                timestamps,
+                np.asarray(
+                    [item.baro_measurement_variance for item in snapshots]
+                ),
+                unit="m^2",
+                quantity="variance",
             ),
         }
         return channels

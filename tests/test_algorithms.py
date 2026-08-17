@@ -100,6 +100,16 @@ def test_kf6_stationary_replay_has_finite_positive_covariance(stationary_dataset
     assert np.all(np.isfinite(state))
     assert np.all(diagonal > 0.0)
     assert np.max(np.abs(state)) < 2.0e-6
+    for channel_id, width in (
+        ("kf6.measurement_r.position", 3),
+        ("kf6.measurement_r.velocity", 3),
+        ("kf6.measurement_r.baro", 1),
+    ):
+        series = result.channels[channel_id]
+        values = np.asarray(series.values).reshape(series.count, -1)
+        assert values.shape == (state.shape[0], width)
+        assert np.all(np.isfinite(values))
+        assert np.all(values >= 0.0)
 
 
 def test_kf6_hard_nis_gate_rejects_outlier_without_moving_state() -> None:

@@ -13,6 +13,7 @@ from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultSto
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.export.service import ExportLanguage, ExportOptions, FlightExporter
 from silverstar_flp.plugins.algorithms.kf6.plugin import Kf6AlgorithmPlugin
 from silverstar_flp.plugins.algorithms.pure_ins.plugin import PureInsAlgorithmPlugin
 from silverstar_flp.plugins.api.algorithm import (
@@ -21,6 +22,7 @@ from silverstar_flp.plugins.api.algorithm import (
     AlgorithmPlugin,
     AlgorithmResult,
     EstimatorVisualizationSpec,
+    FullCovarianceSpec,
     MeasurementGroupSpec,
     ReplayFidelity,
     ReplayRequest,
@@ -95,14 +97,59 @@ _FAKE_STATE_GROUPS = (
     ),
 )
 
+_FAKE_STATE_SYMBOLS = (
+    "δpE",
+    "δpN",
+    "δpU",
+    "δvE",
+    "δvN",
+    "δvU",
+    "δθX",
+    "δθY",
+    "δθZ",
+    "δbgX",
+    "δbgY",
+    "δbgZ",
+    "δbaX",
+    "δbaY",
+    "δbaZ",
+)
+_FAKE_STATE_UNITS = (
+    "m",
+    "m",
+    "m",
+    "m/s",
+    "m/s",
+    "m/s",
+    "rad",
+    "rad",
+    "rad",
+    "rad/s",
+    "rad/s",
+    "rad/s",
+    "m/s²",
+    "m/s²",
+    "m/s²",
+)
+
 
 def _Measurement(
     group_id: str,
     label_key: str,
     index: int,
     dimension: int,
+    unit: str,
+    file_stem: str,
+    *,
+    configuration_fields: tuple[str, ...] = (),
 ) -> MeasurementGroupSpec:
-    components = ("E", "N", "U") if dimension == 3 else ("U",)
+    components = (
+        ("X", "Y", "Z")
+        if group_id == "star_tracker_attitude"
+        else ("E", "N", "U")
+        if dimension == 3
+        else ("U",)
+    )
     return MeasurementGroupSpec(
         group_id,
         label_key,
@@ -113,8 +160,14 @@ def _Measurement(
         "fake.update_result",
         "fake.r_scale",
         measurement_age_channel=f"fake.age.{group_id}",
+        effective_r_channel=f"fake.measurement_r.{group_id}",
         update_result_index=index,
         r_scale_index=index,
+        attempt_mask_channel="fake.measurement_attempt_mask",
+        attempt_mask_bit=1 << index,
+        unit=unit,
+        file_stem=file_stem,
+        configuration_fields=configuration_fields,
     )
 
 
@@ -134,18 +187,56 @@ class _FakeEskfPlugin(AlgorithmPlugin):
             "navigation.velocity_enu",
             "navigation.position_enu",
         ),
-        diagnostic_outputs=("fake.covariance.diagonal",),
+        diagnostic_outputs=(
+            "fake.covariance.diagonal",
+            "fake.covariance.upper_triangle",
+        ),
         estimator_visualization=EstimatorVisualizationSpec(
             state_groups=_FAKE_STATE_GROUPS,
             measurement_groups=(
-                _Measurement("gnss_position", "measurement.gnss_position", 0, 3),
+                _Measurement(
+                    "gnss_position",
+                    "measurement.gnss_position",
+                    0,
+                    3,
+                    "m",
+                    "GNSS_Position",
+                    configuration_fields=("configured_gnss_rate_hz",),
+                ),
                 _Measurement(
                     "barometric_altitude",
                     "measurement.barometric_altitude",
                     1,
                     1,
+                    "m",
+                    "Barometer",
+                    configuration_fields=("configured_barometer_rate_hz",),
                 ),
-                _Measurement("magnetometer", "measurement.magnetometer", 2, 3),
+                _Measurement(
+                    "magnetometer",
+                    "measurement.magnetometer",
+                    2,
+                    3,
+                    "uT",
+                    "Magnetometer",
+                    configuration_fields=(
+                        "configured_magnetometer_rate_hz",
+                    ),
+                ),
+                _Measurement(
+                    "star_tracker_attitude",
+                    "measurement.star_tracker_attitude",
+                    3,
+                    3,
+                    "rad",
+                    "Star_Tracker_Attitude",
+                ),
+            ),
+            full_covariance=FullCovarianceSpec(
+                channel_id="fake.covariance.upper_triangle",
+                file_stem="Fake_ESKF_Full_P_Keyframes",
+                state_symbols=_FAKE_STATE_SYMBOLS,
+                state_units=_FAKE_STATE_UNITS,
             ),
         ),
     )
@@ -196,15 +287,30 @@ def _FakeResult_Create() -> AlgorithmResult:
             np.tile(np.linspace(0.01, 0.15, 15), (4, 1)),
             columns=tuple(f"P{index}" for index in range(15)),
         ),
+        "fake.covariance.upper_triangle": _Series(
+            timestamps,
+            np.vstack(
+                [
+                    np.arange(1.0, 121.0) + sample_index * 1000.0
+                    for sample_index in range(4)
+                ]
+            ),
+            columns=tuple(f"P{index}" for index in range(120)),
+        ),
         "fake.update_result": _Series(
             timestamps,
-            np.tile((0.0, 1.0, 2.0), (4, 1)),
-            columns=("GNSS", "Baro", "Mag"),
+            np.tile((0.0, 1.0, 2.0, 0.0), (4, 1)),
+            columns=("GNSS", "Baro", "Mag", "Star Tracker"),
         ),
         "fake.r_scale": _Series(
             timestamps,
-            np.tile((1.0, 1.5, 2.0), (4, 1)),
-            columns=("GNSS", "Baro", "Mag"),
+            np.tile((1.0, 1.5, 2.0, 1.0), (4, 1)),
+            columns=("GNSS", "Baro", "Mag", "Star Tracker"),
+        ),
+        "fake.measurement_attempt_mask": _Series(
+            timestamps,
+            np.full(4, 0x0F),
+            quantity="status",
         ),
     }
     for group in _FakeEskfPlugin.metadata.estimator_visualization.measurement_groups:
@@ -217,6 +323,13 @@ def _FakeResult_Create() -> AlgorithmResult:
             timestamps,
             np.linspace(1.0, 2.0, 4),
             quantity="nis",
+        )
+        channels[group.effective_r_channel] = _Series(
+            timestamps,
+            np.full((4, group.dimension), 4.0),
+            columns=group.component_names,
+            unit=f"({group.unit})^2",
+            quantity="variance",
         )
         channels[group.measurement_age_channel] = _Series(
             timestamps,
@@ -282,9 +395,9 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
 
     assert "kf6." not in inspect.getsource(StateEstimationPage)
     assert page.state_group_combo.count() == 5
-    assert page.innovation_measurement_combo.count() == 3
-    assert page.nis_measurement_combo.count() == 3
-    assert page.measurement_group_combo.count() == 3
+    assert page.innovation_measurement_combo.count() == 4
+    assert page.nis_measurement_combo.count() == 4
+    assert page.measurement_group_combo.count() == 4
     assert len(page.covariance_plot.listDataItems()) == 3
 
     magnetometer = page.innovation_measurement_combo.findData("magnetometer")
@@ -299,7 +412,7 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
     assert len(page.innovation_plot.listDataItems()) == 3
     assert len(page.nis_plot.listDataItems()) == 1
     assert len(page.measurement_r_scale_plot.listDataItems()) == 1
-    assert page.update_table.rowCount() == 12
+    assert page.update_table.rowCount() == 16
     assert any(
         page.update_table.item(row, 1).text() == "Magnetometer"
         for row in range(page.update_table.rowCount())
@@ -309,3 +422,218 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
     assert page.tabs.tabText(2) == "归一化新息平方（NIS）"
     assert page.innovation_measurement_combo.currentText() == "磁力计"
     page.close()
+
+
+def test_standard_export_uses_fake_state_and_future_sensor_metadata(
+    tmp_path: Path,
+) -> None:
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_fake_export.BIN")
+    )
+    registry = PluginRegistry()
+    registry.Algorithm_Register(_FakeEskfPlugin())
+    store = ReplayResultStore()
+    entry = store.Result_Add(_FakeResult_Create(), algorithm_name="Fake ESKF")
+    assert store.ActiveSource_Set(entry.source_id)
+
+    manifest = FlightExporter(registry).export(
+        dataset,
+        tmp_path / "fake_metadata_export",
+        options=ExportOptions(
+            language=ExportLanguage.EN,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_full_covariance_keyframes=False,
+            include_plots=True,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+        replay_store=store,
+    )
+
+    assert not manifest.failures
+    names = {path.name for path in manifest.files}
+    assert {
+        "Fake_ESKF_Recomputed_Attitude_Error_Std_1Sigma_EN.png",
+        "Fake_ESKF_Recomputed_Gyro_Bias_Std_1Sigma_EN.png",
+        "Fake_ESKF_Recomputed_Accel_Bias_Std_1Sigma_EN.png",
+        "Fake_ESKF_Recomputed_Innovation_Star_Tracker_Attitude_EN.png",
+        "Fake_ESKF_Recomputed_NIS_Star_Tracker_Attitude_EN.png",
+        "Fake_ESKF_Recomputed_Measurement_Std_Star_Tracker_Attitude_EN.png",
+    } <= names
+    standard_source = inspect.getsource(FlightExporter._StandardPlots_Write)
+    assert "kf6." not in standard_source.lower()
+    assert "gnss_position" not in standard_source
+    assert "barometric_altitude" not in standard_source
+
+
+def test_unconfigured_measurement_group_is_skipped_despite_nonzero_diagnostics(
+    tmp_path: Path,
+) -> None:
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(
+            tmp_path / "SYNTHETIC_fake_unconfigured_mag.BIN",
+            configured_magnetometer_rate_hz=0,
+        )
+    )
+    registry = PluginRegistry()
+    registry.Algorithm_Register(_FakeEskfPlugin())
+    store = ReplayResultStore()
+    entry = store.Result_Add(_FakeResult_Create(), algorithm_name="Fake ESKF")
+    assert store.ActiveSource_Set(entry.source_id)
+
+    manifest = FlightExporter(registry).export(
+        dataset,
+        tmp_path / "fake_unconfigured_export",
+        options=ExportOptions(
+            language=ExportLanguage.EN,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_full_covariance_keyframes=False,
+            include_plots=True,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+        replay_store=store,
+    )
+
+    assert not manifest.failures
+    names = {path.name for path in manifest.files}
+    assert not any("Magnetometer" in name for name in names)
+    skipped = [
+        item
+        for item in manifest.skipped
+        if item.item_id.endswith(":magnetometer")
+    ]
+    assert len(skipped) == 3
+    assert {
+        item.skipped_reason for item in skipped
+    } == {"measurement_not_configured"}
+    assert (
+        "Fake_ESKF_Recomputed_Innovation_Star_Tracker_Attitude_EN.png"
+        in names
+    )
+
+
+def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_no_gnss_updates.BIN")
+    )
+    exporter = FlightExporter()
+    calls: dict[str, tuple[TimeSeries | None, str, tuple[tuple[float, str, str], ...]]] = {}
+    original = exporter._StandardDiagnosticPlot_Write
+
+    def capture(
+        dataset_arg,
+        series,
+        path,
+        title,
+        ylabel,
+        language,
+        theme,
+        *,
+        empty_message,
+        thresholds=(),
+        end_timestamp_us=None,
+    ) -> None:
+        calls[path.name] = (series, empty_message, thresholds)
+        original(
+            dataset_arg,
+            series,
+            path,
+            title,
+            ylabel,
+            language,
+            theme,
+            empty_message=empty_message,
+            thresholds=thresholds,
+            end_timestamp_us=end_timestamp_us,
+        )
+
+    monkeypatch.setattr(exporter, "_StandardDiagnosticPlot_Write", capture)
+    manifest = exporter.export(
+        dataset,
+        tmp_path / "configured_no_updates_export",
+        options=ExportOptions(
+            language=ExportLanguage.EN,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_full_covariance_keyframes=False,
+            include_plots=True,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+    )
+
+    assert not manifest.failures
+    for name in (
+        "KF6_Recorded_Innovation_GNSS_Position_EN.png",
+        "KF6_Recorded_Innovation_GNSS_Velocity_EN.png",
+        "KF6_Recorded_NIS_GNSS_Position_EN.png",
+        "KF6_Recorded_NIS_GNSS_Velocity_EN.png",
+        "KF6_Recorded_Measurement_Std_GNSS_Position_EN.png",
+        "KF6_Recorded_Measurement_Std_GNSS_Velocity_EN.png",
+    ):
+        assert name in calls
+        series, message, _ = calls[name]
+        assert series is None
+        assert message.startswith("No valid GNSS")
+    assert len(
+        calls["KF6_Recorded_NIS_GNSS_Position_EN.png"][2]
+    ) == 2
+    assert len(
+        calls["KF6_Recorded_NIS_GNSS_Velocity_EN.png"][2]
+    ) == 2
+
+
+def test_full_p_keyframes_use_plugin_metadata_for_15_state_estimator(
+    tmp_path: Path,
+) -> None:
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_fake_eskf_full_p.BIN")
+    )
+    registry = PluginRegistry()
+    registry.Algorithm_Register(_FakeEskfPlugin())
+    store = ReplayResultStore()
+    entry = store.Result_Add(_FakeResult_Create(), algorithm_name="Fake ESKF")
+    assert store.ActiveSource_Set(entry.source_id)
+
+    manifest = FlightExporter(registry).export(
+        dataset,
+        tmp_path / "fake_eskf_full_p_export",
+        options=ExportOptions(
+            language=ExportLanguage.EN,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_plots=False,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+        replay_store=store,
+    )
+
+    assert not manifest.failures
+    full_p_path = (
+        tmp_path
+        / "fake_eskf_full_p_export"
+        / "Fake_ESKF_Full_P_Keyframes_EN.txt"
+    )
+    assert full_p_path in manifest.files
+    text = full_p_path.read_text(encoding="utf-8")
+    assert "Algorithm: Fake ESKF (test.algorithm.fake_eskf)" in text
+    assert "Source: Recomputed" in text
+    assert "14: δbaZ [m/s²]" in text
+    assert text.count("Full P matrix (15 x 15):") == 3
+    assert "1.00000000000000000e+00" in text
+    assert "3.12000000000000000e+03" in text

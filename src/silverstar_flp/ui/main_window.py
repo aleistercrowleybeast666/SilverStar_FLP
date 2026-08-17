@@ -5,8 +5,14 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer, QUrl
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -46,6 +52,8 @@ from silverstar_flp.ui.pages import (
 from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
+
+_DEFAULT_EXPORT_ROOT = Path(r"D:\SilverStar_FLP_Data")
 
 
 class MainWindow(QMainWindow):
@@ -197,6 +205,7 @@ class MainWindow(QMainWindow):
         self.import_dialog.importRequested.connect(self.Path_Open)
         self.export_dialog = ExportDialog(self._translator, self)
         self.export_dialog.exportRequested.connect(self._Export_Start)
+        self.export_dialog.manifestOpenRequested.connect(self._ExportManifest_Open)
         self.navigation_list.setCurrentRow(0)
 
     def _Menu_Build(self) -> None:
@@ -242,7 +251,18 @@ class MainWindow(QMainWindow):
     def _ExportDialog_Show(self) -> None:
         if self._dataset is None:
             return
+        self.export_dialog.OutputDirectory_Set(self._ExportDirectory_Default())
+        self.export_dialog.Result_Clear()
         self.export_dialog.open()
+
+    def _ExportDirectory_Default(self) -> Path:
+        if self._project.project_path is not None:
+            export_name = self._project.project_path.stem
+        elif self._dataset is not None:
+            export_name = self._dataset.source_path.stem
+        else:
+            export_name = PRODUCT_NAME
+        return _DEFAULT_EXPORT_ROOT / f"{export_name}_Data"
 
     def _Language_Selected(self) -> None:
         language = self.language_combo.currentData()
@@ -360,7 +380,7 @@ class MainWindow(QMainWindow):
         selected = self.explorer_page.ExportChannels_Get()
         options = replace(options, selected_channels=selected)
         dataset = self._dataset
-        exporter = FlightExporter()
+        exporter = FlightExporter(self._registry)
         worker = FunctionWorker(
             lambda context: exporter.export(
                 dataset,
@@ -377,7 +397,7 @@ class MainWindow(QMainWindow):
         )
 
     def _Export_ResultSet(self, manifest: ExportManifest) -> None:
-        self.export_dialog.Result_Set(len(manifest.files), len(manifest.failures))
+        self.export_dialog.Result_Set(manifest)
         code = "export.complete_with_failures" if manifest.failures else "export.complete"
         self.status_label.setText(
             self._translator.Text_Get(
@@ -386,6 +406,18 @@ class MainWindow(QMainWindow):
                 failures=len(manifest.failures),
             )
         )
+
+    def _ExportManifest_Open(self, manifest_path: Path) -> None:
+        path = Path(manifest_path)
+        try:
+            opened = path.is_file() and QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(path.resolve()))
+            )
+        except Exception:
+            logging.exception("Export manifest open failed: %s", path)
+            opened = False
+        if not opened:
+            self.export_dialog.ManifestOpen_Error()
 
     def _Task_Start(self, worker, result_callback, error_callback) -> None:
         if self._active_worker is not None:

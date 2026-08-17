@@ -161,7 +161,7 @@ the matching flight-controller build; this is tracked in [TARGETS.md](TARGETS.md
 Install the `packaging` extra and run:
 
 ```powershell
-.\scripts\build_windows.ps1
+.\打包.bat
 ```
 
 The PyInstaller output appears under `dist\SilverStar_FLP`. Run the test suite before packaging.

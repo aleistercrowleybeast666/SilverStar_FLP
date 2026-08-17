@@ -73,6 +73,9 @@ def SystemConfig_Payload(
     imu_corrected_decimation: int = 1,
     increment_decimation: int = 1,
     process_accel_std_mps2: tuple[float, float, float] = (1.5, 1.5, 2.0),
+    configured_gnss_rate_hz: int = 10,
+    configured_magnetometer_rate_hz: int = 50,
+    configured_barometer_rate_hz: int = 50,
     nis_profile: tuple[float, float, float, float, float, float, float] = (
         6.635,
         10.828,
@@ -94,7 +97,19 @@ def SystemConfig_Payload(
     payload += struct.pack("<5f", 1.0, 1.5, 2.5, 0.3, 5.0)
     payload += struct.pack("<7f", *nis_profile)
     payload += struct.pack("<II", 0xFFFFFFFF, 0x12345678)
-    payload += struct.pack("<10H", 100, 10, 50, 50, 50, 2, 50, 50, 500, 0)
+    payload += struct.pack(
+        "<10H",
+        100,
+        configured_gnss_rate_hz,
+        configured_magnetometer_rate_hz,
+        configured_barometer_rate_hz,
+        50,
+        2,
+        50,
+        50,
+        500,
+        0,
+    )
     decimation = [1] * 10
     decimation[5] = increment_decimation
     payload += struct.pack("<10H", *decimation)
@@ -319,6 +334,16 @@ def Kf6Diagnostic_Payload(
     return bytes(payload)
 
 
+def Kf6FullP_Payload(sample_index: int) -> bytes:
+    values = tuple(
+        float(sample_index * 100 + value_index + 1)
+        for value_index in range(21)
+    )
+    payload = struct.pack("<21f", *values)
+    assert len(payload) == 84
+    return payload
+
+
 def Float_U32(value: float) -> int:
     return struct.unpack("<I", struct.pack("<f", value))[0]
 
@@ -416,10 +441,14 @@ def AnalysisFlight_Build(
     include_deploy_detail: bool = True,
     include_deploy_event: bool = True,
     include_kf6: bool = True,
+    include_full_p: bool = False,
     include_landing_event: bool = True,
     update_count: int = 8,
     landing_after_update_count: int | None = None,
     process_accel_std_mps2: tuple[float, float, float] = (1.5, 1.5, 2.0),
+    configured_gnss_rate_hz: int = 10,
+    configured_magnetometer_rate_hz: int = 50,
+    configured_barometer_rate_hz: int = 50,
     nis_profile: tuple[float, float, float, float, float, float, float] = (
         6.635,
         10.828,
@@ -488,6 +517,11 @@ def AnalysisFlight_Build(
         SystemConfig_Payload(
             process_accel_std_mps2=process_accel_std_mps2,
             nis_profile=nis_profile,
+            configured_gnss_rate_hz=configured_gnss_rate_hz,
+            configured_magnetometer_rate_hz=(
+                configured_magnetometer_rate_hz
+            ),
+            configured_barometer_rate_hz=configured_barometer_rate_hz,
         ),
     )
     add(
@@ -552,6 +586,8 @@ def AnalysisFlight_Build(
                 ),
             )
             add(end + 100, 0x08, Kf6Diagnostic_Payload())
+            if include_full_p:
+                add(end, 0x09, Kf6FullP_Payload(update_index))
     if include_deploy_event:
         add(deploy_timestamp, 0x02, Event_Payload(0x29, arg0=0x07))
     if include_deploy_detail:

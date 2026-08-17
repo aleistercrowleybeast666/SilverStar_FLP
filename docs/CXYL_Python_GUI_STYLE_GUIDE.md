@@ -1128,7 +1128,21 @@ Export UI should:
 - use checkboxes,
 - default valid items to selected,
 - allow independent export language,
-- isolate failures per item.
+- isolate failures per item,
+- keep the output directory field editable,
+- list each failed item's localized name in the completion state and provide an in-dialog
+  error-details control with item ID, exception type, and exception message,
+- show an Open Export Manifest action after the manifest is written, including when individual
+  products failed.
+
+When any product fails, also attempt a dependency-free localized `Export_Failures_ZH.txt` or
+`Export_Failures_EN.txt`. This fallback uses only standard text file I/O so a Manifest failure
+cannot erase the diagnostic reason.
+
+For SilverStar_FLP, the default output directory is
+`D:\SilverStar_FLP_Data\<project-name>_Data`. If no saved/open project exists, replace the project
+name with the original source-log filename stem. Changing the field affects only the current
+export request.
 
 Recommended export language:
 
@@ -1154,6 +1168,30 @@ Language controls:
 - GIF text
 
 Stable JSON/CSV schema IDs may remain English where they are machine-facing.
+
+Full covariance P is a metadata-driven text report, not a default multi-curve upper-triangle PNG.
+Generate one localized keyframe TXT per selected estimator source and keep the raw upper-triangle
+time-series CSV. Algorithm metadata supplies the covariance channel/storage, ordered state
+symbols, physical units, file stem, and therefore NxN; do not hard-code KF_6's dimension. Report
+START, PARACHUTE_DEPLOY, and LANDING, or analysis end when LANDING is absent. For every event choose
+the last valid sample satisfying `P timestamp <= Event timestamp`; do not interpolate or use a
+post-event sample. Include the event/P timestamps, non-negative difference, algorithm/provenance,
+and full-precision reconstructed matrix. If START precedes the first full-P sample, use the
+plugin-declared initial diagonal (KF_6: `INITIAL_STATE.p0_diagonal`) to construct diagonal P0;
+otherwise, if no non-future P exists, state that explicitly rather than silently taking the first
+future sample. No LaTeX or PDF dependency is needed.
+
+Standard flight plots, trajectory PNG, and replay GIF follow the mission horizon. A generic plot
+explicitly exported from Data Explorer retains that channel's complete time coverage; pre-START
+samples appear at negative mission time instead of being rejected as an empty post-START series.
+Batch Export writes every selected channel to CSV but does not mechanically mirror channels into
+`Channel_*.png`. Its PNG set contains only defined engineering plots, including metadata-driven
+per-state `sqrt(Pii)` and per-measurement Innovation, NIS, and `sqrt(R)` plots.
+
+The Manifest records `generated`, `skipped`, and `failed`. A configured measurement source
+with no valid update still produces explanatory standard plots. A source that configuration
+metadata explicitly marks as not participating is omitted and recorded with
+`measurement_not_configured`.
 
 ---
 

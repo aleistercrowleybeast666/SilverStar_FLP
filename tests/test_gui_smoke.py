@@ -5,15 +5,35 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QEventLoop, QPoint, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton
 
+from silverstar_flp.app.application import _RuntimeDiagnostics_Log
 from silverstar_flp.app.version import PRODUCT_NAME, __version__
+from silverstar_flp.export.service import (
+    ExportFailure,
+    ExportLanguage,
+    ExportManifest,
+    ExportTheme,
+)
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.widgets import StandardComboBox
 from tests.sslog_synthetic import AnalysisFlight_Build
+
+
+def test_runtime_diagnostics_log_version_python_package_and_export_path(
+    caplog,
+) -> None:
+    with caplog.at_level("INFO"):
+        _RuntimeDiagnostics_Log()
+    text = caplog.text
+    assert f"SilverStar_FLP version={__version__}" in text
+    assert "Python executable=" in text
+    assert "silverstar_flp package path=" in text
+    assert "export.service path=" in text
+    assert r"src\silverstar_flp\export\service.py" in text
 
 
 def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
@@ -170,4 +190,153 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     application.processEvents()
     assert window.replay_page.scroll_area.verticalScrollBar().maximum() > 0
     assert window.overview_page.scroll_area.widgetResizable()
+    window.close()
+
+
+def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_default_export.BIN")
+    )
+    window = MainWindow(builtin_registry())
+    window._Dataset_Set(dataset)
+    window.show()
+
+    window._ExportDialog_Show()
+    application.processEvents()
+    assert Path(window.export_dialog.folder_edit.text()) == (
+        Path(r"D:\SilverStar_FLP_Data") / "SYNTHETIC_default_export_Data"
+    )
+    assert not window.export_dialog.folder_edit.isReadOnly()
+    window.export_dialog.folder_edit.setText(str(tmp_path / "custom_export"))
+    assert Path(window.export_dialog.folder_edit.text()) == tmp_path / "custom_export"
+    window.export_dialog.reject()
+
+    window._project.project_path = tmp_path / "Named Flight.ssflp"
+    window._ExportDialog_Show()
+    application.processEvents()
+    assert Path(window.export_dialog.folder_edit.text()) == (
+        Path(r"D:\SilverStar_FLP_Data") / "Named Flight_Data"
+    )
+
+    manifest_directory = tmp_path / "manifest_export"
+    manifest_directory.mkdir()
+    manifest_path = manifest_directory / "Export_Manifest_ZH.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    manifest = ExportManifest(
+        manifest_directory,
+        (manifest_path,),
+        ExportLanguage.ZH,
+        ExportTheme.LIGHT,
+    )
+    opened_urls = []
+
+    class DesktopServicesStub:
+        @staticmethod
+        def openUrl(url):
+            opened_urls.append(url)
+            return True
+
+    monkeypatch.setattr(
+        "silverstar_flp.ui.main_window.QDesktopServices",
+        DesktopServicesStub,
+    )
+    window._Export_ResultSet(manifest)
+    assert manifest.ManifestPath_Get() == manifest_path
+    assert not window.export_dialog.manifest_button.isHidden()
+    assert window.export_dialog.manifest_button.isEnabled()
+    assert window.export_dialog.manifest_button.text() == "打开导出清单"
+    window.export_dialog.manifest_button.click()
+    application.processEvents()
+    assert len(opened_urls) == 1
+    assert Path(opened_urls[0].toLocalFile()) == manifest_path.resolve()
+    window.Language_Apply("en_US")
+    assert window.export_dialog.manifest_button.text() == "Open Export Manifest"
+    window.close()
+
+
+def test_export_dialog_lists_failed_items_and_toggles_error_details(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = MainWindow(builtin_registry())
+    output = tmp_path / "failed_export"
+    output.mkdir()
+    failure = ExportFailure(
+        item_id="flight_replay_gif",
+        localized_name="三维飞行回放 GIF",
+        exception_type="AttributeError",
+        exception_message="'str' object has no attribute 'value'",
+    )
+    manifest = ExportManifest(
+        output,
+        (),
+        ExportLanguage.ZH,
+        ExportTheme.LIGHT,
+        (failure,),
+    )
+
+    window._Export_ResultSet(manifest)
+    assert "失败项目：" in window.export_dialog.result_label.text()
+    assert "- 三维飞行回放 GIF" in window.export_dialog.result_label.text()
+    assert not window.export_dialog.failure_details_button.isHidden()
+    window.export_dialog.failure_details_button.click()
+    application.processEvents()
+    assert not window.export_dialog.failure_details_edit.isHidden()
+    detail = window.export_dialog.failure_details_edit.toPlainText()
+    assert "[flight_replay_gif] 三维飞行回放 GIF" in detail
+    assert "AttributeError" in detail
+    assert "'str' object has no attribute 'value'" in detail
+    window.close()
+
+
+def test_export_dialog_runs_gif_and_manifest_through_real_qthreadpool_worker(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_gui_worker_export.BIN")
+    )
+    window = MainWindow(builtin_registry())
+    window._Dataset_Set(dataset)
+    dialog = window.export_dialog
+    output = tmp_path / "gui_worker_export"
+    dialog.folder_edit.setText(str(output))
+    for checkbox in dialog._checks:
+        checkbox.setChecked(False)
+    dialog.gif_check.setChecked(True)
+    assert isinstance(dialog.export_language_combo.currentData(), str)
+    assert isinstance(dialog.export_theme_combo.currentData(), str)
+
+    dialog._Export_Request()
+    worker = window._active_worker
+    assert worker is not None
+    errors: list[tuple[str, str]] = []
+    worker.signals.error.connect(
+        lambda message, traceback_text: errors.append(
+            (message, traceback_text)
+        )
+    )
+    loop = QEventLoop()
+    worker.signals.finished.connect(loop.quit)
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(loop.quit)
+    timeout.start(60_000)
+    loop.exec()
+    timed_out = not timeout.isActive()
+    timeout.stop()
+    application.processEvents()
+
+    assert not timed_out
+    assert not errors
+    assert window._active_worker is None
+    assert (output / "Flight_Replay_ZH.gif").is_file()
+    assert (output / "Export_Manifest_ZH.json").is_file()
+    assert not (output / "Export_Failures_ZH.txt").exists()
+    assert dialog._result_manifest is not None
+    assert not dialog._result_manifest.failures
     window.close()

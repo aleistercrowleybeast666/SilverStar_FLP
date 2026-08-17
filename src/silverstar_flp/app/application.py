@@ -9,7 +9,9 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QStandardPaths, Qt
 from PySide6.QtWidgets import QApplication
 
+import silverstar_flp
 from silverstar_flp.app.version import PRODUCT_NAME, __version__
+from silverstar_flp.export import service as export_service
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 
@@ -37,6 +39,15 @@ def _Arguments_Parse(arguments: list[str]) -> argparse.Namespace:
     return parser.parse_args(arguments)
 
 
+def _RuntimeDiagnostics_Log() -> None:
+    package_file = Path(silverstar_flp.__file__ or "").resolve()
+    export_service_file = Path(export_service.__file__ or "").resolve()
+    logging.info("SilverStar_FLP version=%s", __version__)
+    logging.info("Python executable=%s", Path(sys.executable).resolve())
+    logging.info("silverstar_flp package path=%s", package_file.parent)
+    logging.info("export.service path=%s", export_service_file)
+
+
 def main(arguments: list[str] | None = None) -> int:
     options = _Arguments_Parse(list(arguments) if arguments is not None else sys.argv[1:])
     QApplication.setOrganizationName("SilverStar")
@@ -45,6 +56,7 @@ def main(arguments: list[str] | None = None) -> int:
     application = QApplication([sys.argv[0]])
     application.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, False)
     log_path = _Logging_Configure()
+    _RuntimeDiagnostics_Log()
 
     def exception_hook(exception_type, exception, exception_traceback) -> None:
         logging.critical(

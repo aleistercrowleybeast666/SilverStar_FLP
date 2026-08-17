@@ -36,23 +36,46 @@ Each `StateGroupSpec` declares:
 
 - stable `group_id` and translated `label_key`;
 - component names and state-domain unit;
-- a covariance-diagonal channel and the component indices owned by the group.
+- a covariance-diagonal channel and the component indices owned by the group;
+- an optional stable export `file_stem`.
 
 The GUI creates the State Group selector from these entries. It plots only the selected group and
 offers standard deviation (`sqrt(Pii)`, default) or variance (`Pii`) display. Adding ESKF position,
 velocity, attitude-error, gyro-bias, or accelerometer-bias groups therefore does not require a GUI
-change.
+change. Standard Export consumes the same entries and writes one engineering plot per group as
+`sqrt(Pii)` in that group's physical unit; it never combines state groups with different units.
 
 Each `MeasurementGroupSpec` declares:
 
 - stable measurement-group ID, translated label, dimension, and component names;
 - innovation, NIS, update-result, R-scale, and optional age/uncertainty/effective-R channels;
 - vector-column indices and optional attempt-mask/dimension channels;
-- optional soft/hard NIS threshold parameter IDs.
+- optional soft/hard NIS threshold parameter IDs;
+- the measurement-domain unit and optional stable export `file_stem`;
+- generic participation evidence: SYSTEM_CONFIG field names/provider indices, measurement record
+  names, and an optional validity channel.
 
-Innovation, NIS, Measurements, and the generic Update Event Table all consume this metadata.
+Innovation, NIS, Measurements, the generic Update Event Table, and Standard Export all consume
+this metadata. A measurement group that is configured but has no valid updates still gets
+Innovation, NIS, and `sqrt(R)` standard plots with an explanatory message. A group for which
+configuration evidence is explicitly present and disabled is not plotted and is recorded in the
+export manifest as `measurement_not_configured`; data values (including all-zero diagnostics) are
+never used to infer participation.
 Dimensions may be 1, 2, 3, or N. A future ESKF plugin can add Magnetometer, Dual-GNSS Heading,
-Air Data, Star Tracker, or another measurement group without modifying State Estimation.
+Air Data, Star Tracker, or another measurement group without modifying State Estimation or the
+exporter.
+
+An estimator that exposes full covariance sets `EstimatorVisualizationSpec.full_covariance` to a
+`FullCovarianceSpec`. The spec owns the stable upper-triangle/full-matrix channel ID, output file
+stem, ordered state symbols, physical state units, storage layout, and optional initial-record /
+initial-diagonal field metadata. Export reconstructs NxN
+from this metadata; KF_6 is 6-state today, while ESKF_15/24 require no exporter dimension branch.
+The keyframe TXT uses only the last valid P whose timestamp is not later than START,
+PARACHUTE_DEPLOY, or LANDING. If LANDING is absent, analysis end is the third event time. P is
+never interpolated and a future sample is never substituted. When START precedes the first full-P
+sample, the declared initial diagonal (KF_6: `INITIAL_STATE.p0_diagonal`) supplies the diagonal
+P0. The raw full-P time-series CSV stays available. Batch Export creates only defined engineering
+plots and does not mirror selected CSV channels into generic `Channel_*.png` files.
 
 KF_6 currently declares Position and Velocity state groups plus GNSS Position, GNSS Velocity, and
 Barometric Altitude measurement groups using its real recorded/recomputed channels. A new

@@ -98,7 +98,7 @@ def _Command_Replay(options: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, default=_Json_Default, ensure_ascii=False, indent=2))
     if options.output is not None:
-        manifest = FlightExporter().export(
+        manifest = FlightExporter(registry).export(
             dataset,
             options.output,
             options=ExportOptions(
@@ -112,8 +112,8 @@ def _Command_Replay(options: argparse.Namespace) -> int:
 
 
 def _Command_Export(options: argparse.Namespace) -> int:
-    _, dataset = _Dataset_Parse(options.path)
-    manifest = FlightExporter().export(
+    registry, dataset = _Dataset_Parse(options.path)
+    manifest = FlightExporter(registry).export(
         dataset,
         options.output,
         options=ExportOptions(

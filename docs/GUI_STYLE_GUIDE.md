@@ -13,6 +13,20 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   Language/theme fields and popups are deep blue with white text and accent-blue hover rows.
 - File actions are ordered Import, Export, Save Project, Save Project As, Open Project in the
   menu; the toolbar omits Save As. Import and export remain modal option dialogs.
+- Export defaults to `D:\SilverStar_FLP_Data\<project-name>_Data`; without a saved/open project,
+  use `D:\SilverStar_FLP_Data\<source-log-stem>_Data`. The destination remains editable. After an
+  export completes, the dialog exposes the generated localized export manifest directly. Failed
+  items are listed by localized name with toggleable exception details; any failure also triggers
+  a best-effort standard-I/O `Export_Failures_ZH|EN.txt`.
+- Full P exports as one localized `<Algorithm>_Full_P_Keyframes_ZH|EN.txt`, driven by Algorithm
+  Plugin metadata. It contains START, PARACHUTE_DEPLOY, and LANDING (or analysis-end fallback),
+  using only the last valid non-future P without interpolation; START falls back to declared
+  INITIAL_STATE P0 when it precedes the first full-P sample. Keep upper-triangle CSV; do not
+  generate its generic multi-curve PNG.
+- Batch Export writes all selected channels to CSV but creates PNGs only for standard engineering
+  plots. Estimator state/measurement plots come from `EstimatorVisualizationSpec`; configured
+  groups without valid updates receive explanatory plots, while explicitly unconfigured groups
+  are recorded as skipped.
 - Header, sidebar, menu, toolbar, and unselected tabs are deep blue. Selected navigation uses the
   same accent blue as Header combo hover with white text. All tabs retain their global style.
 - A combo popup opens downward, shows at most ten rows, and scrolls internally beyond ten.
@@ -30,7 +44,8 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   Current and show Landing.
 - Normal Replay, Flight plots, the 3D slider, trajectory PNG, and replay GIF use START-to-Landing as
   their mission horizon. Without a valid Landing event, use the active source's valid end. Raw logs,
-  Data Explorer channels, and raw CSV remain complete and immutable.
+  Data Explorer channels, raw CSV, and explicitly selected generic channel plots remain complete
+  and immutable; samples before START use negative mission time in generic channel plots.
 - Cache mission-relative `TrajectoryBounds` separately for Recorded Pure INS, Recorded KF_6, and
   every Recomputed/What-if result. Initial/Reset View fitting uses cached center and bounding radius
   with the OpenGL view's FOV and aspect ratio plus margin. Playback updates geometry only; it must

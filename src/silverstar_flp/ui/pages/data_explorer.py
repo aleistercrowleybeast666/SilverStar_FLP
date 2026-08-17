@@ -131,7 +131,9 @@ class DataExplorerPage(QWidget):
         if current is None:
             return
         channel_id = str(current.data(Qt.ItemDataRole.UserRole))
-        series = self._channels[channel_id]
+        series = self._channels.get(channel_id)
+        if series is None:
+            return
         self.channel_metadata.setText(
             self._translator.Text_Get(
                 "explorer.channel_metadata",

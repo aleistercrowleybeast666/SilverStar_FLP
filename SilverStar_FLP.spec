@@ -10,8 +10,8 @@ hiddenimports = (
 )
 
 analysis = Analysis(
-    ["../main.py"],
-    pathex=["../src"],
+    ["main.py"],
+    pathex=["src"],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
@@ -41,4 +41,3 @@ distribution = COLLECT(
     upx=True,
     name="SilverStar_FLP",
 )
-

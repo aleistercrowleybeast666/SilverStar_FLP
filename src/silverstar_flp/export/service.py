@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import colorsys
 import csv
-import io
 import json
+import logging
 import re
 from collections.abc import Callable, Mapping
 from contextlib import suppress
@@ -16,12 +16,14 @@ import numpy as np
 
 from silverstar_flp.analysis.overview import FlightSummary_Build
 from silverstar_flp.core.analysis_source import (
+    AnalysisSource,
     AnalysisSourceKind,
     ChannelResolver,
     ReplayResultStore,
 )
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
+from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector
 from silverstar_flp.core.mission import (
     MissionReplayBounds,
@@ -49,7 +51,15 @@ from silverstar_flp.export.plot_metadata import (
     ChannelDisplayMetadata_Get,
     ComponentLabel_Get,
 )
-from silverstar_flp.plugins.api.algorithm import AlgorithmResult
+from silverstar_flp.plugins.api.algorithm import (
+    AlgorithmMetadata,
+    AlgorithmResult,
+    EstimatorVisualizationSpec,
+    FullCovarianceSpec,
+    MeasurementGroupSpec,
+    StateGroupSpec,
+)
+from silverstar_flp.plugins.registry import PluginRegistry, builtin_registry
 
 
 class ExportLanguage(StrEnum):
@@ -72,16 +82,51 @@ class ExportOptions:
     include_diagnostics: bool = True
     include_events: bool = True
     include_csv: bool = True
+    include_full_covariance_keyframes: bool = True
     include_plots: bool = True
     include_trajectory_3d: bool = True
     include_attitude_gif: bool = True
     selected_channels: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "language", ExportLanguage(self.language))
+        object.__setattr__(self, "theme", ExportTheme(self.theme))
+        object.__setattr__(self, "ui_language", str(self.ui_language))
+        object.__setattr__(
+            self,
+            "selected_channels",
+            tuple(str(channel_id) for channel_id in self.selected_channels),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExportGenerated:
+    item_id: str
+    localized_name: str
+    path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class ExportSkipped:
+    item_id: str
+    localized_name: str
+    skipped_reason: str
+
 
 @dataclass(frozen=True, slots=True)
 class ExportFailure:
-    item: str
-    error: str
+    item_id: str
+    localized_name: str
+    exception_type: str
+    exception_message: str
+
+    @property
+    def item(self) -> str:
+        return self.item_id
+
+    @property
+    def error(self) -> str:
+        return f"{self.exception_type}: {self.exception_message}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +136,18 @@ class ExportManifest:
     language: ExportLanguage
     theme: ExportTheme
     failures: tuple[ExportFailure, ...] = ()
+    generated: tuple[ExportGenerated, ...] = ()
+    skipped: tuple[ExportSkipped, ...] = ()
+
+    def ManifestPath_Get(self) -> Path | None:
+        suffix = "_ZH" if self.language == ExportLanguage.ZH else "_EN"
+        candidate = self.output_directory / f"Export_Manifest{suffix}.json"
+        return candidate if candidate in self.files else None
+
+    def FailureReportPath_Get(self) -> Path | None:
+        suffix = "_ZH" if self.language == ExportLanguage.ZH else "_EN"
+        candidate = self.output_directory / f"Export_Failures{suffix}.txt"
+        return candidate if candidate in self.files else None
 
 
 _LABELS = {
@@ -112,9 +169,35 @@ _LABELS = {
         "deploy": "开伞",
         "landing": "着陆",
         "current": "当前位置",
-        "innovation": "KF_6 新息",
-        "nis": "KF_6 NIS",
-        "measurement_update": "KF_6 量测更新",
+        "source_recorded": "飞控记录",
+        "source_recomputed": "离线复算",
+        "source_what_if": "假设参数",
+        "state_std_quantity": "状态标准差（1σ）",
+        "innovation_quantity": "新息",
+        "nis_quantity": "归一化新息平方（NIS）",
+        "measurement_std_quantity": "量测标准差 sqrt(R)",
+        "measurement_update": "量测更新总览",
+        "no_valid_updates": "本任务未产生有效 {group}量测更新",
+        "no_valid_diagnostics": "未记录有效的 {group} 诊断样本",
+        "initial_p_source": "START 使用 INITIAL_STATE.p0_diagonal 构造的对角 P0",
+        "full_p_title": "完整协方差矩阵 P 关键帧",
+        "full_p_algorithm": "算法",
+        "full_p_source": "数据源",
+        "full_p_source_recorded": "飞控记录（Recorded）",
+        "full_p_source_recomputed": "复算（Recomputed）",
+        "full_p_source_what_if": "假设参数（What-if）",
+        "full_p_states": "状态向量顺序和物理单位",
+        "full_p_rule": (
+            "取帧规则：仅使用 P timestamp <= Event timestamp 的最后一个有效样本；"
+            "不插值；START 之前无完整 P 时使用 INITIAL_STATE 的 P0 对角阵。"
+        ),
+        "full_p_event_timestamp": "事件时间戳 [us]",
+        "full_p_timestamp": "实际采用的 P 时间戳 [us]",
+        "full_p_delta": "时间差（事件 - P）",
+        "full_p_matrix": "完整 P 矩阵",
+        "full_p_analysis_end": "未找到 LANDING；事件时刻使用分析结束时刻",
+        "full_p_event_missing": "日志中没有该事件",
+        "full_p_sample_missing": "事件时刻或此前没有有效 P；未使用事件后的样本",
     },
     ExportLanguage.EN: {
         "time": "Mission Time",
@@ -134,9 +217,68 @@ _LABELS = {
         "deploy": "Deploy",
         "landing": "Landing",
         "current": "Current Position",
-        "innovation": "KF_6 Innovation",
-        "nis": "KF_6 NIS",
-        "measurement_update": "KF_6 Measurement Update",
+        "source_recorded": "Recorded",
+        "source_recomputed": "Offline Recomputed",
+        "source_what_if": "What-if",
+        "state_std_quantity": "State Standard Deviation (1σ)",
+        "innovation_quantity": "Innovation",
+        "nis_quantity": "Normalized Innovation Squared (NIS)",
+        "measurement_std_quantity": "Measurement Standard Deviation sqrt(R)",
+        "measurement_update": "Measurement Update Overview",
+        "no_valid_updates": "No valid {group} measurement updates were recorded.",
+        "no_valid_diagnostics": (
+            "No valid {group} diagnostic samples were recorded."
+        ),
+        "initial_p_source": (
+            "START uses the diagonal P0 reconstructed from "
+            "INITIAL_STATE.p0_diagonal"
+        ),
+        "full_p_title": "Full Covariance Matrix P Keyframes",
+        "full_p_algorithm": "Algorithm",
+        "full_p_source": "Source",
+        "full_p_source_recorded": "Recorded",
+        "full_p_source_recomputed": "Recomputed",
+        "full_p_source_what_if": "What-if",
+        "full_p_states": "State vector order and physical units",
+        "full_p_rule": (
+            "Selection rule: use the last valid sample with P timestamp <= "
+            "Event timestamp; no interpolation. If START precedes the first full-P "
+            "sample, use the INITIAL_STATE P0 diagonal."
+        ),
+        "full_p_event_timestamp": "Event timestamp [us]",
+        "full_p_timestamp": "Selected P timestamp [us]",
+        "full_p_delta": "Time difference (Event - P)",
+        "full_p_matrix": "Full P matrix",
+        "full_p_analysis_end": "LANDING not found; the analysis end is used as the event time",
+        "full_p_event_missing": "The event is not present in the log",
+        "full_p_sample_missing": (
+            "No valid P exists at or before the event; no post-event sample was used"
+        ),
+    },
+}
+
+_ITEM_LABELS = {
+    ExportLanguage.ZH: {
+        "overview": "飞行概览",
+        "diagnostics": "解析诊断",
+        "events": "事件清单",
+        "csv": "CSV 数据",
+        "full_covariance": "完整协方差矩阵 P 关键帧",
+        "trajectory_3d": "三维飞行轨迹",
+        "flight_replay_gif": "三维飞行回放 GIF",
+        "manifest": "导出清单",
+        "failure_report": "导出失败报告",
+    },
+    ExportLanguage.EN: {
+        "overview": "Flight Overview",
+        "diagnostics": "Parser Diagnostics",
+        "events": "Event List",
+        "csv": "CSV Data",
+        "full_covariance": "Full Covariance Matrix P Keyframes",
+        "trajectory_3d": "3D Flight Trajectory",
+        "flight_replay_gif": "3D Flight Replay GIF",
+        "manifest": "Export Manifest",
+        "failure_report": "Export Failure Report",
     },
 }
 
@@ -182,6 +324,66 @@ _ROCKET_FACES = np.asarray(
 _EVENT_MISSION_START = 0x03
 _EVENT_DEPLOY = 0x29
 _EVENT_LANDING = 0x2A
+_REPLAY_FRAMES_PER_SECOND = 30
+_REPLAY_FINAL_HOLD_FRAME_COUNT = 30
+_REPLAY_FINAL_HOLD_DURATION_MS = 1_000
+_EXPORT_PROGRESS_SCALE = 1_000
+_ATTITUDE_AXIS_LIMIT = 2.5
+_ATTITUDE_VIEW_ELEVATION = 18.0
+_ATTITUDE_VIEW_AZIMUTH = 35.0
+_TRAJECTORY_VIEW_ELEVATION = 20.0
+_TRAJECTORY_VIEW_AZIMUTH = 35.0
+
+
+@dataclass(frozen=True, slots=True)
+class _ReplayFrameSample:
+    timestamp_us: int
+    quaternion: np.ndarray
+    trajectory_end_index: int
+    pre_deploy_end_index: int
+    post_deploy_start_index: int
+    current_position: np.ndarray
+    current_color: str
+    deploy_visible: bool
+    landing_visible: bool
+
+
+@dataclass(slots=True)
+class _ReplayTrajectoryArtists:
+    pre_deploy_line: Any
+    post_deploy_line: Any
+    current_marker: Any
+    deploy_marker: Any | None
+    landing_marker: Any | None
+
+
+@dataclass(slots=True)
+class _ExportProgressTracker:
+    context: TaskContext
+    total_units: int
+    completed_units: int = 0
+    last_reported_step: int = -1
+
+    def Unit_Complete(self, code: str, units: int = 1) -> None:
+        if units <= 0:
+            return
+        self.completed_units = min(
+            self.completed_units + units,
+            max(self.total_units, 1),
+        )
+        progress = self.completed_units / max(self.total_units, 1)
+        step = int(progress * _EXPORT_PROGRESS_SCALE)
+        if step <= self.last_reported_step and self.completed_units < self.total_units:
+            return
+        self.last_reported_step = step
+        self.context.Progress_Report(progress, code)
+
+    def Finish(self, code: str) -> None:
+        if self.completed_units >= self.total_units and self.last_reported_step >= 1_000:
+            return
+        self.completed_units = max(self.total_units, 1)
+        self.last_reported_step = _EXPORT_PROGRESS_SCALE
+        self.context.Progress_Report(1.0, code)
 
 
 def _PlotColor_Get(index: int) -> str:
@@ -239,6 +441,9 @@ def _Series_Crop(
 
 
 class FlightExporter:
+    def __init__(self, registry: PluginRegistry | None = None) -> None:
+        self._registry = registry or builtin_registry()
+
     def export(
         self,
         dataset: FlightDataset,
@@ -256,6 +461,8 @@ class FlightExporter:
         output.mkdir(parents=True, exist_ok=True)
         suffix = "_ZH" if language == ExportLanguage.ZH else "_EN"
         files: list[Path] = []
+        generated: list[ExportGenerated] = []
+        skipped: list[ExportSkipped] = []
         failures: list[ExportFailure] = []
         store = self._Store_Prepare(replay_store, algorithm_results or {})
         resolver = ChannelResolver(dataset, store)
@@ -265,18 +472,161 @@ class FlightExporter:
         if requested.selected_channels:
             selected = set(requested.selected_channels)
             channels = {name: series for name, series in channels.items() if name in selected}
-        item_count = max(len(channels), 1)
+        full_covariance = (
+            self._FullCovarianceSelection_Get(resolver)
+            if requested.include_full_covariance_keyframes
+            else None
+        )
+        plot_directory = output / f"Plots{suffix}"
+        standard_plot_units = (
+            self._StandardPlotWorkUnitCount_Get(
+                dataset,
+                resolver,
+                plot_directory,
+                suffix,
+                language,
+                requested.theme,
+            )
+            if requested.include_plots
+            else 0
+        )
+        gif_attitude = (
+            resolver.Series_Get("attitude.q_nb")
+            if requested.include_attitude_gif
+            else None
+        )
+        gif_position = (
+            resolver.Series_Get("navigation.position_enu")
+            if requested.include_attitude_gif
+            else None
+        )
+        gif_main_frame_count = 0
+        if gif_attitude is not None and gif_position is not None:
+            deploy_timestamp = _Event_Timestamp(dataset, _EVENT_DEPLOY)
+            landing_timestamp = (
+                mission_bounds.end_timestamp_us
+                if mission_bounds.end_reason == MissionReplayEndReason.LANDING
+                else None
+            )
+            gif_main_frame_count = int(
+                self._ReplayFrameTimestamps_Get(
+                    gif_attitude,
+                    gif_position,
+                    mission_bounds.start_timestamp_us,
+                    frames_per_second=_REPLAY_FRAMES_PER_SECOND,
+                    end_timestamp_us=mission_bounds.end_timestamp_us,
+                    key_event_timestamps=tuple(
+                        timestamp
+                        for timestamp in (
+                            mission_bounds.start_timestamp_us,
+                            deploy_timestamp,
+                            landing_timestamp,
+                        )
+                        if timestamp is not None
+                    ),
+                ).size
+            )
+        gif_frame_units = (
+            gif_main_frame_count + _REPLAY_FINAL_HOLD_FRAME_COUNT
+            if gif_main_frame_count
+            else 0
+        )
+        total_work_units = (
+            int(requested.include_overview)
+            + int(requested.include_diagnostics)
+            + int(requested.include_events)
+            + (len(channels) if requested.include_csv else 0)
+            + int(full_covariance is not None)
+            + standard_plot_units
+            + int(requested.include_trajectory_3d)
+            + gif_frame_units
+            + int(requested.include_attitude_gif)
+            + 1  # Export manifest.
+        )
+        progress = _ExportProgressTracker(task_context, total_work_units)
 
-        def attempt(item: str, path: Path, callback: Callable[[], None]) -> None:
+        def item_name(item_id: str, explicit_name: str | None = None) -> str:
+            return explicit_name or self._ItemName_Get(item_id, language)
+
+        def failure_add(
+            item_id: str,
+            localized_name: str,
+            exception: Exception,
+        ) -> None:
+            failure = ExportFailure(
+                item_id=item_id,
+                localized_name=localized_name,
+                exception_type=type(exception).__name__,
+                exception_message=str(exception),
+            )
+            failures.append(failure)
+            logging.warning(
+                "Export item failed (%s / %s): %s",
+                item_id,
+                localized_name,
+                failure.error,
+            )
+
+        def attempt(
+            item_id: str,
+            path: Path,
+            callback: Callable[[], None],
+            localized_name: str | None = None,
+            progress_code: str = "export.running",
+        ) -> None:
+            name = item_name(item_id, localized_name)
             try:
                 task_context.Cancel_RaiseIfRequested()
                 callback()
+                if not path.is_file():
+                    raise FileNotFoundError(f"export_output_missing:{path.name}")
                 files.append(path)
+                generated.append(ExportGenerated(item_id, name, path))
             except Exception as exc:  # Each product must fail independently.
-                failures.append(ExportFailure(item, f"{type(exc).__name__}: {exc}"))
+                failure_add(item_id, name, exc)
+            finally:
+                progress.Unit_Complete(progress_code)
+
+        def skip(
+            item_id: str,
+            localized_name: str,
+            reason: str,
+        ) -> None:
+            skipped.append(ExportSkipped(item_id, localized_name, reason))
+
+        failure_report_path = output / f"Export_Failures{suffix}.txt"
+
+        def failure_report_ensure() -> None:
+            if not failures:
+                return
+            name = item_name("failure_report")
+            try:
+                self._FailureReport_Write(
+                    failure_report_path,
+                    language,
+                    tuple(
+                        failure
+                        for failure in failures
+                        if failure.item_id != "failure_report"
+                    ),
+                )
+                failures[:] = [
+                    failure
+                    for failure in failures
+                    if failure.item_id != "failure_report"
+                ]
+                if failure_report_path not in files:
+                    files.append(failure_report_path)
+                    generated.append(
+                        ExportGenerated("failure_report", name, failure_report_path)
+                    )
+            except Exception as exc:
+                if not any(
+                    failure.item_id == "failure_report" for failure in failures
+                ):
+                    failure_add("failure_report", name, exc)
 
         if requested.include_overview:
-            task_context.Progress_Report(0.02, "export.overview")
             path = output / f"Flight_Overview{suffix}.json"
             attempt(
                 "overview",
@@ -290,6 +640,7 @@ class FlightExporter:
                     ),
                     encoding="utf-8",
                 ),
+                item_name("overview"),
             )
         if requested.include_diagnostics:
             path = output / f"Parser_Diagnostics{suffix}.json"
@@ -300,15 +651,21 @@ class FlightExporter:
                     json.dumps(dataset.diagnostics.to_dict(), ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 ),
+                item_name("diagnostics"),
             )
         if requested.include_events:
             path = output / f"Events{suffix}.csv"
-            attempt("events", path, lambda: self._Events_Write(dataset, path))
+            attempt(
+                "events",
+                path,
+                lambda: self._Events_Write(dataset, path),
+                item_name("events"),
+            )
 
         if requested.include_csv:
             csv_directory = output / f"CSV{suffix}"
             csv_directory.mkdir(exist_ok=True)
-            for index, (channel_id, series) in enumerate(channels.items()):
+            for channel_id, series in channels.items():
                 path = csv_directory / f"{_Filename_Sanitize(channel_id)}{suffix}.csv"
                 attempt(
                     f"csv:{channel_id}",
@@ -316,14 +673,39 @@ class FlightExporter:
                     lambda p=path, c=channel_id, s=series: self._SeriesCsv_Write(
                         dataset, c, s, p
                     ),
+                    f"{item_name('csv')} · {channel_id}",
                 )
-                task_context.Progress_Report(
-                    0.05 + 0.30 * (index + 1) / item_count,
-                    "export.csv",
+
+        if requested.include_full_covariance_keyframes:
+            if full_covariance is not None:
+                source, metadata, specification, series = full_covariance
+                path = output / f"{specification.file_stem}{suffix}.txt"
+                attempt(
+                    f"full_covariance_keyframes:{metadata.plugin_id}:{source.kind.value}",
+                    path,
+                    lambda: self._FullCovarianceKeyframes_Write(
+                        dataset,
+                        series,
+                        path,
+                        language,
+                        source,
+                        metadata,
+                        specification,
+                        resolver.MissionReplayBounds_Get(source.source_id),
+                    ),
+                    (
+                        f"{item_name('full_covariance')} · "
+                        f"{metadata.display_name}"
+                    ),
+                )
+            else:
+                skip(
+                    "full_covariance_keyframes",
+                    item_name("full_covariance"),
+                    "full_covariance_unavailable",
                 )
 
         if requested.include_plots:
-            plot_directory = output / f"Plots{suffix}"
             plot_directory.mkdir(exist_ok=True)
             self._StandardPlots_Write(
                 dataset,
@@ -333,30 +715,8 @@ class FlightExporter:
                 language,
                 requested.theme,
                 attempt,
+                skip,
             )
-            if requested.selected_channels:
-                for index, (channel_id, series) in enumerate(channels.items()):
-                    if series.count == 0 or np.asarray(series.values).ndim > 2:
-                        continue
-                    path = plot_directory / (
-                        f"Channel_{_Filename_Sanitize(channel_id)}{suffix}.png"
-                    )
-                    attempt(
-                        f"plot:{channel_id}",
-                        path,
-                        lambda p=path, c=channel_id, s=series: self._SeriesPlot_Write(
-                            dataset,
-                            c,
-                            s,
-                            p,
-                            language,
-                            requested.theme,
-                        ),
-                    )
-                    task_context.Progress_Report(
-                        0.37 + 0.28 * (index + 1) / item_count,
-                        "export.plots",
-                    )
 
         if requested.include_trajectory_3d:
             path = output / f"Trajectory_3D{suffix}.png"
@@ -375,9 +735,9 @@ class FlightExporter:
                     mission_bounds=mission_bounds,
                     trajectory_bounds=trajectory_bounds,
                 ),
+                item_name("trajectory_3d"),
             )
         if requested.include_attitude_gif:
-            task_context.Progress_Report(0.72, "export.gif")
             path = output / f"Flight_Replay{suffix}.gif"
             attempt(
                 "flight_replay_gif",
@@ -385,43 +745,60 @@ class FlightExporter:
                 lambda: self._FlightReplayGif_Write(
                     dataset,
                     self._Series_Require(
-                        resolver.Series_Get("attitude.q_nb"),
+                        gif_attitude,
                         "attitude.q_nb",
                     ),
                     self._Series_Require(
-                        resolver.Series_Get("navigation.position_enu"),
+                        gif_position,
                         "navigation.position_enu",
                     ),
                     path,
                     language,
                     requested.theme,
-                    task_context,
+                    progress,
                     mission_bounds=mission_bounds,
                     trajectory_bounds=trajectory_bounds,
                 ),
+                item_name("flight_replay_gif"),
             )
 
+        failure_report_ensure()
         manifest_path = output / f"Export_Manifest{suffix}.json"
+        manifest_name = item_name("manifest")
+        prospective_generated = (
+            *generated,
+            ExportGenerated("manifest", manifest_name, manifest_path),
+        )
         try:
+            task_context.Cancel_RaiseIfRequested()
             self._Manifest_Write(
                 manifest_path,
                 output,
-                files,
+                prospective_generated,
+                skipped,
                 failures,
                 language,
                 requested.theme,
                 store,
             )
             files.append(manifest_path)
+            generated.append(
+                ExportGenerated("manifest", manifest_name, manifest_path)
+            )
         except Exception as exc:
-            failures.append(ExportFailure("manifest", f"{type(exc).__name__}: {exc}"))
-        task_context.Progress_Report(1.0, "export.complete")
+            failure_add("manifest", manifest_name, exc)
+            failure_report_ensure()
+        finally:
+            progress.Unit_Complete("export.running")
+        progress.Finish("export.running")
         return ExportManifest(
             output,
             tuple(files),
             language,
             requested.theme,
             tuple(failures),
+            tuple(generated),
+            tuple(skipped),
         )
 
     @staticmethod
@@ -509,23 +886,70 @@ class FlightExporter:
                 )
 
     @staticmethod
+    def _ItemName_Get(item_id: str, language: ExportLanguage) -> str:
+        labels = _ITEM_LABELS[language]
+        if item_id.startswith("csv:"):
+            return f"{labels['csv']} · {item_id.partition(':')[2]}"
+        if item_id.startswith("full_covariance"):
+            return labels["full_covariance"]
+        if item_id.startswith("standard_plot:"):
+            return item_id.partition(":")[2].replace("_", " ")
+        return labels.get(item_id, item_id)
+
+    @staticmethod
+    def _FailureReport_Write(
+        path: Path,
+        language: ExportLanguage,
+        failures: tuple[ExportFailure, ...],
+    ) -> None:
+        lines = ["SilverStar_FLP Export Failures", "=" * 36]
+        type_label = "类型" if language == ExportLanguage.ZH else "Type"
+        message_label = "信息" if language == ExportLanguage.ZH else "Message"
+        name_label = "项目" if language == ExportLanguage.ZH else "Item"
+        for failure in failures:
+            lines.extend(
+                (
+                    "",
+                    failure.item_id,
+                    f"{name_label}: {failure.localized_name}",
+                    f"{type_label}: {failure.exception_type}",
+                    f"{message_label}: {failure.exception_message}",
+                )
+            )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    @staticmethod
     def _Manifest_Write(
         path: Path,
         output: Path,
-        files: list[Path],
+        generated: tuple[ExportGenerated, ...],
+        skipped: list[ExportSkipped],
         failures: list[ExportFailure],
         language: ExportLanguage,
         theme: ExportTheme,
         store: ReplayResultStore,
     ) -> None:
         active = store.ActiveSource_Get()
+        generated_payload = [
+            {
+                "item_id": item.item_id,
+                "localized_name": item.localized_name,
+                "path": str(item.path.relative_to(output)),
+            }
+            for item in generated
+        ]
+        skipped_payload = [asdict(item) for item in skipped]
+        failure_payload = [asdict(item) for item in failures]
         payload = {
             "language": language.value,
             "theme": theme.value,
             "active_analysis_source": active.source_id,
             "active_source_kind": active.kind.value,
-            "files": [str(item.relative_to(output)) for item in files],
-            "failures": [asdict(item) for item in failures],
+            "generated": generated_payload,
+            "skipped": skipped_payload,
+            "failed": failure_payload,
+            "files": [item["path"] for item in generated_payload],
+            "failures": failure_payload,
         }
         path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -578,24 +1002,20 @@ class FlightExporter:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
 
-        start = dataset.start_timestamp_us or int(series.timestamp_us[0])
-        cropped = _Series_Crop(series, start)
-        if cropped.count == 0:
-            raise ValueError(f"no_post_start_samples:{channel_id}")
-        metadata = ChannelDisplayMetadata_Get(channel_id, cropped)
+        metadata = ChannelDisplayMetadata_Get(channel_id, series)
         background, foreground, _ = self._Plot_Configure(theme)
         figure, axis = plt.subplots(figsize=(10, 5), dpi=140)
         self._Axes_Style(figure, axis, theme)
-        time = self._Time_Get(dataset, cropped)
-        values = np.asarray(cropped.values, dtype=np.float64)
+        time = self._Time_Get(dataset, series)
+        values = np.asarray(series.values, dtype=np.float64)
         values = values.copy()
         if values.ndim == 1:
-            values[~cropped.valid] = np.nan
+            values[~series.valid] = np.nan
             axis.plot(time, values, color=_PlotColor_Get(0), linewidth=1.15)
         else:
-            values[~cropped.valid, :] = np.nan
+            values[~series.valid, :] = np.nan
             for index in range(values.shape[1]):
-                raw_label = cropped.columns[index] if cropped.columns else str(index)
+                raw_label = series.columns[index] if series.columns else str(index)
                 axis.plot(
                     time,
                     values[:, index],
@@ -611,7 +1031,7 @@ class FlightExporter:
         axis.set_title(title, color=foreground)
         axis.set_xlabel(f"{labels['time']} (s)", color=foreground)
         quantity = metadata.Quantity_Get(language.value)
-        unit = "" if cropped.unit in ("", "1", "enum", "bitmask") else f" [{cropped.unit}]"
+        unit = "" if series.unit in ("", "1", "enum", "bitmask") else f" [{series.unit}]"
         axis.set_ylabel(f"{quantity}{unit}", color=foreground)
         figure.tight_layout()
         figure.savefig(path, facecolor=background)
@@ -671,13 +1091,784 @@ class FlightExporter:
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
+    def _FullCovarianceSpecifications_Get(
+        self,
+    ) -> tuple[tuple[AlgorithmMetadata, FullCovarianceSpec], ...]:
+        specifications: list[tuple[AlgorithmMetadata, FullCovarianceSpec]] = []
+        for plugin in self._registry.algorithms:
+            visualization = plugin.metadata.estimator_visualization
+            if visualization is not None and visualization.full_covariance is not None:
+                specifications.append(
+                    (plugin.metadata, visualization.full_covariance)
+                )
+        return tuple(specifications)
+
+    def _FullCovarianceChannel_Is(self, channel_id: str) -> bool:
+        stable_id = channel_id.rsplit(" / ", 1)[-1]
+        stable_id = stable_id.replace(".recorded.", ".", 1)
+        return any(
+            stable_id == specification.channel_id
+            for _, specification in self._FullCovarianceSpecifications_Get()
+        )
+
+    def _FullCovarianceSelection_Get(
+        self,
+        resolver: ChannelResolver,
+    ) -> tuple[
+        AnalysisSource,
+        AlgorithmMetadata,
+        FullCovarianceSpec,
+        TimeSeries,
+    ] | None:
+        specifications = self._FullCovarianceSpecifications_Get()
+        by_algorithm = {
+            metadata.plugin_id: (metadata, specification)
+            for metadata, specification in specifications
+        }
+        sources = resolver.EstimatorSources_Get(tuple(by_algorithm))
+        active = resolver.store.ActiveSource_Get()
+        ordered: list[AnalysisSource] = []
+        ordered.extend(
+            source for source in sources if source.source_id == active.source_id
+        )
+        ordered.extend(
+            source
+            for source in sources
+            if source.kind == AnalysisSourceKind.RECORDED and source not in ordered
+        )
+        for source in ordered:
+            if source.algorithm_id is None:
+                continue
+            metadata_and_specification = by_algorithm.get(source.algorithm_id)
+            if metadata_and_specification is None:
+                continue
+            metadata, specification = metadata_and_specification
+            series = resolver.Series_Get(specification.channel_id, source.source_id)
+            if series is not None and series.count:
+                return source, metadata, specification, series
+        return None
+
     @staticmethod
-    def _EstimatorSourceId_Select(resolver: ChannelResolver) -> str:
-        active = resolver.store.ActiveSource_Get().source_id
-        sources = resolver.EstimatorSources_Get()
-        if any(source.source_id == active for source in sources):
-            return active
-        return sources[0].source_id if sources else ReplayResultStore.RECORDED_SOURCE_ID
+    def _FullCovarianceMatrix_Get(
+        sample: np.ndarray,
+        specification: FullCovarianceSpec,
+    ) -> np.ndarray:
+        dimension = len(specification.state_symbols)
+        values = np.asarray(sample, dtype=np.float64)
+        if specification.storage == "full_matrix":
+            if values.size != dimension * dimension:
+                raise ValueError("full_covariance_matrix_size_mismatch")
+            return values.reshape(dimension, dimension)
+        expected = dimension * (dimension + 1) // 2
+        flat = values.reshape(-1)
+        if flat.size != expected:
+            raise ValueError("full_covariance_upper_triangle_size_mismatch")
+        matrix = np.empty((dimension, dimension), dtype=np.float64)
+        value_index = 0
+        for row in range(dimension):
+            for column in range(row, dimension):
+                matrix[row, column] = flat[value_index]
+                matrix[column, row] = flat[value_index]
+                value_index += 1
+        return matrix
+
+    @staticmethod
+    def _FullCovarianceKeyframeIndex_Get(
+        series: TimeSeries,
+        event_timestamp_us: int,
+    ) -> int | None:
+        limit = int(
+            np.searchsorted(
+                series.timestamp_us,
+                np.uint64(max(event_timestamp_us, 0)),
+                side="right",
+            )
+        )
+        if limit == 0:
+            return None
+        values = np.asarray(series.values).reshape(series.count, -1)
+        eligible = series.valid[:limit] & np.all(np.isfinite(values[:limit]), axis=1)
+        indices = np.flatnonzero(eligible)
+        return int(indices[-1]) if indices.size else None
+
+    @staticmethod
+    def _InitialCovariance_Get(
+        dataset: FlightDataset,
+        event_timestamp_us: int,
+        specification: FullCovarianceSpec,
+    ) -> tuple[int, np.ndarray] | None:
+        if (
+            not specification.initial_record_name
+            or not specification.initial_diagonal_field
+        ):
+            return None
+        dimension = len(specification.state_symbols)
+        for record in reversed(
+            dataset.Records_Get(specification.initial_record_name)
+        ):
+            if record.timestamp_us > event_timestamp_us:
+                continue
+            diagonal = np.asarray(
+                record.payload.get(specification.initial_diagonal_field, ()),
+                dtype=np.float64,
+            ).reshape(-1)
+            if diagonal.size != dimension or not np.all(np.isfinite(diagonal)):
+                continue
+            return int(record.timestamp_us), np.diag(diagonal)
+        return None
+
+    def _FullCovarianceKeyframes_Write(
+        self,
+        dataset: FlightDataset,
+        series: TimeSeries,
+        path: Path,
+        language: ExportLanguage,
+        source: AnalysisSource,
+        metadata: AlgorithmMetadata,
+        specification: FullCovarianceSpec,
+        mission_bounds: MissionReplayBounds,
+    ) -> None:
+        labels = _LABELS[language]
+        source_label = labels[f"full_p_source_{source.kind.value}"]
+        dimension = len(specification.state_symbols)
+        landing_timestamp = _Event_Timestamp(dataset, _EVENT_LANDING)
+        events = (
+            ("START", mission_bounds.start_timestamp_us, None),
+            (
+                "PARACHUTE_DEPLOY",
+                _Event_Timestamp(dataset, _EVENT_DEPLOY),
+                None,
+            ),
+            (
+                "LANDING",
+                (
+                    landing_timestamp
+                    if landing_timestamp is not None
+                    else mission_bounds.end_timestamp_us
+                ),
+                labels["full_p_analysis_end"] if landing_timestamp is None else None,
+            ),
+        )
+        lines = [
+            labels["full_p_title"],
+            "=" * 72,
+            f"{labels['full_p_algorithm']}: {metadata.display_name} ({metadata.plugin_id})",
+            f"{labels['full_p_source']}: {source_label}",
+            f"{labels['full_p_states']}:",
+        ]
+        lines.extend(
+            f"  {index}: {symbol} [{unit}]"
+            for index, (symbol, unit) in enumerate(
+                zip(
+                    specification.state_symbols,
+                    specification.state_units,
+                    strict=True,
+                )
+            )
+        )
+        lines.extend(("", labels["full_p_rule"]))
+        for event_name, event_timestamp, note in events:
+            lines.extend(("", f"[{event_name}]"))
+            if note is not None:
+                lines.append(note)
+            if event_timestamp is None:
+                lines.extend(
+                    (
+                        f"{labels['full_p_event_timestamp']}: N/A",
+                        f"{labels['full_p_timestamp']}: N/A",
+                        f"{labels['full_p_delta']}: N/A",
+                        f"{labels['full_p_matrix']} ({dimension} x {dimension}): N/A",
+                        labels["full_p_event_missing"],
+                    )
+                )
+                continue
+            event_timestamp = int(event_timestamp)
+            lines.append(
+                f"{labels['full_p_event_timestamp']}: {event_timestamp}"
+            )
+            sample_index = self._FullCovarianceKeyframeIndex_Get(
+                series,
+                event_timestamp,
+            )
+            initial = (
+                self._InitialCovariance_Get(
+                    dataset,
+                    event_timestamp,
+                    specification,
+                )
+                if event_name == "START" and sample_index is None
+                else None
+            )
+            if sample_index is None and initial is None:
+                lines.extend(
+                    (
+                        f"{labels['full_p_timestamp']}: N/A",
+                        f"{labels['full_p_delta']}: N/A",
+                        f"{labels['full_p_matrix']} ({dimension} x {dimension}): N/A",
+                        labels["full_p_sample_missing"],
+                    )
+                )
+                continue
+            if initial is not None:
+                p_timestamp, matrix = initial
+                lines.append(labels["initial_p_source"])
+            else:
+                assert sample_index is not None
+                p_timestamp = int(series.timestamp_us[sample_index])
+                matrix = self._FullCovarianceMatrix_Get(
+                    np.asarray(series.values[sample_index]),
+                    specification,
+                )
+            difference_us = event_timestamp - p_timestamp
+            lines.extend(
+                (
+                    f"{labels['full_p_timestamp']}: {p_timestamp}",
+                    f"{labels['full_p_delta']}: {difference_us} us "
+                    f"({difference_us * 1.0e-6:.9f} s)",
+                    f"{labels['full_p_matrix']} ({dimension} x {dimension}):",
+                )
+            )
+            lines.extend(
+                "  " + " ".join(f"{float(value):.17e}" for value in row)
+                for row in matrix
+            )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _EstimatorSelection_Get(
+        self,
+        resolver: ChannelResolver,
+    ) -> tuple[
+        AnalysisSource,
+        AlgorithmMetadata,
+        EstimatorVisualizationSpec,
+    ] | None:
+        metadata_by_id = {
+            plugin.metadata.plugin_id: plugin.metadata
+            for plugin in self._registry.algorithms
+            if plugin.metadata.estimator_visualization is not None
+        }
+        sources = resolver.EstimatorSources_Get(tuple(metadata_by_id))
+        active_id = resolver.store.ActiveSource_Get().source_id
+
+        def source_score(source: AnalysisSource) -> int:
+            if source.algorithm_id is None:
+                return -1
+            metadata = metadata_by_id.get(source.algorithm_id)
+            if metadata is None or metadata.estimator_visualization is None:
+                return -1
+            channels = [
+                group.covariance_channel
+                for group in metadata.estimator_visualization.state_groups
+            ]
+            for group in metadata.estimator_visualization.measurement_groups:
+                channels.extend(
+                    (
+                        group.innovation_channel,
+                        group.nis_channel,
+                        group.effective_r_channel,
+                        group.update_result_channel,
+                    )
+                )
+            return sum(
+                bool(channel_id)
+                and resolver.Series_Get(channel_id, source.source_id) is not None
+                for channel_id in channels
+            )
+
+        ordered = sorted(
+            sources,
+            key=lambda source: (
+                source.source_id == active_id,
+                source.kind == AnalysisSourceKind.RECORDED,
+                source_score(source),
+            ),
+            reverse=True,
+        )
+        for source in ordered:
+            if source.algorithm_id is None:
+                continue
+            metadata = metadata_by_id.get(source.algorithm_id)
+            if metadata is None or metadata.estimator_visualization is None:
+                continue
+            return source, metadata, metadata.estimator_visualization
+        return None
+
+    def _SourceParameters_Get(
+        self,
+        dataset: FlightDataset,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+    ) -> Mapping[str, Any]:
+        if source.algorithm_id is None:
+            return {}
+        if source.kind == AnalysisSourceKind.RECORDED:
+            try:
+                return self._registry.Algorithm_Get(
+                    source.algorithm_id
+                ).recorded_parameters(dataset)
+            except (KeyError, TypeError, ValueError):
+                return {}
+        entry = resolver.store.SourceEntry_Get(source.source_id)
+        return entry.parameters if entry is not None else {}
+
+    @staticmethod
+    def _SourceLabel_Get(
+        source: AnalysisSource,
+        language: ExportLanguage,
+    ) -> str:
+        return _LABELS[language][f"source_{source.kind.value}"]
+
+    @staticmethod
+    def _SourceFileStem_Get(source: AnalysisSource) -> str:
+        return {
+            AnalysisSourceKind.RECORDED: "Recorded",
+            AnalysisSourceKind.RECOMPUTED: "Recomputed",
+            AnalysisSourceKind.WHAT_IF: "What_If",
+        }[source.kind]
+
+    @staticmethod
+    def _AlgorithmFileStem_Get(metadata: AlgorithmMetadata) -> str:
+        return _Filename_Sanitize(metadata.display_name.replace("_", ""))
+
+    @staticmethod
+    def _GroupFileStem_Get(group_id: str, configured_stem: str) -> str:
+        if configured_stem:
+            return _Filename_Sanitize(configured_stem)
+        return "_".join(
+            part.upper() if part.lower() == "gnss" else part.title()
+            for part in group_id.split("_")
+            if part
+        )
+
+    @staticmethod
+    def _GroupLabel_Get(
+        group_id: str,
+        label_key: str,
+        language: ExportLanguage,
+    ) -> str:
+        translated = Translator(language.value).Text_Get(label_key)
+        if translated != label_key:
+            return translated
+        return group_id.replace("_", " ").title()
+
+    @staticmethod
+    def _SeriesComponents_Select(
+        series: TimeSeries | None,
+        indices: tuple[int, ...],
+        columns: tuple[str, ...],
+    ) -> TimeSeries | None:
+        if series is None or series.count == 0:
+            return None
+        values = np.asarray(series.values, dtype=np.float64)
+        values = values[:, None] if values.ndim == 1 else values
+        if not indices or max(indices) >= values.shape[1]:
+            return None
+        selected = values[:, indices]
+        return TimeSeries(
+            timestamp_us=series.timestamp_us,
+            values=selected,
+            unit=series.unit,
+            quantity=series.quantity,
+            source=series.source,
+            valid=series.valid.copy(),
+            columns=columns,
+            metadata=series.metadata,
+        )
+
+    @classmethod
+    def _SeriesColumn_Select(
+        cls,
+        series: TimeSeries | None,
+        index: int,
+        column: str,
+    ) -> TimeSeries | None:
+        return cls._SeriesComponents_Select(series, (index,), (column,))
+
+    @classmethod
+    def _StateStandardDeviationSeries_Get(
+        cls,
+        resolver: ChannelResolver,
+        source_id: str,
+        group: StateGroupSpec,
+    ) -> TimeSeries | None:
+        selected = cls._SeriesComponents_Select(
+            resolver.Series_Get(group.covariance_channel, source_id),
+            group.covariance_diagonal_indices,
+            group.component_names,
+        )
+        if selected is None:
+            return None
+        values = np.asarray(selected.values, dtype=np.float64).copy()
+        values[values < 0.0] = np.nan
+        values = np.sqrt(values)
+        return TimeSeries(
+            timestamp_us=selected.timestamp_us,
+            values=values,
+            unit=group.unit,
+            quantity="state_standard_deviation_1sigma",
+            source=selected.source,
+            valid=selected.valid & np.all(np.isfinite(values), axis=1),
+            columns=group.component_names,
+            metadata=selected.metadata,
+        )
+
+    @staticmethod
+    def _MeasurementConfigured_Check(
+        dataset: FlightDataset,
+        group: MeasurementGroupSpec,
+    ) -> bool:
+        records_present = any(
+            dataset.Records_Get(record_name)
+            for record_name in group.measurement_record_names
+        )
+        if records_present:
+            return True
+        configurations = dataset.Records_Get("SYSTEM_CONFIG")
+        evidence_seen = False
+        for record in configurations:
+            for field_name in group.configuration_fields:
+                if field_name not in record.payload:
+                    continue
+                evidence_seen = True
+                try:
+                    if float(record.payload[field_name]) > 0.0:
+                        return True
+                except (TypeError, ValueError):
+                    if bool(record.payload[field_name]):
+                        return True
+            provider_ids = record.payload.get("provider_ids")
+            if provider_ids is None:
+                continue
+            for index in group.configuration_provider_indices:
+                if index >= len(provider_ids):
+                    continue
+                evidence_seen = True
+                if int(provider_ids[index]) != 0:
+                    return True
+        has_configuration_hints = bool(
+            group.configuration_fields
+            or group.configuration_provider_indices
+            or group.measurement_record_names
+        )
+        return not (has_configuration_hints and evidence_seen)
+
+    @staticmethod
+    def _ValidFiniteMask_Get(series: TimeSeries) -> np.ndarray:
+        values = np.asarray(series.values, dtype=np.float64)
+        finite = (
+            np.isfinite(values)
+            if values.ndim == 1
+            else np.all(np.isfinite(values), axis=1)
+        )
+        return series.valid & finite
+
+    def _MeasurementHasValidUpdates_Check(
+        self,
+        dataset: FlightDataset,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        group: MeasurementGroupSpec,
+    ) -> bool:
+        bounds = resolver.MissionReplayBounds_Get(source.source_id)
+        attempt = resolver.Series_Get(group.attempt_mask_channel, source.source_id)
+        if attempt is not None and attempt.count:
+            values = np.asarray(attempt.values, dtype=np.float64).reshape(
+                attempt.count,
+                -1,
+            )[:, 0]
+            mask = self._ValidFiniteMask_Get(attempt)
+            mask &= attempt.timestamp_us >= np.uint64(bounds.start_timestamp_us)
+            mask &= attempt.timestamp_us <= np.uint64(bounds.end_timestamp_us)
+            if group.attempt_mask_bit:
+                integer_values = np.zeros(values.shape, dtype=np.int64)
+                integer_values[mask] = values[mask].astype(np.int64)
+                mask &= (integer_values & group.attempt_mask_bit) != 0
+            return bool(np.any(mask))
+        if group.measurement_validity_channel:
+            measurement = dataset.Series_Get(group.measurement_validity_channel)
+            if measurement is None or measurement.count == 0:
+                return False
+            mask = self._ValidFiniteMask_Get(measurement)
+            mask &= measurement.timestamp_us >= np.uint64(bounds.start_timestamp_us)
+            mask &= measurement.timestamp_us <= np.uint64(bounds.end_timestamp_us)
+            return bool(np.any(mask))
+        if group.measurement_record_names:
+            return any(
+                bounds.start_timestamp_us
+                <= record.timestamp_us
+                <= bounds.end_timestamp_us
+                for record_name in group.measurement_record_names
+                for record in dataset.Records_Get(record_name)
+            )
+        for channel_id in (
+            group.innovation_channel,
+            group.nis_channel,
+            group.effective_r_channel,
+        ):
+            series = resolver.Series_Get(channel_id, source.source_id)
+            if series is not None and np.any(self._ValidFiniteMask_Get(series)):
+                return True
+        return False
+
+    def _MeasurementSeries_Get(
+        self,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        group: MeasurementGroupSpec,
+        channel_id: str,
+    ) -> TimeSeries | None:
+        selected = self._SeriesComponents_Select(
+            resolver.Series_Get(channel_id, source.source_id),
+            tuple(range(group.dimension)),
+            group.component_names,
+        )
+        if selected is None:
+            return None
+        return self._MeasurementAttemptMask_Apply(
+            resolver,
+            source,
+            group,
+            selected,
+        )
+
+    def _MeasurementAttemptMask_Apply(
+        self,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        group: MeasurementGroupSpec,
+        selected: TimeSeries,
+    ) -> TimeSeries:
+        attempt = resolver.Series_Get(group.attempt_mask_channel, source.source_id)
+        if attempt is None or attempt.count == 0 or not group.attempt_mask_bit:
+            return selected
+        attempt_values = np.asarray(attempt.values, dtype=np.float64).reshape(
+            attempt.count,
+            -1,
+        )[:, 0]
+        indices = np.searchsorted(
+            attempt.timestamp_us,
+            selected.timestamp_us,
+            side="right",
+        ) - 1
+        usable = indices >= 0
+        safe_indices = np.clip(indices, 0, max(attempt.count - 1, 0))
+        usable &= attempt.valid[safe_indices]
+        finite = np.isfinite(attempt_values[safe_indices])
+        usable &= finite
+        integer_values = np.zeros(indices.shape, dtype=np.int64)
+        integer_values[usable] = attempt_values[safe_indices[usable]].astype(
+            np.int64
+        )
+        usable &= (integer_values & group.attempt_mask_bit) != 0
+        return TimeSeries(
+            timestamp_us=selected.timestamp_us,
+            values=selected.values,
+            unit=selected.unit,
+            quantity=selected.quantity,
+            source=selected.source,
+            valid=selected.valid & usable,
+            columns=selected.columns,
+            metadata=selected.metadata,
+        )
+
+    def _MeasurementNisSeries_Get(
+        self,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        group: MeasurementGroupSpec,
+    ) -> TimeSeries | None:
+        selected = self._SeriesColumn_Select(
+            resolver.Series_Get(group.nis_channel, source.source_id),
+            0,
+            "NIS",
+        )
+        if selected is None:
+            return None
+        return self._MeasurementAttemptMask_Apply(
+            resolver,
+            source,
+            group,
+            selected,
+        )
+
+    def _MeasurementStandardDeviationSeries_Get(
+        self,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        group: MeasurementGroupSpec,
+    ) -> TimeSeries | None:
+        channel_id = (
+            group.effective_r_channel or group.measurement_uncertainty_channel
+        )
+        selected = self._MeasurementSeries_Get(
+            resolver,
+            source,
+            group,
+            channel_id,
+        )
+        if selected is None:
+            return None
+        values = np.asarray(selected.values, dtype=np.float64).copy()
+        if group.effective_r_channel:
+            values[values < 0.0] = np.nan
+            values = np.sqrt(values)
+        return TimeSeries(
+            timestamp_us=selected.timestamp_us,
+            values=values,
+            unit=group.unit,
+            quantity="measurement_standard_deviation",
+            source=selected.source,
+            valid=selected.valid & np.all(np.isfinite(values), axis=1),
+            columns=group.component_names,
+            metadata=selected.metadata,
+        )
+
+    @staticmethod
+    def _NisThresholds_Get(
+        group: MeasurementGroupSpec,
+        parameters: Mapping[str, Any],
+        language: ExportLanguage,
+    ) -> tuple[tuple[float, str, str], ...]:
+        translator = Translator(language.value)
+        thresholds: list[tuple[float, str, str]] = []
+        for parameter_id, label_key, style in (
+            (
+                group.soft_threshold_parameter_id,
+                "state.nis_soft_threshold",
+                "--",
+            ),
+            (
+                group.hard_threshold_parameter_id,
+                "state.nis_hard_threshold",
+                "-.",
+            ),
+        ):
+            if not parameter_id:
+                continue
+            try:
+                value = float(parameters[parameter_id])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if np.isfinite(value):
+                thresholds.append(
+                    (value, translator.Text_Get(label_key), style)
+                )
+        return tuple(thresholds)
+
+    def _StandardDiagnosticPlot_Write(
+        self,
+        dataset: FlightDataset,
+        series: TimeSeries | None,
+        path: Path,
+        title: str,
+        ylabel: str,
+        language: ExportLanguage,
+        theme: ExportTheme,
+        *,
+        empty_message: str,
+        thresholds: tuple[tuple[float, str, str], ...] = (),
+        end_timestamp_us: int | None = None,
+    ) -> None:
+        self._Matplotlib_Configure()
+        from matplotlib import pyplot as plt
+
+        background, foreground, _ = self._Plot_Configure(theme)
+        figure, axis = plt.subplots(figsize=(10, 5), dpi=140)
+        self._Axes_Style(figure, axis, theme)
+        plotted = 0
+        if series is not None and series.count:
+            cropped = _Series_Crop(
+                series,
+                dataset.start_timestamp_us or 0,
+                end_timestamp_us,
+            )
+            if cropped.count:
+                time = self._Time_Get(dataset, cropped)
+                values = np.asarray(cropped.values, dtype=np.float64)
+                values = values[:, None] if values.ndim == 1 else values
+                for index in range(values.shape[1]):
+                    component = (
+                        cropped.columns[index]
+                        if cropped.columns
+                        else str(index)
+                    )
+                    mask = cropped.valid & np.isfinite(values[:, index])
+                    if not np.any(mask):
+                        continue
+                    axis.plot(
+                        time[mask],
+                        values[mask, index],
+                        color=_PlotColor_Get(index),
+                        linewidth=1.15,
+                        label=ComponentLabel_Get(component, language.value),
+                    )
+                    plotted += 1
+        for index, (value, label, style) in enumerate(thresholds):
+            axis.axhline(
+                value,
+                color=_PlotColor_Get(plotted + index),
+                linestyle=style,
+                linewidth=1.2,
+                label=label,
+            )
+        if plotted == 0:
+            axis.text(
+                0.5,
+                0.5,
+                empty_message,
+                transform=axis.transAxes,
+                horizontalalignment="center",
+                verticalalignment="center",
+                color=foreground,
+                fontsize=11,
+                wrap=True,
+            )
+        display_title = title
+        if bool(dataset.metadata.get("synthetic", False)):
+            display_title += f" · {_LABELS[language]['synthetic']}"
+        axis.set_title(display_title, color=foreground)
+        axis.set_xlabel(
+            f"{_LABELS[language]['time']} (s)",
+            color=foreground,
+        )
+        axis.set_ylabel(ylabel, color=foreground)
+        handles, _ = axis.get_legend_handles_labels()
+        if handles:
+            axis.legend(
+                facecolor=background,
+                labelcolor=foreground,
+                framealpha=0.82,
+            )
+        figure.tight_layout()
+        figure.savefig(path, facecolor=background)
+        plt.close(figure)
+
+    def _StandardPlotWorkUnitCount_Get(
+        self,
+        dataset: FlightDataset,
+        resolver: ChannelResolver,
+        directory: Path,
+        suffix: str,
+        language: ExportLanguage,
+        theme: ExportTheme,
+    ) -> int:
+        work_units = 0
+
+        def attempt_count(*_args: Any, **_kwargs: Any) -> None:
+            nonlocal work_units
+            work_units += 1
+
+        self._StandardPlots_Write(
+            dataset,
+            resolver,
+            directory,
+            suffix,
+            language,
+            theme,
+            attempt_count,
+            lambda *_args: None,
+        )
+        return work_units
 
     def _StandardPlots_Write(
         self,
@@ -687,7 +1878,8 @@ class FlightExporter:
         suffix: str,
         language: ExportLanguage,
         theme: ExportTheme,
-        attempt: Callable[[str, Path, Callable[[], None]], None],
+        attempt: Callable[..., None],
+        skip: Callable[[str, str, str], None],
     ) -> None:
         labels = _LABELS[language]
         active = resolver.store.ActiveSource_Get()
@@ -768,6 +1960,7 @@ class FlightExporter:
                     theme,
                     end_timestamp_us=mission_bounds.end_timestamp_us,
                 ),
+                title,
             )
 
         observed = (
@@ -813,155 +2006,488 @@ class FlightExporter:
                     theme,
                     end_timestamp_us=mission_bounds.end_timestamp_us,
                 ),
+                title,
             )
 
-        estimator_source = self._EstimatorSourceId_Select(resolver)
-        covariance = resolver.Series_Get("kf6.covariance.diagonal", estimator_source)
-        path = directory / f"State_Covariance{suffix}.png"
-        attempt(
-            "standard_plot:State_Covariance",
-            path,
-            lambda: self._SeriesPlot_Write(
-                dataset,
-                "kf6.covariance.diagonal",
-                self._Series_Require(covariance, "kf6.covariance.diagonal"),
-                path,
-                language,
-                theme,
-            ),
-        )
-
-        innovation_layers: list[tuple[TimeSeries, str, str]] = []
-        nis_layers: list[tuple[TimeSeries, str, str]] = []
-        for channel_id, zh, en in (
-            ("kf6.innovation.position", "位置", "Position"),
-            ("kf6.innovation.velocity", "速度", "Velocity"),
-            ("kf6.innovation.baro", "气压高度", "Barometer"),
-        ):
-            series = resolver.Series_Get(channel_id, estimator_source)
-            if series is not None:
-                innovation_layers.append((series, zh if language == ExportLanguage.ZH else en, "-"))
-        for channel_id, zh, en in (
-            ("kf6.nis.position", "位置", "Position"),
-            ("kf6.nis.velocity", "速度", "Velocity"),
-            ("kf6.nis.baro", "气压高度", "Barometer"),
-        ):
-            series = resolver.Series_Get(channel_id, estimator_source)
-            if series is not None:
-                nis_layers.append((series, zh if language == ExportLanguage.ZH else en, "-"))
-        path = directory / f"State_Innovation{suffix}.png"
-        attempt(
-            "standard_plot:State_Innovation",
-            path,
-            lambda: self._MultiSeriesPlot_Write(
-                dataset,
-                tuple(innovation_layers),
-                path,
-                labels["innovation"],
+        selection = self._EstimatorSelection_Get(resolver)
+        if selection is None:
+            skip(
+                "standard_plot:estimator_visualization",
                 (
-                    "新息（记录单位）"
+                    "状态估计标准图"
                     if language == ExportLanguage.ZH
-                    else "Innovation (logged units)"
+                    else "State Estimation Standard Plots"
                 ),
-                language,
-                theme,
-            ),
+                "estimator_metadata_unavailable",
+            )
+            return
+        source, metadata, visualization = selection
+        source_label = self._SourceLabel_Get(source, language)
+        algorithm_stem = self._AlgorithmFileStem_Get(metadata)
+        source_stem = self._SourceFileStem_Get(source)
+        parameters = self._SourceParameters_Get(
+            dataset,
+            resolver,
+            source,
         )
-        path = directory / f"State_NIS{suffix}.png"
-        attempt(
-            "standard_plot:State_NIS",
-            path,
-            lambda: self._MultiSeriesPlot_Write(
-                dataset,
-                tuple(nis_layers),
+        estimator_bounds = resolver.MissionReplayBounds_Get(source.source_id)
+
+        for group in visualization.state_groups:
+            group_label = self._GroupLabel_Get(
+                group.group_id,
+                group.label_key,
+                language,
+            )
+            group_stem = self._GroupFileStem_Get(
+                group.group_id,
+                group.file_stem,
+            )
+            quantity = labels["state_std_quantity"]
+            group_quantity = (
+                f"{group_label}{quantity}"
+                if language == ExportLanguage.ZH
+                else f"{group_label} {quantity}"
+            )
+            title = (
+                f"{metadata.display_name} · {source_label} · "
+                f"{group_quantity}"
+            )
+            item_id = (
+                f"standard_plot:state_std:{metadata.plugin_id}:"
+                f"{source.kind.value}:{group.group_id}"
+            )
+            path = directory / (
+                f"{algorithm_stem}_{source_stem}_{group_stem}_"
+                f"Std_1Sigma{suffix}.png"
+            )
+            series = self._StateStandardDeviationSeries_Get(
+                resolver,
+                source.source_id,
+                group,
+            )
+            if series is None:
+                skip(item_id, title, "state_covariance_channel_unavailable")
+                continue
+            attempt(
+                item_id,
                 path,
-                labels["nis"],
-                "NIS",
+                lambda p=path, s=series, t=title, u=group.unit, g=group_label: (
+                    self._StandardDiagnosticPlot_Write(
+                        dataset,
+                        s,
+                        p,
+                        t,
+                        (
+                            f"标准差（1σ）[{u}]"
+                            if language == ExportLanguage.ZH
+                            else f"Standard Deviation (1σ) [{u}]"
+                        ),
+                        language,
+                        theme,
+                        empty_message=labels["no_valid_diagnostics"].format(
+                            group=g
+                        ),
+                        end_timestamp_us=estimator_bounds.end_timestamp_us,
+                    )
+                ),
+                title,
+            )
+
+        for group in visualization.measurement_groups:
+            group_label = self._GroupLabel_Get(
+                group.measurement_group_id,
+                group.label_key,
                 language,
-                theme,
-            ),
+            )
+            group_stem = self._GroupFileStem_Get(
+                group.measurement_group_id,
+                group.file_stem,
+            )
+            configured = self._MeasurementConfigured_Check(dataset, group)
+            products = (
+                ("innovation", "Innovation", labels["innovation_quantity"]),
+                ("nis", "NIS", labels["nis_quantity"]),
+                (
+                    "measurement_std",
+                    "Measurement_Std",
+                    labels["measurement_std_quantity"],
+                ),
+            )
+            if not configured:
+                for product_id, _, quantity in products:
+                    title = (
+                        f"{metadata.display_name} · {source_label} · "
+                        f"{group_label} · {quantity}"
+                    )
+                    skip(
+                        (
+                            f"standard_plot:{product_id}:{metadata.plugin_id}:"
+                            f"{source.kind.value}:"
+                            f"{group.measurement_group_id}"
+                        ),
+                        title,
+                        "measurement_not_configured",
+                    )
+                continue
+
+            valid_updates = self._MeasurementHasValidUpdates_Check(
+                dataset,
+                resolver,
+                source,
+                group,
+            )
+            no_update_message = labels["no_valid_updates"].format(
+                group=group_label
+            )
+            diagnostic_message = labels["no_valid_diagnostics"].format(
+                group=group_label
+            )
+            empty_message = (
+                diagnostic_message if valid_updates else no_update_message
+            )
+
+            innovation_title = (
+                f"{metadata.display_name} · {source_label} · "
+                f"{group_label} · {labels['innovation_quantity']}"
+            )
+            innovation_path = directory / (
+                f"{algorithm_stem}_{source_stem}_Innovation_"
+                f"{group_stem}{suffix}.png"
+            )
+            innovation_series = (
+                self._MeasurementSeries_Get(
+                    resolver,
+                    source,
+                    group,
+                    group.innovation_channel,
+                )
+                if valid_updates
+                else None
+            )
+            attempt(
+                (
+                    f"standard_plot:innovation:{metadata.plugin_id}:"
+                    f"{source.kind.value}:{group.measurement_group_id}"
+                ),
+                innovation_path,
+                lambda p=innovation_path,
+                s=innovation_series,
+                t=innovation_title,
+                e=empty_message,
+                u=group.unit: (
+                    self._StandardDiagnosticPlot_Write(
+                        dataset,
+                        s,
+                        p,
+                        t,
+                        (
+                            f"新息 [{u}]"
+                            if language == ExportLanguage.ZH
+                            else f"Innovation [{u}]"
+                        ),
+                        language,
+                        theme,
+                        empty_message=e,
+                        end_timestamp_us=estimator_bounds.end_timestamp_us,
+                    )
+                ),
+                innovation_title,
+            )
+
+            nis_title = (
+                f"{metadata.display_name} · {source_label} · "
+                f"{group_label} · {labels['nis_quantity']}"
+            )
+            nis_path = directory / (
+                f"{algorithm_stem}_{source_stem}_NIS_"
+                f"{group_stem}{suffix}.png"
+            )
+            nis_series = (
+                self._MeasurementNisSeries_Get(
+                    resolver,
+                    source,
+                    group,
+                )
+                if valid_updates
+                else None
+            )
+            thresholds = self._NisThresholds_Get(
+                group,
+                parameters,
+                language,
+            )
+            attempt(
+                (
+                    f"standard_plot:nis:{metadata.plugin_id}:"
+                    f"{source.kind.value}:{group.measurement_group_id}"
+                ),
+                nis_path,
+                lambda p=nis_path, s=nis_series, t=nis_title, e=empty_message, h=thresholds: (
+                    self._StandardDiagnosticPlot_Write(
+                        dataset,
+                        s,
+                        p,
+                        t,
+                        "NIS [1]",
+                        language,
+                        theme,
+                        empty_message=e,
+                        thresholds=h,
+                        end_timestamp_us=estimator_bounds.end_timestamp_us,
+                    )
+                ),
+                nis_title,
+            )
+
+            standard_deviation_title = (
+                f"{metadata.display_name} · {source_label} · "
+                f"{group_label} · {labels['measurement_std_quantity']}"
+            )
+            standard_deviation_path = directory / (
+                f"{algorithm_stem}_{source_stem}_Measurement_Std_"
+                f"{group_stem}{suffix}.png"
+            )
+            standard_deviation_series = (
+                self._MeasurementStandardDeviationSeries_Get(
+                    resolver,
+                    source,
+                    group,
+                )
+                if valid_updates
+                else None
+            )
+            attempt(
+                (
+                    f"standard_plot:measurement_std:{metadata.plugin_id}:"
+                    f"{source.kind.value}:{group.measurement_group_id}"
+                ),
+                standard_deviation_path,
+                lambda p=standard_deviation_path,
+                s=standard_deviation_series,
+                t=standard_deviation_title,
+                e=empty_message,
+                u=group.unit: (
+                    self._StandardDiagnosticPlot_Write(
+                        dataset,
+                        s,
+                        p,
+                        t,
+                        (
+                            f"量测标准差 sqrt(R) [{u}]"
+                            if language == ExportLanguage.ZH
+                            else (
+                                "Measurement Standard Deviation "
+                                f"sqrt(R) [{u}]"
+                            )
+                        ),
+                        language,
+                        theme,
+                        empty_message=e,
+                        end_timestamp_us=estimator_bounds.end_timestamp_us,
+                    )
+                ),
+                standard_deviation_title,
+            )
+
+        update_title = (
+            f"{metadata.display_name} · {source_label} · "
+            f"{labels['measurement_update']}"
         )
-        path = directory / f"State_Measurement_Update{suffix}.png"
+        update_path = directory / (
+            f"{algorithm_stem}_{source_stem}_Measurement_Update"
+            f"{suffix}.png"
+        )
         attempt(
-            "standard_plot:State_Measurement_Update",
-            path,
+            (
+                f"standard_plot:measurement_update:{metadata.plugin_id}:"
+                f"{source.kind.value}"
+            ),
+            update_path,
             lambda: self._MeasurementUpdatePlot_Write(
                 dataset,
-                self._Series_Require(
-                    resolver.Series_Get("kf6.update_result", estimator_source),
-                    "kf6.update_result",
-                ),
-                resolver.Series_Get("kf6.measurement_r_scale", estimator_source),
-                path,
+                resolver,
+                source,
+                visualization.measurement_groups,
+                update_path,
+                update_title,
                 language,
                 theme,
+                end_timestamp_us=estimator_bounds.end_timestamp_us,
             ),
+            update_title,
         )
 
     def _MeasurementUpdatePlot_Write(
         self,
         dataset: FlightDataset,
-        results: TimeSeries,
-        r_scale: TimeSeries | None,
+        resolver: ChannelResolver,
+        source: AnalysisSource,
+        groups: tuple[MeasurementGroupSpec, ...],
         path: Path,
+        title: str,
         language: ExportLanguage,
         theme: ExportTheme,
+        *,
+        end_timestamp_us: int | None = None,
     ) -> None:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
 
         background, foreground, _ = self._Plot_Configure(theme)
-        rows = 2 if r_scale is not None and r_scale.count else 1
+        result_layers: list[tuple[MeasurementGroupSpec, TimeSeries]] = []
+        scale_layers: list[tuple[MeasurementGroupSpec, TimeSeries]] = []
+        for group in groups:
+            result = self._SeriesColumn_Select(
+                resolver.Series_Get(
+                    group.update_result_channel,
+                    source.source_id,
+                ),
+                group.update_result_index,
+                group.measurement_group_id,
+            )
+            if result is not None:
+                result_layers.append(
+                    (
+                        group,
+                        self._MeasurementAttemptMask_Apply(
+                            resolver,
+                            source,
+                            group,
+                            result,
+                        ),
+                    )
+                )
+            scale = self._SeriesColumn_Select(
+                resolver.Series_Get(
+                    group.r_scale_channel,
+                    source.source_id,
+                ),
+                group.r_scale_index,
+                group.measurement_group_id,
+            )
+            if scale is not None:
+                scale_layers.append(
+                    (
+                        group,
+                        self._MeasurementAttemptMask_Apply(
+                            resolver,
+                            source,
+                            group,
+                            scale,
+                        ),
+                    )
+                )
+        rows = 2 if scale_layers else 1
         figure, axes = plt.subplots(rows, 1, figsize=(10, 6 if rows == 2 else 4.5), dpi=140)
         axes_array = np.atleast_1d(axes)
         self._Axes_Style(figure, axes_array[0], theme)
-        cropped = _Series_Crop(results, dataset.start_timestamp_us or 0)
-        time = self._Time_Get(dataset, cropped)
-        values = np.asarray(cropped.values, dtype=np.float64)
-        values = values[:, None] if values.ndim == 1 else values
-        for index in range(values.shape[1]):
-            raw = cropped.columns[index] if cropped.columns else str(index)
-            axes_array[0].step(
-                time,
-                values[:, index],
-                where="post",
-                color=_COLORS[index],
-                label=ComponentLabel_Get(raw, language.value),
+        result_count = 0
+        for index, (group, result) in enumerate(result_layers):
+            cropped = _Series_Crop(
+                result,
+                dataset.start_timestamp_us or 0,
+                end_timestamp_us,
             )
+            if cropped.count == 0:
+                continue
+            values = np.asarray(cropped.values, dtype=np.float64).reshape(
+                cropped.count,
+                -1,
+            )[:, 0]
+            mask = cropped.valid & np.isfinite(values)
+            if not np.any(mask):
+                continue
+            time = self._Time_Get(dataset, cropped)
+            axes_array[0].step(
+                time[mask],
+                values[mask],
+                where="post",
+                color=_PlotColor_Get(index),
+                label=self._GroupLabel_Get(
+                    group.measurement_group_id,
+                    group.label_key,
+                    language,
+                ),
+            )
+            result_count += 1
         result_labels = (
-            ("接受", "软降权", "NIS 拒绝", "无效", "数值错误")
+            ("接受", "软降权", "NIS 拒绝", "无效", "数值错误", "未尝试")
             if language == ExportLanguage.ZH
-            else ("Accepted", "Soft Weighted", "NIS Rejected", "Invalid", "Numeric Error")
+            else (
+                "Accepted",
+                "Soft Weighted",
+                "NIS Rejected",
+                "Invalid",
+                "Numeric Error",
+                "Not Attempted",
+            )
         )
-        axes_array[0].set_yticks(range(5), result_labels)
-        axes_array[0].set_title(_LABELS[language]["measurement_update"], color=foreground)
+        axes_array[0].set_yticks(range(6), result_labels)
+        display_title = title
+        if bool(dataset.metadata.get("synthetic", False)):
+            display_title += f" · {_LABELS[language]['synthetic']}"
+        axes_array[0].set_title(display_title, color=foreground)
         axes_array[0].set_ylabel(
             "更新结果" if language == ExportLanguage.ZH else "Update Result",
             color=foreground,
         )
-        axes_array[0].legend(facecolor=background, labelcolor=foreground, framealpha=0.82)
-        if rows == 2 and r_scale is not None:
-            self._Axes_Style(figure, axes_array[1], theme)
-            cropped_scale = _Series_Crop(r_scale, dataset.start_timestamp_us or 0)
-            scale_time = self._Time_Get(dataset, cropped_scale)
-            scale_values = np.asarray(cropped_scale.values, dtype=np.float64)
-            scale_values = (
-                scale_values[:, None] if scale_values.ndim == 1 else scale_values
-            )
-            for index in range(scale_values.shape[1]):
-                raw = cropped_scale.columns[index] if cropped_scale.columns else str(index)
-                axes_array[1].plot(
-                    scale_time,
-                    scale_values[:, index],
-                    color=_COLORS[index],
-                    label=ComponentLabel_Get(raw, language.value),
-                )
-            axes_array[1].set_ylabel("R 缩放" if language == ExportLanguage.ZH else "R Scale")
-            axes_array[1].legend(
+        if result_count:
+            axes_array[0].legend(
                 facecolor=background,
                 labelcolor=foreground,
                 framealpha=0.82,
             )
+        else:
+            axes_array[0].text(
+                0.5,
+                0.5,
+                (
+                    "未记录有效的量测更新诊断"
+                    if language == ExportLanguage.ZH
+                    else "No valid measurement update diagnostics were recorded."
+                ),
+                transform=axes_array[0].transAxes,
+                horizontalalignment="center",
+                verticalalignment="center",
+                color=foreground,
+            )
+        if rows == 2:
+            self._Axes_Style(figure, axes_array[1], theme)
+            scale_count = 0
+            for index, (group, scale) in enumerate(scale_layers):
+                cropped_scale = _Series_Crop(
+                    scale,
+                    dataset.start_timestamp_us or 0,
+                    end_timestamp_us,
+                )
+                if cropped_scale.count == 0:
+                    continue
+                scale_values = np.asarray(
+                    cropped_scale.values,
+                    dtype=np.float64,
+                ).reshape(cropped_scale.count, -1)[:, 0]
+                mask = cropped_scale.valid & np.isfinite(scale_values)
+                if not np.any(mask):
+                    continue
+                scale_time = self._Time_Get(dataset, cropped_scale)
+                axes_array[1].plot(
+                    scale_time[mask],
+                    scale_values[mask],
+                    color=_PlotColor_Get(index),
+                    label=self._GroupLabel_Get(
+                        group.measurement_group_id,
+                        group.label_key,
+                        language,
+                    ),
+                )
+                scale_count += 1
+            axes_array[1].set_ylabel("R 缩放" if language == ExportLanguage.ZH else "R Scale")
+            if scale_count:
+                axes_array[1].legend(
+                    facecolor=background,
+                    labelcolor=foreground,
+                    framealpha=0.82,
+                )
         axes_array[-1].set_xlabel(f"{_LABELS[language]['time']} (s)", color=foreground)
         figure.tight_layout()
         figure.savefig(path, facecolor=background)
@@ -1010,6 +2536,77 @@ class FlightExporter:
         axis.set_zlim(center[2] - radius, center[2] + radius)
         with suppress(AttributeError):
             axis.set_box_aspect((1.0, 1.0, 1.0))
+
+    def _Axis3d_ThemeApply(self, axis: Any, theme: ExportTheme) -> None:
+        background, foreground, grid = self._Plot_Configure(theme)
+        axis.set_facecolor(background)
+        axis.tick_params(colors=foreground)
+        axis.grid(True)
+        for coordinate_axis in (axis.xaxis, axis.yaxis, axis.zaxis):
+            coordinate_axis.pane.set_facecolor(background)
+            coordinate_axis.pane.set_edgecolor(grid)
+            coordinate_axis._axinfo["grid"]["color"] = grid
+            coordinate_axis._axinfo["grid"]["linewidth"] = 0.55
+            coordinate_axis._axinfo["grid"]["linestyle"] = ":"
+
+    @staticmethod
+    def _TrajectoryGroundPlaneBounds_Get(
+        values: np.ndarray,
+    ) -> tuple[float, float, float, float]:
+        points = np.asarray(values, dtype=np.float64).reshape(-1, 3)
+        finite = points[np.all(np.isfinite(points), axis=1)]
+        if finite.size == 0:
+            return (-1.0, 1.0, -1.0, 1.0)
+        x_min = float(np.min(finite[:, 0]))
+        x_max = float(np.max(finite[:, 0]))
+        y_min = float(np.min(finite[:, 1]))
+        y_max = float(np.max(finite[:, 1]))
+        horizontal_span = max(x_max - x_min, y_max - y_min, 1.0)
+        padding = max(horizontal_span * 0.05, 0.5)
+        if x_max - x_min < 1.0e-9:
+            x_min -= horizontal_span * 0.5
+            x_max += horizontal_span * 0.5
+        if y_max - y_min < 1.0e-9:
+            y_min -= horizontal_span * 0.5
+            y_max += horizontal_span * 0.5
+        return (
+            x_min - padding,
+            x_max + padding,
+            y_min - padding,
+            y_max + padding,
+        )
+
+    @staticmethod
+    def _TrajectoryGroundPlane_Add(
+        axis: Any,
+        bounds: tuple[float, float, float, float],
+        theme: ExportTheme,
+    ) -> Any:
+        x_min, x_max, y_min, y_max = bounds
+        x_grid, y_grid = np.meshgrid(
+            np.asarray((x_min, x_max), dtype=np.float64),
+            np.asarray((y_min, y_max), dtype=np.float64),
+        )
+        if theme == ExportTheme.DARK:
+            color = "#4F86A6"
+            edge_color = "#79B8D8"
+        else:
+            color = "#75B5D8"
+            edge_color = "#3F86AE"
+        plane = axis.plot_surface(
+            x_grid,
+            y_grid,
+            np.zeros_like(x_grid),
+            color=color,
+            edgecolor=edge_color,
+            alpha=0.30,
+            linewidth=0.65,
+            antialiased=True,
+            shade=False,
+            label="_nolegend_",
+        )
+        plane.set_gid("trajectory_ground_plane")
+        return plane
 
     def _Trajectory_AxisDraw(
         self,
@@ -1063,6 +2660,8 @@ class FlightExporter:
             (resolved_bounds.min_enu, resolved_bounds.max_enu),
             dtype=np.float64,
         )
+        ground_bounds = self._TrajectoryGroundPlaneBounds_Get(full_values)
+        self._TrajectoryGroundPlane_Add(axis, ground_bounds, theme)
         deploy_size, _, landing_size = TrajectoryMarkerWorldSizesFromExtent_Get(
             resolved_bounds.max_span
         )
@@ -1138,13 +2737,16 @@ class FlightExporter:
                 marker="o",
                 label=labels["current"],
             )
-        axis.set_facecolor(background)
+        self._Axis3d_ThemeApply(axis, theme)
         axis.set_xlabel("E (m)", color=foreground)
         axis.set_ylabel("N (m)", color=foreground)
         axis.set_zlabel("U (m)", color=foreground)
-        axis.tick_params(colors=foreground)
         axis.legend(facecolor=background, labelcolor=foreground, framealpha=0.78)
         self._Axis3d_Equal(axis, full_values)
+        axis.view_init(
+            elev=_TRAJECTORY_VIEW_ELEVATION,
+            azim=_TRAJECTORY_VIEW_AZIMUTH,
+        )
 
     def _Trajectory_Write(
         self,
@@ -1195,34 +2797,111 @@ class FlightExporter:
         return upper - 1 if timestamp_us - before <= after - timestamp_us else upper
 
     @staticmethod
-    def _ReplayFrameTimestamps_Get(
+    def _ReplayTimeRange_Get(
         attitude: TimeSeries,
         position: TimeSeries,
         start_timestamp_us: int,
-        maximum_frames: int = 60,
         end_timestamp_us: int | None = None,
-    ) -> np.ndarray:
-        if maximum_frames <= 0:
-            raise ValueError("maximum_frames_must_be_positive")
-        attitude_mask = attitude.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
-        position_mask = position.timestamp_us >= np.uint64(max(start_timestamp_us, 0))
-        if end_timestamp_us is not None:
-            end = np.uint64(max(end_timestamp_us, 0))
-            attitude_mask &= attitude.timestamp_us <= end
-            position_mask &= position.timestamp_us <= end
-        attitude_times = attitude.timestamp_us[attitude_mask]
-        position_times = position.timestamp_us[position_mask]
+    ) -> tuple[int, int] | None:
+        start_floor = max(start_timestamp_us, 0)
+        attitude_values = np.asarray(attitude.values, dtype=np.float64)
+        position_values = np.asarray(position.values, dtype=np.float64)
+        if attitude_values.ndim != 2 or attitude_values.shape[1] != 4:
+            return None
+        if position_values.ndim != 2 or position_values.shape[1] != 3:
+            return None
+        attitude_valid = attitude.valid & np.all(np.isfinite(attitude_values), axis=1)
+        position_valid = position.valid & np.all(np.isfinite(position_values), axis=1)
+        attitude_times = attitude.timestamp_us[
+            attitude_valid & (attitude.timestamp_us >= np.uint64(start_floor))
+        ]
+        position_times = position.timestamp_us[
+            position_valid & (position.timestamp_us >= np.uint64(start_floor))
+        ]
         if attitude_times.size == 0 or position_times.size == 0:
-            return np.asarray([], dtype=np.uint64)
-        start = max(int(attitude_times[0]), int(position_times[0]), start_timestamp_us)
-        end = min(int(attitude_times[-1]), int(position_times[-1]))
+            return None
+        available_start = max(int(attitude_times[0]), int(position_times[0]))
+        start = (
+            start_floor
+            if available_start - start_floor <= 100_000
+            else available_start
+        )
+        attitude_end = int(attitude_times[-1])
+        position_end = int(position_times[-1])
+        end = min(attitude_end, position_end)
+        if end_timestamp_us is not None:
+            requested_end = max(int(end_timestamp_us), 0)
+            if requested_end <= end:
+                end = requested_end
+            elif (
+                max(requested_end - attitude_end, 0) <= 100_000
+                and max(requested_end - position_end, 0) <= 100_000
+            ):
+                # A Landing event can legitimately trail the final discrete
+                # solution by a fraction of a sample interval.
+                end = requested_end
         if end < start:
+            return None
+        return start, end
+
+    @classmethod
+    def _ReplayFrameTimestamps_Get(
+        cls,
+        attitude: TimeSeries,
+        position: TimeSeries,
+        start_timestamp_us: int,
+        frames_per_second: int = _REPLAY_FRAMES_PER_SECOND,
+        end_timestamp_us: int | None = None,
+        key_event_timestamps: tuple[int, ...] = (),
+    ) -> np.ndarray:
+        if frames_per_second <= 0:
+            raise ValueError("frames_per_second_must_be_positive")
+        time_range = cls._ReplayTimeRange_Get(
+            attitude,
+            position,
+            start_timestamp_us,
+            end_timestamp_us,
+        )
+        if time_range is None:
             return np.asarray([], dtype=np.uint64)
-        available = max(int(attitude_times.size), int(position_times.size))
-        count = min(maximum_frames, available)
-        if count <= 1 or end == start:
-            return np.asarray([start], dtype=np.uint64)
-        return np.unique(np.linspace(start, end, count).round().astype(np.uint64))
+        start, end = time_range
+        duration_us = end - start
+        main_frame_count = max(
+            1,
+            int(np.ceil(duration_us * frames_per_second / 1_000_000.0)),
+        )
+        targets = np.linspace(
+            start,
+            end,
+            main_frame_count,
+            endpoint=False,
+        ).round().astype(np.uint64)
+        for event_timestamp in sorted(set(key_event_timestamps)):
+            if event_timestamp < start or event_timestamp >= end:
+                continue
+            nearest = int(
+                np.argmin(
+                    np.abs(targets.astype(np.int64) - int(event_timestamp))
+                )
+            )
+            targets[nearest] = np.uint64(event_timestamp)
+        targets.sort()
+        return targets
+
+    @staticmethod
+    def _RocketVertices_Rotate(quaternion: np.ndarray) -> np.ndarray:
+        return np.asarray(
+            [
+                Quaternion_RotateVector(quaternion, vertex)
+                for vertex in _ROCKET_BASE_VERTICES
+            ],
+            dtype=np.float64,
+        )
+
+    @classmethod
+    def _RocketPolygons_Get(cls, quaternion: np.ndarray) -> list[np.ndarray]:
+        rotated_vertices = cls._RocketVertices_Rotate(quaternion)
+        return [rotated_vertices[face] for face in _ROCKET_FACES]
 
     def _Attitude_AxisDraw(
         self,
@@ -1230,96 +2909,319 @@ class FlightExporter:
         quaternion: np.ndarray,
         language: ExportLanguage,
         theme: ExportTheme,
-    ) -> None:
+    ) -> Any:
         background, foreground, _ = self._Plot_Configure(theme)
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-        rotated_vertices = np.asarray(
-            [
-                Quaternion_RotateVector(quaternion, vertex)
-                for vertex in _ROCKET_BASE_VERTICES
-            ],
-            dtype=np.float64,
-        )
-        polygons = [rotated_vertices[face] for face in _ROCKET_FACES]
         face_colors = RocketFaceColors_Get(theme.value)
         rocket = Poly3DCollection(
-            polygons,
+            self._RocketPolygons_Get(quaternion),
             facecolors=face_colors,
             edgecolors=foreground,
-            linewidths=0.7,
+            linewidths=0.6,
             alpha=1.0,
         )
         axis.add_collection3d(rocket)
+        self._Axis3d_ThemeApply(axis, theme)
+        axis.set_xlim(-_ATTITUDE_AXIS_LIMIT, _ATTITUDE_AXIS_LIMIT)
+        axis.set_ylim(-_ATTITUDE_AXIS_LIMIT, _ATTITUDE_AXIS_LIMIT)
+        axis.set_zlim(-_ATTITUDE_AXIS_LIMIT, _ATTITUDE_AXIS_LIMIT)
+        axis.set_box_aspect((1.0, 1.0, 1.0))
+        axis.view_init(
+            elev=_ATTITUDE_VIEW_ELEVATION,
+            azim=_ATTITUDE_VIEW_AZIMUTH,
+        )
+        axis.set_xlabel("X", color=foreground)
+        axis.set_ylabel("Y", color=foreground)
+        axis.set_zlabel("Z", color=foreground)
+        axis.set_title(_LABELS[language]["attitude"], color=foreground)
+        return rocket
 
-        body_endpoints = np.asarray(
-            ((1.1, 0.0, 0.0), (0.0, 1.1, 0.0), (0.0, 0.0, 1.6)),
-            dtype=np.float64,
-        )
-        rotated = np.asarray(
-            [
-                Quaternion_RotateVector(quaternion, endpoint)
-                for endpoint in body_endpoints
-            ]
-        )
-        for vector, color, label in zip(
-            rotated,
-            ("#EF4444", "#10B981", "#3B82F6"),
-            ("Xb", "Yb", "Zb"),
-            strict=True,
-        ):
-            axis.quiver(
-                0.0,
-                0.0,
-                0.0,
-                vector[0],
-                vector[1],
-                vector[2],
-                color=color,
-                linewidth=1.25,
-                arrow_length_ratio=0.13,
+    @staticmethod
+    def _ReplayEventFrameIndices_Get(
+        frame_timestamps: np.ndarray,
+        event_timestamps: Mapping[str, int | None],
+    ) -> dict[str, int]:
+        if frame_timestamps.size == 0:
+            return {}
+        first = int(frame_timestamps[0])
+        last = int(frame_timestamps[-1])
+        indices: dict[str, int] = {}
+        for name, timestamp_us in event_timestamps.items():
+            if timestamp_us is None or timestamp_us < first or timestamp_us > last:
+                continue
+            index = int(
+                np.searchsorted(
+                    frame_timestamps,
+                    np.uint64(timestamp_us),
+                    side="left",
+                )
+            )
+            indices[name] = min(index, int(frame_timestamps.size - 1))
+        return indices
+
+    def _ReplayFrameSamples_Precompute(
+        self,
+        attitude: TimeSeries,
+        trajectory_timestamps: np.ndarray,
+        trajectory_values: np.ndarray,
+        frame_timestamps: np.ndarray,
+        deploy_timestamp_us: int | None,
+        landing_timestamp_us: int | None,
+        event_frame_indices: Mapping[str, int],
+    ) -> tuple[_ReplayFrameSample, ...]:
+        deploy_left = int(trajectory_timestamps.size)
+        deploy_right = int(trajectory_timestamps.size)
+        if deploy_timestamp_us is not None:
+            deploy_left = int(
+                np.searchsorted(
+                    trajectory_timestamps,
+                    np.uint64(deploy_timestamp_us),
+                    side="left",
+                )
+            )
+            deploy_right = int(
+                np.searchsorted(
+                    trajectory_timestamps,
+                    np.uint64(deploy_timestamp_us),
+                    side="right",
+                )
+            )
+        deploy_frame = event_frame_indices.get("deploy")
+        landing_frame = event_frame_indices.get("landing")
+        samples: list[_ReplayFrameSample] = []
+        for frame_index, raw_timestamp in enumerate(frame_timestamps):
+            timestamp_us = int(raw_timestamp)
+            attitude_index = self._NearestIndex(
+                attitude.timestamp_us,
+                timestamp_us,
+            )
+            trajectory_end = int(
+                np.searchsorted(
+                    trajectory_timestamps,
+                    raw_timestamp,
+                    side="right",
+                )
+            )
+            trajectory_end = max(1, min(trajectory_end, trajectory_timestamps.size))
+            pre_deploy_end = (
+                trajectory_end
+                if deploy_timestamp_us is None
+                else min(trajectory_end, deploy_right)
+            )
+            post_deploy_start = (
+                trajectory_end
+                if deploy_timestamp_us is None
+                else min(deploy_left, trajectory_end)
+            )
+            samples.append(
+                _ReplayFrameSample(
+                    timestamp_us=timestamp_us,
+                    quaternion=np.asarray(
+                        attitude.values[attitude_index],
+                        dtype=np.float64,
+                    ).copy(),
+                    trajectory_end_index=trajectory_end,
+                    pre_deploy_end_index=pre_deploy_end,
+                    post_deploy_start_index=post_deploy_start,
+                    current_position=np.asarray(
+                        trajectory_values[trajectory_end - 1],
+                        dtype=np.float64,
+                    ).copy(),
+                    current_color=TrajectoryPhaseColor_Get(
+                        timestamp_us,
+                        deploy_timestamp_us,
+                    ),
+                    deploy_visible=(
+                        deploy_frame is not None and frame_index >= deploy_frame
+                    ),
+                    landing_visible=(
+                        landing_timestamp_us is not None
+                        and landing_frame is not None
+                        and frame_index >= landing_frame
+                    ),
+                )
+            )
+        return tuple(samples)
+
+    def _ReplayTrajectoryArtists_Create(
+        self,
+        axis: Any,
+        language: ExportLanguage,
+        theme: ExportTheme,
+        full_values: np.ndarray,
+        ground_bounds: tuple[float, float, float, float],
+        deploy_mesh: tuple[np.ndarray, np.ndarray] | None,
+        landing_mesh: tuple[np.ndarray, np.ndarray] | None,
+    ) -> _ReplayTrajectoryArtists:
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        background, foreground, _ = self._Plot_Configure(theme)
+        labels = _LABELS[language]
+        self._TrajectoryGroundPlane_Add(axis, ground_bounds, theme)
+        pre_deploy_line = axis.plot(
+            [],
+            [],
+            [],
+            color=TRAJECTORY_PRE_DEPLOY_COLOR,
+            linewidth=1.7,
+            label=labels["pre_deploy"],
+        )[0]
+        post_deploy_line = axis.plot(
+            [],
+            [],
+            [],
+            color=TRAJECTORY_POST_DEPLOY_COLOR,
+            linewidth=1.7,
+            label=labels["post_deploy"],
+        )[0]
+        current_marker = axis.plot(
+            [],
+            [],
+            [],
+            color=TRAJECTORY_PRE_DEPLOY_COLOR,
+            linestyle="None",
+            marker="o",
+            markersize=6.2,
+            label="_nolegend_",
+        )[0]
+
+        def marker_create(
+            mesh: tuple[np.ndarray, np.ndarray] | None,
+            color: str,
+            label: str,
+        ) -> Any | None:
+            if mesh is None:
+                return None
+            vertices, faces = mesh
+            marker = Poly3DCollection(
+                [vertices[face] for face in faces],
+                facecolors=color,
+                edgecolors=color,
+                linewidths=0.25,
+                alpha=1.0,
                 label=label,
             )
-            axis.text(
-                vector[0] * 1.08,
-                vector[1] * 1.08,
-                vector[2] * 1.08,
-                label,
-                color=color,
-            )
-        for vector, label in zip(np.eye(3), ("E", "N", "U"), strict=True):
-            axis.plot(
-                [0.0, vector[0] * 0.72],
-                [0.0, vector[1] * 0.72],
-                [0.0, vector[2] * 0.72],
-                color=foreground,
-                linestyle=":",
-                linewidth=0.8,
-            )
-            axis.text(
-                vector[0] * 0.78,
-                vector[1] * 0.78,
-                vector[2] * 0.78,
-                f"+{label}",
-                color=foreground,
-            )
-        self._Axis3d_Equal(
-            axis,
-            np.vstack(
-                (
-                    rotated_vertices,
-                    rotated,
-                    np.zeros((1, 3), dtype=np.float64),
-                )
-            ),
+            marker.set_visible(False)
+            axis.add_collection3d(marker)
+            return marker
+
+        deploy_marker = marker_create(
+            deploy_mesh,
+            TRAJECTORY_DEPLOY_COLOR,
+            labels["deploy"],
         )
-        axis.set_facecolor(background)
-        axis.set_xlabel("E", color=foreground)
-        axis.set_ylabel("N", color=foreground)
-        axis.set_zlabel("U", color=foreground)
-        axis.tick_params(colors=foreground)
-        axis.set_title(_LABELS[language]["attitude"], color=foreground)
-        axis.legend(facecolor=background, labelcolor=foreground, framealpha=0.78)
+        landing_marker = marker_create(
+            landing_mesh,
+            TRAJECTORY_LANDING_COLOR,
+            labels["landing"],
+        )
+        self._Axis3d_ThemeApply(axis, theme)
+        axis.set_xlabel("E (m)", color=foreground)
+        axis.set_ylabel("N (m)", color=foreground)
+        axis.set_zlabel("U (m)", color=foreground)
+        axis.set_title(labels["trajectory_panel"], color=foreground)
+        self._Axis3d_Equal(axis, full_values)
+        axis.view_init(
+            elev=_TRAJECTORY_VIEW_ELEVATION,
+            azim=_TRAJECTORY_VIEW_AZIMUTH,
+        )
+        axis.legend(
+            facecolor=background,
+            labelcolor=foreground,
+            framealpha=0.78,
+            loc="best",
+        )
+        return _ReplayTrajectoryArtists(
+            pre_deploy_line=pre_deploy_line,
+            post_deploy_line=post_deploy_line,
+            current_marker=current_marker,
+            deploy_marker=deploy_marker,
+            landing_marker=landing_marker,
+        )
+
+    @staticmethod
+    def _ReplayTrajectoryArtists_Update(
+        artists: _ReplayTrajectoryArtists,
+        trajectory_values: np.ndarray,
+        sample: _ReplayFrameSample,
+    ) -> None:
+        pre_deploy = trajectory_values[: sample.pre_deploy_end_index]
+        post_deploy = trajectory_values[
+            sample.post_deploy_start_index : sample.trajectory_end_index
+        ]
+
+        def line_update(line: Any, values: np.ndarray) -> None:
+            if values.size:
+                line.set_data_3d(values[:, 0], values[:, 1], values[:, 2])
+            else:
+                line.set_data_3d([], [], [])
+
+        line_update(artists.pre_deploy_line, pre_deploy)
+        line_update(artists.post_deploy_line, post_deploy)
+        current = sample.current_position
+        artists.current_marker.set_data_3d(
+            [current[0]],
+            [current[1]],
+            [current[2]],
+        )
+        artists.current_marker.set_color(sample.current_color)
+        artists.current_marker.set_visible(not sample.landing_visible)
+        if artists.deploy_marker is not None:
+            artists.deploy_marker.set_visible(sample.deploy_visible)
+        if artists.landing_marker is not None:
+            artists.landing_marker.set_visible(sample.landing_visible)
+
+    @staticmethod
+    def _FrameDurations_Distribute(
+        total_duration_ms: float,
+        frame_count: int,
+    ) -> list[int]:
+        if frame_count <= 0:
+            return []
+        centiseconds = max(
+            frame_count,
+            int(round(max(total_duration_ms, 0.0) / 10.0)),
+        )
+        boundaries = np.rint(
+            np.linspace(0, centiseconds, frame_count + 1)
+        ).astype(np.int64)
+        return (np.diff(boundaries) * 10).astype(int).tolist()
+
+    @classmethod
+    def _ReplayFrameDurations_Get(
+        cls,
+        main_frame_count: int,
+        mission_duration_us: int,
+        hold_frame_count: int = _REPLAY_FINAL_HOLD_FRAME_COUNT,
+    ) -> list[int]:
+        main = cls._FrameDurations_Distribute(
+            max(mission_duration_us, 0) * 1.0e-3,
+            main_frame_count,
+        )
+        hold = cls._FrameDurations_Distribute(
+            _REPLAY_FINAL_HOLD_DURATION_MS,
+            hold_frame_count,
+        )
+        return [*main, *hold]
+
+    @staticmethod
+    def _GifFrameSequenceTag_Apply(image: Any, frame_index: int) -> None:
+        # GIF encoders merge byte-identical adjacent frames. Two palette entries
+        # with the same corner color keep copied hold frames visually identical
+        # while retaining every physical frame and its timing metadata.
+        palette = list(image.getpalette() or [])
+        corner_index = int(image.getpixel((0, 0)))
+        color_start = corner_index * 3
+        corner_color = palette[color_start : color_start + 3]
+        if len(corner_color) != 3:
+            corner_color = list(image.convert("RGB").getpixel((0, 0)))
+        palette.extend([0] * (768 - len(palette)))
+        for tag_index in (254, 255):
+            start = tag_index * 3
+            palette[start : start + 3] = corner_color
+        image.putpalette(palette)
+        image.putpixel((0, 0), 254 + frame_index % 2)
 
     def _FlightReplayGif_Write(
         self,
@@ -1329,7 +3231,7 @@ class FlightExporter:
         path: Path,
         language: ExportLanguage,
         theme: ExportTheme,
-        context: TaskContext,
+        progress: _ExportProgressTracker,
         *,
         mission_bounds: MissionReplayBounds | None = None,
         trajectory_bounds: TrajectoryBounds | None = None,
@@ -1381,92 +3283,178 @@ class FlightExporter:
             resolved_mission,
         )
         start = resolved_mission.start_timestamp_us
-        frame_timestamps = self._ReplayFrameTimestamps_Get(
-            attitude,
-            position,
-            start,
-            maximum_frames=60,
-            end_timestamp_us=resolved_mission.end_timestamp_us,
-        )
-        if frame_timestamps.size == 0:
-            raise ValueError("no_common_post_start_attitude_and_position")
+        deploy = _Event_Timestamp(dataset, _EVENT_DEPLOY)
+        if deploy is not None and not (
+            start <= deploy <= resolved_mission.end_timestamp_us
+        ):
+            deploy = None
         landing = (
             resolved_mission.end_timestamp_us
             if resolved_mission.end_reason == MissionReplayEndReason.LANDING
             else None
         )
-        if (
-            landing is not None
-            and landing > int(frame_timestamps[-1])
-            and landing - int(attitude.timestamp_us[-1]) <= 100_000
-            and landing - int(position.timestamp_us[-1]) <= 100_000
-        ):
-            if frame_timestamps.size < 60:
-                frame_timestamps = np.append(frame_timestamps, np.uint64(landing))
-            else:
-                frame_timestamps[-1] = np.uint64(landing)
-        if frame_timestamps.size > 1:
-            durations = np.diff(frame_timestamps).astype(np.float64) * 1.0e-3
-            durations_ms = np.clip(durations, 10.0, 655350.0).astype(int).tolist()
-            durations_ms.append(durations_ms[-1])
-        else:
-            durations_ms = [100]
+        key_event_timestamps = tuple(
+            timestamp
+            for timestamp in (start, deploy, landing)
+            if timestamp is not None
+        )
+        frame_timestamps = self._ReplayFrameTimestamps_Get(
+            attitude,
+            position,
+            start,
+            frames_per_second=_REPLAY_FRAMES_PER_SECOND,
+            end_timestamp_us=resolved_mission.end_timestamp_us,
+            key_event_timestamps=key_event_timestamps,
+        )
+        if frame_timestamps.size == 0:
+            raise ValueError("no_common_post_start_attitude_and_position")
+        time_range = self._ReplayTimeRange_Get(
+            attitude,
+            position,
+            start,
+            resolved_mission.end_timestamp_us,
+        )
+        if time_range is None:
+            raise ValueError("no_common_post_start_attitude_and_position")
+        effective_start, terminal_timestamp = time_range
+        render_timestamps = np.append(
+            frame_timestamps,
+            np.uint64(terminal_timestamp),
+        )
+        trajectory_mask = (
+            (position.timestamp_us >= np.uint64(max(start, 0)))
+            & (
+                position.timestamp_us
+                <= np.uint64(max(resolved_mission.end_timestamp_us, 0))
+            )
+        )
+        trajectory_timestamps = position.timestamp_us[trajectory_mask]
+        if trajectory_timestamps.size == 0:
+            raise ValueError("trajectory_has_no_mission_samples")
+        origin = np.asarray(resolved_bounds.origin_enu, dtype=np.float64)
+        trajectory_values = (
+            np.asarray(position.values[trajectory_mask], dtype=np.float64) - origin
+        )
+        event_frame_indices = self._ReplayEventFrameIndices_Get(
+            render_timestamps,
+            {
+                "start": start,
+                "deploy": deploy,
+                "landing": landing,
+            },
+        )
+        frame_samples = self._ReplayFrameSamples_Precompute(
+            attitude,
+            trajectory_timestamps,
+            trajectory_values,
+            render_timestamps,
+            deploy,
+            landing,
+            event_frame_indices,
+        )
+        full_values = np.asarray(
+            (resolved_bounds.min_enu, resolved_bounds.max_enu),
+            dtype=np.float64,
+        )
+        ground_bounds = self._TrajectoryGroundPlaneBounds_Get(full_values)
+        deploy_size, _, landing_size = TrajectoryMarkerWorldSizesFromExtent_Get(
+            resolved_bounds.max_span
+        )
+        deploy_mesh: tuple[np.ndarray, np.ndarray] | None = None
+        if deploy is not None:
+            deploy_point = self._Position_At(position, deploy)
+            if deploy_point is not None:
+                deploy_mesh = TrajectoryEventMesh_Get(
+                    np.asarray(deploy_point, dtype=np.float64) - origin,
+                    deploy_size,
+                )
+        landing_mesh: tuple[np.ndarray, np.ndarray] | None = None
+        if landing is not None:
+            landing_point = self._Position_NearEvent(position, landing)
+            if landing_point is not None:
+                landing_mesh = TrajectoryEventMesh_Get(
+                    np.asarray(landing_point, dtype=np.float64) - origin,
+                    landing_size,
+                )
+
         background, foreground, _ = self._Plot_Configure(theme)
         labels = _LABELS[language]
         frames: list[Image.Image] = []
+        figure: Any | None = None
+
         try:
-            for frame_number, raw_timestamp in enumerate(frame_timestamps):
-                context.Cancel_RaiseIfRequested()
-                timestamp_us = int(raw_timestamp)
-                attitude_index = self._NearestIndex(attitude.timestamp_us, timestamp_us)
-                figure = plt.figure(figsize=(10, 5), dpi=90)
-                figure.patch.set_facecolor(background)
-                attitude_axis = figure.add_subplot(121, projection="3d")
-                trajectory_axis = figure.add_subplot(122, projection="3d")
-                self._Attitude_AxisDraw(
-                    attitude_axis,
-                    np.asarray(attitude.values[attitude_index], dtype=np.float64),
-                    language,
-                    theme,
+            figure = plt.figure(figsize=(10, 5), dpi=90)
+            figure.patch.set_facecolor(background)
+            attitude_axis = figure.add_subplot(121, projection="3d")
+            trajectory_axis = figure.add_subplot(122, projection="3d")
+            rocket = self._Attitude_AxisDraw(
+                attitude_axis,
+                frame_samples[0].quaternion,
+                language,
+                theme,
+            )
+            trajectory_artists = self._ReplayTrajectoryArtists_Create(
+                trajectory_axis,
+                language,
+                theme,
+                full_values,
+                ground_bounds,
+                deploy_mesh,
+                landing_mesh,
+            )
+            time_title = figure.suptitle("", color=foreground, fontsize=12)
+            figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
+
+            for frame_number, sample in enumerate(frame_samples):
+                progress.context.Cancel_RaiseIfRequested()
+                rocket.set_verts(
+                    self._RocketPolygons_Get(sample.quaternion)
                 )
-                self._Trajectory_AxisDraw(
-                    trajectory_axis,
-                    dataset,
-                    position,
-                    language,
-                    theme,
-                    current_timestamp_us=timestamp_us,
-                    mission_bounds=resolved_mission,
-                    trajectory_bounds=resolved_bounds,
+                self._ReplayTrajectoryArtists_Update(
+                    trajectory_artists,
+                    trajectory_values,
+                    sample,
                 )
-                trajectory_axis.set_title(labels["trajectory_panel"], color=foreground)
-                elapsed = (timestamp_us - start) * 1.0e-6
-                figure.suptitle(
+                elapsed = (sample.timestamp_us - start) * 1.0e-6
+                time_title.set_text(
                     f"{labels['time']}: {elapsed:.3f} s",
-                    color=foreground,
-                    fontsize=12,
                 )
-                figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
-                buffer = io.BytesIO()
-                figure.savefig(buffer, format="png", facecolor=background)
-                plt.close(figure)
-                buffer.seek(0)
-                with Image.open(buffer) as image:
-                    frames.append(
-                        image.convert("P", palette=Image.Palette.ADAPTIVE).copy()
-                    )
-                context.Progress_Report(
-                    0.72 + 0.27 * (frame_number + 1) / len(frame_timestamps),
-                    "export.gif",
+                figure.canvas.draw()
+                rgba = np.asarray(figure.canvas.buffer_rgba(), dtype=np.uint8).copy()
+                frame = Image.fromarray(rgba).convert(
+                    "P",
+                    palette=Image.Palette.ADAPTIVE,
+                    colors=254,
                 )
+                self._GifFrameSequenceTag_Apply(frame, frame_number)
+                frames.append(frame)
+                progress.Unit_Complete("export.running")
+
+            final_frame = frames[-1]
+            for _ in range(_REPLAY_FINAL_HOLD_FRAME_COUNT - 1):
+                progress.context.Cancel_RaiseIfRequested()
+                hold_frame = final_frame.copy()
+                self._GifFrameSequenceTag_Apply(hold_frame, len(frames))
+                frames.append(hold_frame)
+                progress.Unit_Complete("export.running")
+
+            progress.context.Cancel_RaiseIfRequested()
+            durations_ms = self._ReplayFrameDurations_Get(
+                int(frame_timestamps.size),
+                terminal_timestamp - effective_start,
+            )
             frames[0].save(
                 path,
+                format="GIF",
                 save_all=True,
                 append_images=frames[1:],
                 duration=durations_ms,
                 loop=0,
                 disposal=2,
+                optimize=False,
             )
         finally:
+            if figure is not None:
+                plt.close(figure)
             for frame in frames:
                 frame.close()
