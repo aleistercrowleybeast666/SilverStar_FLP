@@ -30,14 +30,15 @@ from silverstar_flp.ui.widgets import StandardComboBox
 
 
 class ImportDialog(QDialog):
-    importRequested = Signal(object)
+    importRequested = Signal(object, object)
+    folderSearchRequested = Signal(object)
 
     def __init__(self, translator: Translator, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._translator = translator
         self.setModal(True)
-        self.resize(640, 250)
-        self.setMinimumWidth(520)
+        self.resize(720, 390)
+        self.setMinimumWidth(600)
 
         layout = QVBoxLayout(self)
         self.source_group = QGroupBox()
@@ -50,14 +51,40 @@ class ImportDialog(QDialog):
         form.addRow(self.source_type_label, self.source_type_combo)
 
         self.source_file_label = QLabel()
-        file_row = QHBoxLayout()
+        log_row = QHBoxLayout()
         self.path_edit = QLineEdit()
         self.path_edit.returnPressed.connect(self._Import_Request)
         self.browse_button = QPushButton()
-        self.browse_button.clicked.connect(self._File_Browse)
-        file_row.addWidget(self.path_edit, 1)
-        file_row.addWidget(self.browse_button)
-        form.addRow(self.source_file_label, file_row)
+        self.browse_button.clicked.connect(self._Log_Browse)
+        log_row.addWidget(self.path_edit, 1)
+        log_row.addWidget(self.browse_button)
+        form.addRow(self.source_file_label, log_row)
+
+        self.decoder_file_label = QLabel()
+        decoder_row = QHBoxLayout()
+        self.decoder_path_edit = QLineEdit()
+        self.decoder_path_edit.returnPressed.connect(self._Import_Request)
+        self.decoder_browse_button = QPushButton()
+        self.decoder_browse_button.clicked.connect(self._Decoder_Browse)
+        decoder_row.addWidget(self.decoder_path_edit, 1)
+        decoder_row.addWidget(self.decoder_browse_button)
+        form.addRow(self.decoder_file_label, decoder_row)
+
+        self.folder_label = QLabel()
+        folder_row = QHBoxLayout()
+        self.folder_path_edit = QLineEdit()
+        self.folder_browse_button = QPushButton()
+        self.folder_browse_button.clicked.connect(self._Folder_Browse)
+        self.folder_search_button = QPushButton()
+        self.folder_search_button.clicked.connect(self._FolderSearch_Request)
+        folder_row.addWidget(self.folder_path_edit, 1)
+        folder_row.addWidget(self.folder_browse_button)
+        folder_row.addWidget(self.folder_search_button)
+        form.addRow(self.folder_label, folder_row)
+
+        self.candidate_label = QLabel()
+        self.candidate_combo = StandardComboBox()
+        form.addRow(self.candidate_label, self.candidate_combo)
         layout.addWidget(self.source_group)
 
         self.note_label = QLabel()
@@ -83,39 +110,117 @@ class ImportDialog(QDialog):
         self.Language_Apply(translator)
 
     def _SourceType_Changed(self) -> None:
-        source_type = str(self.source_type_combo.currentData() or "flight_log")
-        self.path_edit.setPlaceholderText(
-            self._translator.Text_Get(
-                "import.flight_log_placeholder"
-                if source_type == "flight_log"
-                else "import.project_placeholder"
-            )
-        )
+        manual = str(self.source_type_combo.currentData() or "manual") == "manual"
+        for widget in (
+            self.path_edit,
+            self.browse_button,
+            self.decoder_path_edit,
+            self.decoder_browse_button,
+        ):
+            widget.setEnabled(manual)
+        for widget in (
+            self.folder_path_edit,
+            self.folder_browse_button,
+            self.folder_search_button,
+            self.candidate_combo,
+        ):
+            widget.setEnabled(not manual)
 
-    def _File_Browse(self) -> None:
-        source_type = str(self.source_type_combo.currentData() or "flight_log")
-        file_filter = (
-            "SilverStar flight logs (*.BIN *.bin);;All files (*)"
-            if source_type == "flight_log"
-            else "SilverStar project (*.ssflp);;All files (*)"
-        )
+    def _Log_Browse(self) -> None:
         selected, _ = QFileDialog.getOpenFileName(
             self,
             self._translator.Text_Get("dialog.import.title"),
             str(Path.home()),
-            file_filter,
+            "SilverStar flight logs (*.BIN *.bin *.SSLOG *.sslog);;All files (*)",
         )
         if selected:
             self.path_edit.setText(selected)
 
+    def _Decoder_Browse(self) -> None:
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            self._translator.Text_Get("dialog.import.title"),
+            str(Path.home()),
+            "SilverStar decoder packages (*.ssdecoder);;All files (*)",
+        )
+        if selected:
+            self.decoder_path_edit.setText(selected)
+
+    def _Folder_Browse(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            self._translator.Text_Get("import.folder_search"),
+            self.folder_path_edit.text().strip() or str(Path.home()),
+        )
+        if selected:
+            self.folder_path_edit.setText(selected)
+
+    def _FolderSearch_Request(self) -> None:
+        folder_text = self.folder_path_edit.text().strip()
+        if not folder_text:
+            self.result_label.setText(self._translator.Text_Get("import.folder_required"))
+            self.result_label.show()
+            return
+        self.result_label.hide()
+        self.folderSearchRequested.emit(Path(folder_text))
+
+    def PairDiscovery_Set(self, discovery: object) -> None:
+        self.candidate_combo.clear()
+        pairs = tuple(getattr(discovery, "pairs", ()))
+        for pair in pairs:
+            label = (
+                f"{pair.log_path.name}  +  {pair.decoder_package_path.name}  "
+                f"[{pair.project_name} / {pair.firmware_version}]"
+            )
+            self.candidate_combo.addItem(label, pair)
+        diagnostics = tuple(getattr(discovery, "diagnostics", ()))
+        if len(pairs) == 1:
+            self.candidate_combo.setCurrentIndex(0)
+            self.result_label.setText(self._translator.Text_Get("import.exact_pair_found"))
+        elif pairs:
+            self.result_label.setText(self._translator.Text_Get("import.select_exact_pair"))
+        else:
+            detail = "\n".join(diagnostics)
+            self.result_label.setText(
+                self._translator.Text_Get("import.exact_pair_missing")
+                + (f"\n{detail}" if detail else "")
+            )
+        self.result_label.show()
+
+    def Paths_Set(
+        self,
+        *,
+        log_path: Path | None = None,
+        decoder_path: Path | None = None,
+    ) -> None:
+        if log_path is not None:
+            self.path_edit.setText(str(log_path))
+            self.folder_path_edit.setText(str(Path(log_path).parent))
+        if decoder_path is not None:
+            self.decoder_path_edit.setText(str(decoder_path))
+        if log_path is not None and decoder_path is not None:
+            index = self.source_type_combo.findData("manual")
+            self.source_type_combo.setCurrentIndex(max(index, 0))
+
     def _Import_Request(self) -> None:
+        source_type = str(self.source_type_combo.currentData() or "manual")
+        if source_type == "folder_search":
+            pair = self.candidate_combo.currentData()
+            if pair is None:
+                self._FolderSearch_Request()
+                return
+            self.result_label.hide()
+            self.importRequested.emit(pair.log_path, pair.decoder_package_path)
+            self.accept()
+            return
         path_text = self.path_edit.text().strip()
-        if not path_text:
+        decoder_text = self.decoder_path_edit.text().strip()
+        if not path_text or not decoder_text:
             self.result_label.setText(self._translator.Text_Get("import.path_required"))
             self.result_label.show()
             return
         self.result_label.hide()
-        self.importRequested.emit(Path(path_text))
+        self.importRequested.emit(Path(path_text), Path(decoder_text))
         self.accept()
 
     def Language_Apply(self, translator: Translator) -> None:
@@ -123,8 +228,11 @@ class ImportDialog(QDialog):
         selected_type = self.source_type_combo.currentData()
         self.source_type_combo.blockSignals(True)
         self.source_type_combo.clear()
-        self.source_type_combo.addItem(translator.Text_Get("import.flight_log"), "flight_log")
-        self.source_type_combo.addItem(translator.Text_Get("import.project"), "project")
+        self.source_type_combo.addItem(translator.Text_Get("import.manual_pair"), "manual")
+        self.source_type_combo.addItem(
+            translator.Text_Get("import.folder_search"),
+            "folder_search",
+        )
         index = self.source_type_combo.findData(selected_type)
         self.source_type_combo.setCurrentIndex(max(index, 0))
         self.source_type_combo.blockSignals(False)
@@ -132,11 +240,24 @@ class ImportDialog(QDialog):
         self.setWindowTitle(translator.Text_Get("dialog.import.title"))
         self.source_group.setTitle(translator.Text_Get("dialog.import.source"))
         self.source_type_label.setText(translator.Text_Get("label.import_type"))
-        self.source_file_label.setText(translator.Text_Get("label.source_file"))
+        self.source_file_label.setText(translator.Text_Get("label.log_file"))
+        self.decoder_file_label.setText(translator.Text_Get("label.decoder_package"))
+        self.folder_label.setText(translator.Text_Get("label.task_folder"))
+        self.candidate_label.setText(translator.Text_Get("label.exact_pair"))
         self.browse_button.setText(translator.Text_Get("action.browse"))
+        self.decoder_browse_button.setText(translator.Text_Get("action.browse"))
+        self.folder_browse_button.setText(translator.Text_Get("action.browse"))
+        self.folder_search_button.setText(translator.Text_Get("action.search"))
         self.cancel_button.setText(translator.Text_Get("action.dialog_cancel"))
-        self.import_button.setText(translator.Text_Get("action.import"))
+        self.import_button.setText(translator.Text_Get("action.open_exact_pair"))
         self.note_label.setText(translator.Text_Get("import.read_only_note"))
+        self.path_edit.setPlaceholderText(translator.Text_Get("import.flight_log_placeholder"))
+        self.decoder_path_edit.setPlaceholderText(
+            translator.Text_Get("import.decoder_placeholder")
+        )
+        self.folder_path_edit.setPlaceholderText(
+            translator.Text_Get("import.folder_placeholder")
+        )
         self._SourceType_Changed()
 
 

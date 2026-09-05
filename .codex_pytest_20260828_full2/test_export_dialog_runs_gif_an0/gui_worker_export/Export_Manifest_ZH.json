@@ -1,0 +1,25 @@
+{
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "flight_replay_gif",
+      "localized_name": "三维飞行回放 GIF",
+      "path": "Flight_Replay_ZH.gif"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "Flight_Replay_ZH.gif",
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

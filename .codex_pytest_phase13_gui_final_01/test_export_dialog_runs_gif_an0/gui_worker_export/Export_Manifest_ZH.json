@@ -1,0 +1,38 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_phase13_gui_final_01\\test_export_dialog_runs_gif_an0\\SYNTHETIC_gui_worker_export.BIN",
+    "size_bytes": 6376,
+    "sha256": "d18677458e4965b3eb4f55b2fc8b9b27e1f022377b9e46a1a44c468b9ccfded4"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [],
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "flight_replay_gif",
+      "localized_name": "三维飞行回放 GIF",
+      "path": "Flight_Replay_ZH.gif"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "Flight_Replay_ZH.gif",
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

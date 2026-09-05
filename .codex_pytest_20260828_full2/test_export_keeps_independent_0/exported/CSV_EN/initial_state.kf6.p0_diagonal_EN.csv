@@ -1,0 +1,3 @@
+﻿# channel=initial_state.kf6.p0_diagonal,unit=mixed,quantity=covariance,source=INITIAL_STATE,synthetic=False
+timestamp_us,time_from_start_s,pE,pN,pU,vE,vN,vU,valid
+1000000,0.000000000,4.0,4.0,9.0,0.25,0.25,0.25,1

@@ -1,0 +1,25 @@
+{
+  "format": "SilverStar_FLP_Project",
+  "version": 2,
+  "log_reference": "SYNTHETIC_project_source.BIN",
+  "decoder_profile": {
+    "source_reference": "synthetic.ssdecoder",
+    "cache_reference": {
+      "generation_profile_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "package_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "relative_path": "33333333333333333333333333333333/2222222222222222222222222222222222222222222222222222222222222222.ssdecoder"
+    },
+    "package_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "generation_profile_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "record_catalog_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+    "record_catalog_hash_128": "44444444444444444444444444444444",
+    "project_semantics_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+    "project_semantics_hash_128": "55555555555555555555555555555555",
+    "container_plugin_id": "silverstar.flight_log.container.0_0",
+    "container_plugin_version": "0.0.0",
+    "exact_match_mode": "exact_generation_profile"
+  },
+  "replay_configurations": {},
+  "notes": "synthetic fixture",
+  "ui_state": {}
+}

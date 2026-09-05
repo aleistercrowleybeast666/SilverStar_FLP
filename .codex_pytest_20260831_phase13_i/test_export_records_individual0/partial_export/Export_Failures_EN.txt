@@ -1,0 +1,7 @@
+SilverStar_FLP Export Failures
+====================================
+
+csv:inertial.increment.dt
+Item: CSV Data · inertial.increment.dt
+Type: RuntimeError
+Message: intentional_csv_failure

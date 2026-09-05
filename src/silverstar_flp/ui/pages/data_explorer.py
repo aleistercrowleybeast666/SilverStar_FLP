@@ -37,9 +37,14 @@ class DataExplorerPage(QWidget):
 
         channel_widget = QWidget()
         channel_layout = QVBoxLayout(channel_widget)
+        channel_filter_layout = QHBoxLayout()
+        self.channel_group_combo = StandardComboBox()
+        self.channel_group_combo.currentIndexChanged.connect(self._Channels_Filter)
         self.search_edit = QLineEdit()
         self.search_edit.textChanged.connect(self._Channels_Filter)
-        channel_layout.addWidget(self.search_edit)
+        channel_filter_layout.addWidget(self.channel_group_combo)
+        channel_filter_layout.addWidget(self.search_edit, 1)
+        channel_layout.addLayout(channel_filter_layout)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.channel_list = QListWidget()
         self.channel_list.currentItemChanged.connect(self._Channel_Show)
@@ -74,6 +79,13 @@ class DataExplorerPage(QWidget):
         self.record_combo.currentIndexChanged.connect(self._Records_Show)
         selector_layout.addWidget(self.record_combo, 1)
         record_layout.addLayout(selector_layout)
+        self.record_metadata = QLabel("—")
+        self.record_metadata.setObjectName("muted")
+        self.record_metadata.setWordWrap(True)
+        self.record_metadata.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        record_layout.addWidget(self.record_metadata)
         self.record_table = QTableWidget()
         self.record_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.record_table.verticalHeader().setVisible(False)
@@ -114,18 +126,79 @@ class DataExplorerPage(QWidget):
             self.channel_list.addItem(item)
         if self.channel_list.count():
             self.channel_list.setCurrentRow(0)
+        selected_group = self.channel_group_combo.currentData()
+        self.channel_group_combo.blockSignals(True)
+        self.channel_group_combo.clear()
+        for group_id, label_key in (
+            ("all", "explorer.group.all"),
+            ("stable", "explorer.group.stable"),
+            ("raw", "explorer.group.raw"),
+            ("capability", "explorer.group.capability"),
+            ("algorithm", "explorer.group.algorithm"),
+        ):
+            self.channel_group_combo.addItem(
+                self._translator.Text_Get(label_key),
+                group_id,
+            )
+        self.channel_group_combo.setCurrentIndex(
+            max(self.channel_group_combo.findData(selected_group), 0)
+        )
+        self.channel_group_combo.blockSignals(False)
         self.record_combo.blockSignals(True)
         self.record_combo.clear()
         self.record_combo.addItems(sorted(dataset.records))
         self.record_combo.blockSignals(False)
+        self._Channels_Filter()
         self._Records_Show()
 
-    def _Channels_Filter(self, text: str) -> None:
-        needle = text.strip().casefold()
+    def _Channels_Filter(self, *_args: object) -> None:
+        needle = self.search_edit.text().strip().casefold()
+        selected_group = str(self.channel_group_combo.currentData() or "all")
+        semantic_context = self._dataset.semantic_context if self._dataset is not None else None
+        stable_roles = (
+            set(semantic_context.stable_aliases)
+            if semantic_context is not None
+            else set()
+        )
+        raw_channel_ids = (
+            set(semantic_context.stable_aliases.values())
+            if semantic_context is not None
+            else set()
+        )
         for index in range(self.channel_list.count()):
             item = self.channel_list.item(index)
             channel_id = str(item.data(Qt.ItemDataRole.UserRole))
-            item.setHidden(bool(needle and needle not in channel_id.casefold()))
+            series = self._channels[channel_id]
+            is_algorithm = series.source.startswith("silverstar.algorithm.")
+            is_stable = channel_id in stable_roles
+            is_raw = channel_id in raw_channel_ids or (
+                not is_stable and not is_algorithm
+            )
+            is_capability = channel_id.split(".", 1)[0] in {
+                "imu",
+                "gnss",
+                "baro",
+                "magnetometer",
+                "pure_ins",
+                "kf6",
+            }
+            group_matches = {
+                "all": True,
+                "stable": is_stable,
+                "raw": is_raw,
+                "capability": is_capability,
+                "algorithm": is_algorithm,
+            }.get(selected_group, True)
+            searchable = " ".join(
+                (
+                    channel_id,
+                    series.quantity,
+                    series.unit,
+                    series.source,
+                    json.dumps(dict(series.metadata), ensure_ascii=False, default=str),
+                )
+            ).casefold()
+            item.setHidden(not group_matches or bool(needle and needle not in searchable))
 
     def _Channel_Show(self, current: QListWidgetItem | None) -> None:
         if current is None:
@@ -134,15 +207,34 @@ class DataExplorerPage(QWidget):
         series = self._channels.get(channel_id)
         if series is None:
             return
-        self.channel_metadata.setText(
-            self._translator.Text_Get(
-                "explorer.channel_metadata",
-                channel=channel_id,
-                quantity=series.quantity,
-                unit=series.unit,
-                source=series.source,
-                count=series.count,
+        metadata_text = self._translator.Text_Get(
+            "explorer.channel_metadata",
+            channel=channel_id,
+            quantity=series.quantity,
+            unit=series.unit,
+            source=series.source,
+            count=series.count,
+        )
+        if self._dataset is not None and self._dataset.semantic_context is not None:
+            context = self._dataset.semantic_context
+            raw_channel_id = context.StableRole_Get(channel_id)
+            semantic_metadata = {
+                "stable_role": channel_id if raw_channel_id is not None else None,
+                "raw_channel_id": raw_channel_id,
+                "series_metadata": dict(series.metadata),
+            }
+            record_name = series.metadata.get("record_name")
+            if isinstance(record_name, str):
+                semantic_metadata["record_view"] = context.RecordView_Get(record_name)
+                semantic_metadata["logging_stream"] = context.LoggingStream_Get(record_name)
+            metadata_text += "\n" + json.dumps(
+                semantic_metadata,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
             )
+        self.channel_metadata.setText(
+            metadata_text
         )
         values = np.asarray(series.values)
         value_columns = (
@@ -176,6 +268,17 @@ class DataExplorerPage(QWidget):
             return
         record_name = self.record_combo.currentText()
         records = self._dataset.Records_Get(record_name)
+        semantic_context = self._dataset.semantic_context
+        if semantic_context is None:
+            self.record_metadata.setText("—")
+        else:
+            metadata = {
+                "record_view": semantic_context.RecordView_Get(record_name),
+                "logging_stream": semantic_context.LoggingStream_Get(record_name),
+            }
+            self.record_metadata.setText(
+                json.dumps(metadata, ensure_ascii=False, indent=2, default=str)
+            )
         if not records:
             self.record_table.setRowCount(0)
             return
@@ -190,7 +293,9 @@ class DataExplorerPage(QWidget):
             prefix = [record.timestamp_us, record.record_sequence, record.valid_flags]
             values = prefix + [record.payload.get(field, "") for field in fields]
             for column, value in enumerate(values):
-                if isinstance(value, (tuple, list, dict)):
+                if isinstance(value, bytes):
+                    text = value.hex(" ")
+                elif isinstance(value, (tuple, list, dict)):
                     text = json.dumps(value, ensure_ascii=False)
                 else:
                     text = str(value)
@@ -206,6 +311,23 @@ class DataExplorerPage(QWidget):
 
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
+        selected_group = self.channel_group_combo.currentData()
+        self.channel_group_combo.blockSignals(True)
+        for index, label_key in enumerate(
+            (
+                "explorer.group.all",
+                "explorer.group.stable",
+                "explorer.group.raw",
+                "explorer.group.capability",
+                "explorer.group.algorithm",
+            )
+        ):
+            if index < self.channel_group_combo.count():
+                self.channel_group_combo.setItemText(index, translator.Text_Get(label_key))
+        self.channel_group_combo.setCurrentIndex(
+            max(self.channel_group_combo.findData(selected_group), 0)
+        )
+        self.channel_group_combo.blockSignals(False)
         self.search_edit.setPlaceholderText(translator.Text_Get("explorer.filter_channels"))
         self.display_note.setText(translator.Text_Get("explorer.display_note"))
         self.record_type_label.setText(translator.Text_Get("explorer.record_type"))

@@ -1,0 +1,25 @@
+{
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "replay:pure_ins:what_if:1",
+  "active_source_kind": "what_if",
+  "generated": [
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [
+    {
+      "item_id": "full_covariance_keyframes",
+      "localized_name": "完整协方差矩阵 P 关键帧",
+      "skipped_reason": "full_covariance_unavailable"
+    }
+  ],
+  "failed": [],
+  "files": [
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

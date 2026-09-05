@@ -1,0 +1,25 @@
+{
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "full_covariance_keyframes:silverstar.algorithm.kf6:recorded",
+      "localized_name": "完整协方差矩阵 P 关键帧 · KF_6",
+      "path": "KF6_Full_P_Keyframes_ZH.txt"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "KF6_Full_P_Keyframes_ZH.txt",
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

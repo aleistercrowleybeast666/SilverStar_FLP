@@ -16,6 +16,23 @@ Every run is appended to `ReplayResultStore` with a unique `result_id`, algorith
 source, parameter snapshot, fidelity, warnings, time coverage, channels, and diagnostics.
 Recomputed and What-if runs from Pure INS and KF6 therefore coexist.
 
+The Replay algorithm list is the desktop registry, not the firmware component list. Each row shows
+independent tags for an installed offline plugin, firmware membership, and recorded output. A
+future installed ESKF plugin therefore appears immediately and can run when its declared stable
+inputs are present, even when the opened `.ssdecoder` says that ESKF was not onboard.
+
+Replay exposes three configuration modes:
+
+1. **Recorded configuration** requires firmware membership, available inputs, and every parameter
+   required by that plugin to be present in the log. Defaults never complete a partial recording.
+2. **Offline configuration** uses the plugin's explicit offline defaults and depends only on input
+   availability, not on firmware membership or recorded output.
+3. **What-if** starts from offline defaults and overlays the subset of parameters genuinely found
+   in the log. User edits are then stored with the run as a distinct provenance snapshot.
+
+Recorded algorithm output is a fourth, separate fact: it may be displayed as a comparison target,
+but it neither proves that recorded configuration is complete nor becomes a replay input.
+
 Replay remains a first-class analysis capability even when Recorded and Recomputed happen to be
 close. It is the path for running new algorithms on old logs, comparing KF6/ESKF15/ESKF24,
 parameter What-if studies, algorithm regression, diagnosing real-time task/timestamp/drop issues,
@@ -24,11 +41,14 @@ channels produces `UNAVAILABLE` with explicit missing-input codes rather than a 
 
 What-if controls are generated from `ParameterSpec.group_key`. KF6 exposes Process Model, Initial
 Covariance, Measurement Noise, and Consistency Gating groups, showing only the selected group's
-editors. Modified values display a visible state. Reset calls the selected plugin's
-`recorded_parameters(dataset)` mapping, restoring SYSTEM_CONFIG/header-derived values and neutral
-R/P scale factors instead of Python schema defaults. Process-acceleration and measurement-R
+editors. Modified values display a visible state. Reset restores the audited What-if baseline:
+explicit offline defaults overlaid by the partial or complete values returned by
+`recorded_parameters(dataset)`. Process-acceleration and measurement-R
 tooltips distinguish process noise Q from IMU white noise and distinguish dynamic recorded sensor
 uncertainty × R scale from a fixed sensor accuracy.
+
+Pure INS and KF_6 remain `APPROXIMATE` for firmware `0.0.10` and retain warning `SILV0008`.
+Exact package matching changes input provenance, not algorithm fidelity.
 
 The Replay page owns the only editable **Analysis Data Source** selector:
 

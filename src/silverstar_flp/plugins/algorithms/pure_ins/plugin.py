@@ -90,12 +90,24 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             "mechanization.delta_velocity_b",
             "mechanization.dt",
         ),
+        firmware_component_ids=(
+            "silverstar.algorithm.ins.coning2_sculling2",
+        ),
+        recorded_output_roles=(
+            "pure_ins.recorded.attitude.q_nb",
+            "pure_ins.recorded.navigation.velocity_enu",
+            "pure_ins.recorded.navigation.position_enu",
+        ),
+        required_semantic_roles=(
+            "imu.corrected.accel_b",
+            "imu.corrected.gyro_b",
+        ),
     )
 
     def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
-        return {
-            "gravity_mps2": float(dataset.header.get("gravity_mps2", 9.78)),
-        }
+        if "gravity_mps2" not in dataset.header:
+            return {}
+        return {"gravity_mps2": float(dataset.header["gravity_mps2"])}
 
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
@@ -144,6 +156,12 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
         if str(dataset.header.get("build_id", "")) != CURRENT_BUILD_ID:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("firmware_build_differs_from_reimplementation")
+        if (
+            dataset.semantic_context is not None
+            and dataset.semantic_context.FirmwareVersion_Get() == "0.0.10"
+        ):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("fccg_0_0_10_host_golden_not_verified")
         if dataset.diagnostics.record_crc_failures or dataset.diagnostics.sequence_gap_count:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("source_log_has_integrity_or_sequence_gaps")
@@ -206,7 +224,9 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             )
         task_context.Cancel_RaiseIfRequested()
         gravity = float(dataset.header.get("gravity_mps2", 9.78))
-        if request.mode == ReplayMode.WHAT_IF and "gravity_mps2" in request.parameters:
+        if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF) and (
+            "gravity_mps2" in request.parameters
+        ):
             gravity = float(request.parameters["gravity_mps2"])
         outputs = Mechanization_Run(
             increments,
@@ -276,7 +296,11 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             ),
         }
         parameters = {"gravity_mps2": gravity}
-        parameters.update(dict(request.parameters) if request.mode == ReplayMode.WHAT_IF else {})
+        parameters.update(
+            dict(request.parameters)
+            if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF)
+            else {}
+        )
         task_context.Progress_Report(1.0, "replay.complete")
         return AlgorithmResult(
             algorithm_id=self.metadata.plugin_id,
@@ -297,5 +321,13 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
                 "initial_velocity_policy": "zero_matches_firmware_pure_ins",
                 **dict(source_diagnostics),
             },
-            provenance=("What-if" if request.mode == ReplayMode.WHAT_IF else "Recomputed"),
+            provenance=(
+                "What-if"
+                if request.mode == ReplayMode.WHAT_IF
+                else (
+                    "Offline"
+                    if request.mode == ReplayMode.OFFLINE
+                    else "Recomputed from recorded configuration"
+                )
+            ),
         )

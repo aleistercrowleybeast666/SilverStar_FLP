@@ -13,3 +13,5 @@ release/
 output/
 projects/*.ssflp
 
+# User-provided source archive; never include it in application commits.
+/main.zip

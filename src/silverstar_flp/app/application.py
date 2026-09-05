@@ -33,10 +33,26 @@ def _Logging_Configure() -> Path:
 def _Arguments_Parse(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SilverStar Flight Log Processor GUI")
     parser.add_argument("path", nargs="?", type=Path, help="SSLOG0 BIN or .ssflp project")
+    decoder_group = parser.add_mutually_exclusive_group()
+    decoder_group.add_argument("--decoder", type=Path, help="exact .ssdecoder package")
+    decoder_group.add_argument(
+        "--auto-find",
+        action="store_true",
+        help="bounded search for one exact log/package pair",
+    )
     parser.add_argument("--lang", choices=("zh_CN", "en_US"))
     parser.add_argument("--theme", choices=("light", "dark"))
     parser.add_argument("--version", action="version", version=__version__)
-    return parser.parse_args(arguments)
+    options = parser.parse_args(arguments)
+    if options.path is None and (options.decoder is not None or options.auto_find):
+        parser.error("--decoder/--auto-find requires a log path")
+    if (
+        options.path is not None
+        and options.path.suffix.casefold() == ".ssflp"
+        and (options.decoder is not None or options.auto_find)
+    ):
+        parser.error("a project carries its own decoder identity")
+    return options
 
 
 def _RuntimeDiagnostics_Log() -> None:
@@ -71,7 +87,12 @@ def main(arguments: list[str] | None = None) -> int:
     theme = options.theme or str(settings.value("theme", "light"))
     initial_path = options.path
     window = MainWindow(
-        builtin_registry(), language=language, theme=theme, initial_path=initial_path
+        builtin_registry(),
+        language=language,
+        theme=theme,
+        initial_path=initial_path,
+        initial_decoder_path=options.decoder,
+        initial_auto_find=bool(options.auto_find),
     )
     window.show()
     logging.info("%s %s started; log=%s", PRODUCT_NAME, __version__, log_path)

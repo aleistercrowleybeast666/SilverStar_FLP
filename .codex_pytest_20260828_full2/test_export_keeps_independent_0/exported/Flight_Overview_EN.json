@@ -1,0 +1,73 @@
+{
+  "source_name": "Pure INS",
+  "mission_start_timestamp_us": 1000000,
+  "start_fallback": false,
+  "duration_s": 0.16,
+  "maximum_altitude_m": 0.0,
+  "maximum_speed_mps": 0.0,
+  "maximum_acceleration_mps2": 0.0,
+  "deploy": {
+    "timestamp_us": null,
+    "altitude_m": null,
+    "altitude_source": "N/A",
+    "actual_reason_recorded": false,
+    "actual_trigger_mask": 0,
+    "enabled_trigger_mask": 4,
+    "trigger_value": null,
+    "trigger_value_kind": "",
+    "trigger_threshold": null
+  },
+  "calibration": {
+    "present": false,
+    "timestamp_us": null,
+    "mode": null,
+    "state": null,
+    "ready": false,
+    "completed_face_mask": 0,
+    "completed_faces": 0,
+    "required_faces": 0,
+    "samples": 0,
+    "reject_count": 0,
+    "retry_count": 0,
+    "accel_bias_mps2": null,
+    "accel_scale": null,
+    "gyro_bias_radps": null,
+    "gyro_scale": null
+  },
+  "alignment": {
+    "present": true,
+    "timestamp_us": 1000000,
+    "mode": 1,
+    "state": 3,
+    "ready": true,
+    "q_nb": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "quaternion_record": "INITIAL_STATE",
+    "known_yaw_deg": null,
+    "magnetic_declination_deg": 0.0,
+    "sample_count": 200,
+    "selected_mask": null,
+    "ready_mask": null,
+    "config_result": null,
+    "attitude_source": null,
+    "used_sources": [],
+    "historical_mode": true
+  },
+  "timeline": [
+    {
+      "timestamp_us": 1000000,
+      "name": "MISSION_START",
+      "category": "mission",
+      "arg0": 0,
+      "arg1": 0
+    }
+  ],
+  "decoded_record_count": 37,
+  "crc_failure_count": 0,
+  "sequence_gap_count": 0,
+  "synthetic": false
+}

@@ -5,12 +5,15 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
 
 from silverstar_flp.core.diagnostics import ParserDiagnostics
+
+if TYPE_CHECKING:
+    from silverstar_flp.core.semantic_context import DatasetSemanticContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,9 +28,9 @@ class TimeSeries:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        timestamps = np.asarray(self.timestamp_us, dtype=np.uint64)
-        values = np.asarray(self.values)
-        valid = np.asarray(self.valid, dtype=np.bool_)
+        timestamps = np.array(self.timestamp_us, dtype=np.uint64, copy=True)
+        values = np.array(self.values, copy=True)
+        valid = np.array(self.valid, dtype=np.bool_, copy=True)
         if values.ndim == 0:
             values = values.reshape(1)
         if timestamps.ndim != 1 or valid.ndim != 1:
@@ -38,6 +41,9 @@ class TimeSeries:
             raise ValueError("time-series timestamps must be monotonic")
         if self.columns and values.ndim > 1 and len(self.columns) != values.shape[1]:
             raise ValueError("column metadata does not match values")
+        timestamps.setflags(write=False)
+        values.setflags(write=False)
+        valid.setflags(write=False)
         object.__setattr__(self, "timestamp_us", timestamps)
         object.__setattr__(self, "values", values)
         object.__setattr__(self, "valid", valid)
@@ -85,6 +91,7 @@ class FlightDataset:
     records: Mapping[str, tuple[DecodedRecord, ...]]
     series: Mapping[str, TimeSeries]
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    semantic_context: DatasetSemanticContext | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_path", Path(self.source_path))
@@ -135,6 +142,7 @@ class ChannelDefinition:
     timestamp_field: str | None = None
     validity_field: str | None = None
     validity_mask: int | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 class FlightDatasetBuilder:
@@ -185,6 +193,7 @@ class FlightDatasetBuilder:
         header: Mapping[str, Any],
         diagnostics: ParserDiagnostics,
         metadata: Mapping[str, Any] | None = None,
+        semantic_context: DatasetSemanticContext | None = None,
     ) -> FlightDataset:
         series: dict[str, TimeSeries] = {}
         for channel_id, samples in self._series_samples.items():
@@ -204,7 +213,10 @@ class FlightDatasetBuilder:
                 source=source,
                 valid=valid,
                 columns=definition.columns,
-                metadata={"field_name": definition.field_name},
+                metadata={
+                    "field_name": definition.field_name,
+                    **dict(definition.metadata),
+                },
             )
         return FlightDataset(
             source_path=source_path,
@@ -214,4 +226,5 @@ class FlightDatasetBuilder:
             records={name: tuple(items) for name, items in self._records.items()},
             series=series,
             metadata=dict(metadata or {}),
+            semantic_context=semantic_context,
         )

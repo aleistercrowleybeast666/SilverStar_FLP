@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton
 
 from silverstar_flp.app.application import _RuntimeDiagnostics_Log
 from silverstar_flp.app.version import PRODUCT_NAME, __version__
+from silverstar_flp.core.project import ProjectDecoderProfile
+from silverstar_flp.decoder_profiles.discovery import DecoderProfileCacheReference
 from silverstar_flp.export.service import (
     ExportFailure,
     ExportLanguage,
@@ -21,6 +23,29 @@ from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.widgets import StandardComboBox
 from tests.sslog_synthetic import AnalysisFlight_Build
+
+
+def _ProjectIdentity_Set(window: MainWindow, source_path: Path, root: Path) -> None:
+    package_hash = "2" * 64
+    generation_hash = "3" * 64
+    window._project.LogReference_Set(source_path)
+    window._project.decoder_profile = ProjectDecoderProfile(
+        source_reference=str(root / "synthetic.ssdecoder"),
+        cache_reference=DecoderProfileCacheReference(
+            generation_profile_sha256=generation_hash,
+            package_sha256=package_hash,
+            relative_path=f"{generation_hash[:32]}/{package_hash}.ssdecoder",
+        ),
+        package_sha256=package_hash,
+        generation_profile_sha256=generation_hash,
+        record_catalog_sha256="4" * 64,
+        record_catalog_hash_128="4" * 32,
+        project_semantics_sha256="5" * 64,
+        project_semantics_hash_128="5" * 32,
+        container_plugin_id="silverstar.flight_log.container.0_0",
+        container_plugin_version="0.0.0",
+        exact_match_mode="exact_generation_profile",
+    )
 
 
 def test_runtime_diagnostics_log_version_python_package_and_export_path(
@@ -46,6 +71,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     )
     window = MainWindow(builtin_registry())
     window._Dataset_Set(dataset)
+    _ProjectIdentity_Set(window, dataset.source_path, tmp_path)
     window.show()
     application.processEvents()
     assert window.pages.count() == 5

@@ -1,0 +1,134 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_phase13_gui_final_01\\test_export_keeps_independent_0\\SYNTHETIC_export_source.BIN",
+    "size_bytes": 3504,
+    "sha256": "5b65280977bf4f519271e5aab79dd3cd0043428928b1759790905c6e45d036d7"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [],
+  "language": "en_US",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "overview",
+      "localized_name": "Flight Overview",
+      "path": "Flight_Overview_EN.json"
+    },
+    {
+      "item_id": "diagnostics",
+      "localized_name": "Parser Diagnostics",
+      "path": "Parser_Diagnostics_EN.json"
+    },
+    {
+      "item_id": "events",
+      "localized_name": "Event List",
+      "path": "Events_EN.csv"
+    },
+    {
+      "item_id": "csv:initial_state.attitude.q_nb",
+      "localized_name": "CSV Data · initial_state.attitude.q_nb",
+      "path": "CSV_EN\\initial_state.attitude.q_nb_EN.csv"
+    },
+    {
+      "item_id": "csv:initial_state.navigation.velocity_enu",
+      "localized_name": "CSV Data · initial_state.navigation.velocity_enu",
+      "path": "CSV_EN\\initial_state.navigation.velocity_enu_EN.csv"
+    },
+    {
+      "item_id": "csv:initial_state.kf6.p0_diagonal",
+      "localized_name": "CSV Data · initial_state.kf6.p0_diagonal",
+      "path": "CSV_EN\\initial_state.kf6.p0_diagonal_EN.csv"
+    },
+    {
+      "item_id": "csv:imu.corrected.accel_b",
+      "localized_name": "CSV Data · imu.corrected.accel_b",
+      "path": "CSV_EN\\imu.corrected.accel_b_EN.csv"
+    },
+    {
+      "item_id": "csv:imu.corrected.gyro_b",
+      "localized_name": "CSV Data · imu.corrected.gyro_b",
+      "path": "CSV_EN\\imu.corrected.gyro_b_EN.csv"
+    },
+    {
+      "item_id": "csv:imu.corrected.temperature",
+      "localized_name": "CSV Data · imu.corrected.temperature",
+      "path": "CSV_EN\\imu.corrected.temperature_EN.csv"
+    },
+    {
+      "item_id": "csv:inertial.increment.delta_theta_b",
+      "localized_name": "CSV Data · inertial.increment.delta_theta_b",
+      "path": "CSV_EN\\inertial.increment.delta_theta_b_EN.csv"
+    },
+    {
+      "item_id": "csv:inertial.increment.delta_velocity_b",
+      "localized_name": "CSV Data · inertial.increment.delta_velocity_b",
+      "path": "CSV_EN\\inertial.increment.delta_velocity_b_EN.csv"
+    },
+    {
+      "item_id": "csv:inertial.increment.dt",
+      "localized_name": "CSV Data · inertial.increment.dt",
+      "path": "CSV_EN\\inertial.increment.dt_EN.csv"
+    },
+    {
+      "item_id": "csv:pure_ins.recorded.attitude.q_nb",
+      "localized_name": "CSV Data · pure_ins.recorded.attitude.q_nb",
+      "path": "CSV_EN\\pure_ins.recorded.attitude.q_nb_EN.csv"
+    },
+    {
+      "item_id": "csv:pure_ins.recorded.navigation.velocity_enu",
+      "localized_name": "CSV Data · pure_ins.recorded.navigation.velocity_enu",
+      "path": "CSV_EN\\pure_ins.recorded.navigation.velocity_enu_EN.csv"
+    },
+    {
+      "item_id": "csv:pure_ins.recorded.navigation.position_enu",
+      "localized_name": "CSV Data · pure_ins.recorded.navigation.position_enu",
+      "path": "CSV_EN\\pure_ins.recorded.navigation.position_enu_EN.csv"
+    },
+    {
+      "item_id": "csv:pure_ins.recorded.navigation.linear_accel_enu",
+      "localized_name": "CSV Data · pure_ins.recorded.navigation.linear_accel_enu",
+      "path": "CSV_EN\\pure_ins.recorded.navigation.linear_accel_enu_EN.csv"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "Export Manifest",
+      "path": "Export_Manifest_EN.json"
+    }
+  ],
+  "skipped": [
+    {
+      "item_id": "full_covariance_keyframes",
+      "localized_name": "Full Covariance Matrix P Keyframes",
+      "skipped_reason": "full_covariance_unavailable"
+    }
+  ],
+  "failed": [],
+  "files": [
+    "Flight_Overview_EN.json",
+    "Parser_Diagnostics_EN.json",
+    "Events_EN.csv",
+    "CSV_EN\\initial_state.attitude.q_nb_EN.csv",
+    "CSV_EN\\initial_state.navigation.velocity_enu_EN.csv",
+    "CSV_EN\\initial_state.kf6.p0_diagonal_EN.csv",
+    "CSV_EN\\imu.corrected.accel_b_EN.csv",
+    "CSV_EN\\imu.corrected.gyro_b_EN.csv",
+    "CSV_EN\\imu.corrected.temperature_EN.csv",
+    "CSV_EN\\inertial.increment.delta_theta_b_EN.csv",
+    "CSV_EN\\inertial.increment.delta_velocity_b_EN.csv",
+    "CSV_EN\\inertial.increment.dt_EN.csv",
+    "CSV_EN\\pure_ins.recorded.attitude.q_nb_EN.csv",
+    "CSV_EN\\pure_ins.recorded.navigation.velocity_enu_EN.csv",
+    "CSV_EN\\pure_ins.recorded.navigation.position_enu_EN.csv",
+    "CSV_EN\\pure_ins.recorded.navigation.linear_accel_enu_EN.csv",
+    "Export_Manifest_EN.json"
+  ],
+  "failures": []
+}

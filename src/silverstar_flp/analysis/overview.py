@@ -21,6 +21,7 @@ class TimelineEvent:
 @dataclass(frozen=True, slots=True)
 class CalibrationOverview:
     present: bool
+    configured_modes: tuple[str, ...] = ()
     timestamp_us: int | None = None
     mode: int | None = None
     state: int | None = None
@@ -173,6 +174,33 @@ def _Calibration_Build(
     dataset: FlightDataset,
     start_timestamp_us: int | None,
 ) -> CalibrationOverview:
+    if dataset.semantic_context is not None:
+        semantic_context = dataset.semantic_context
+        calibration = semantic_context.calibration
+        configured = semantic_context.Modes_Get().get("calibration", ())
+        configured_modes = tuple(
+            str(value) for value in configured
+        ) if isinstance(configured, (list, tuple)) else ()
+        face_mask = calibration.completed_face_mask & 0x3F
+        required_faces = 6 if calibration.mode == 2 else 1 if calibration.mode == 1 else 0
+        return CalibrationOverview(
+            present=True,
+            configured_modes=configured_modes,
+            timestamp_us=calibration.timestamp_us,
+            mode=calibration.mode,
+            state=calibration.state,
+            ready=calibration.ready,
+            completed_face_mask=face_mask,
+            completed_faces=face_mask.bit_count(),
+            required_faces=required_faces,
+            samples=calibration.samples,
+            reject_count=calibration.reject_count,
+            retry_count=calibration.retry_count,
+            accel_bias_mps2=calibration.accel_bias_mps2,
+            accel_scale=calibration.accel_scale,
+            gyro_bias_radps=calibration.gyro_bias_radps,
+            gyro_scale=calibration.gyro_scale,
+        )
     record = _Record_ForMission(dataset.Records_Get("CALIBRATION_RESULT"), start_timestamp_us)
     if record is None:
         return CalibrationOverview(False)

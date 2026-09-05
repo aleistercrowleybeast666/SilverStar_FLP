@@ -55,6 +55,8 @@ class ReplayPage(QWidget):
         self._parameter_labels: dict[str, QLabel] = {}
         self._parameter_specs: dict[str, ParameterSpec] = {}
         self._recorded_parameter_values: dict[str, float] = {}
+        self._offline_parameter_values: dict[str, float] = {}
+        self._parameter_baseline_values: dict[str, float] = {}
         self._parameters_dirty = False
 
         page_layout = QVBoxLayout(self)
@@ -199,9 +201,29 @@ class ReplayPage(QWidget):
             self._store = results
         elif self._store is None:
             self._store = ReplayResultStore()
+        self._AlgorithmLabels_Refresh()
         self._AnalysisSources_Refresh()
         self._StoredResults_Refresh()
         self._Algorithm_Refresh()
+
+    def _AlgorithmLabels_Refresh(self) -> None:
+        for index in range(self.algorithm_combo.count()):
+            plugin_id = str(self.algorithm_combo.itemData(index))
+            plugin = self._registry.Algorithm_Get(plugin_id)
+            tags = [self._translator.Text_Get("replay.tag.offline_plugin")]
+            if self._dataset is not None:
+                configuration = plugin.ConfigurationAvailability_Get(self._dataset)
+                if configuration.firmware_member:
+                    tags.insert(0, self._translator.Text_Get("replay.tag.firmware_member"))
+                if configuration.recorded_output_available:
+                    tags.insert(
+                        1,
+                        self._translator.Text_Get("replay.tag.recorded_output"),
+                    )
+            self.algorithm_combo.setItemText(
+                index,
+                f"{plugin.metadata.display_name} · {' / '.join(tags)}",
+            )
 
     def _Algorithm_Refresh(self) -> None:
         self._ParameterForm_Clear()
@@ -212,6 +234,19 @@ class ReplayPage(QWidget):
         self._parameter_specs = {}
         plugin = self._CurrentPlugin_Get()
         self._recorded_parameter_values = self._RecordedParameters_Get(plugin)
+        self._offline_parameter_values = {
+            key: float(value)
+            for key, value in plugin.OfflineParameters_Get().items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        }
+        if self._dataset is not None:
+            configuration = plugin.ConfigurationAvailability_Get(self._dataset)
+            if (
+                self.mode_combo.currentData() == ReplayMode.RECORDED_CONFIGURATION
+                and not configuration.recorded_available
+            ):
+                offline_index = self.mode_combo.findData(ReplayMode.OFFLINE)
+                self.mode_combo.setCurrentIndex(max(offline_index, 0))
         for parameter in plugin.metadata.parameter_schema:
             if parameter.kind != "float":
                 continue
@@ -225,7 +260,7 @@ class ReplayPage(QWidget):
             if parameter.step is not None:
                 editor.setSingleStep(float(parameter.step))
             editor.setValue(
-                self._recorded_parameter_values.get(
+                self._offline_parameter_values.get(
                     parameter.parameter_id,
                     float(parameter.default),
                 )
@@ -244,18 +279,19 @@ class ReplayPage(QWidget):
         self._Availability_Refresh()
 
     def _RecordedParameters_Get(self, plugin) -> dict[str, float]:
-        values = {
-            parameter.parameter_id: float(parameter.default)
-            for parameter in plugin.metadata.parameter_schema
-            if parameter.kind == "float"
-        }
         if self._dataset is None:
-            return values
+            return {}
         try:
             recorded = plugin.recorded_parameters(self._dataset)
         except (IndexError, KeyError, TypeError, ValueError):
-            return values
-        for parameter_id in values:
+            return {}
+        values: dict[str, float] = {}
+        declared = {
+            parameter.parameter_id
+            for parameter in plugin.metadata.parameter_schema
+            if parameter.kind == "float"
+        }
+        for parameter_id in declared:
             try:
                 values[parameter_id] = float(recorded[parameter_id])
             except (KeyError, TypeError, ValueError):
@@ -308,7 +344,12 @@ class ReplayPage(QWidget):
     def _Parameters_Reset(self) -> None:
         for parameter_id, editor in self._parameter_widgets.items():
             editor.blockSignals(True)
-            editor.setValue(self._recorded_parameter_values[parameter_id])
+            editor.setValue(
+                self._parameter_baseline_values.get(
+                    parameter_id,
+                    self._offline_parameter_values.get(parameter_id, editor.value()),
+                )
+            )
             editor.blockSignals(False)
         self._ParametersDirty_Refresh()
 
@@ -316,7 +357,7 @@ class ReplayPage(QWidget):
         self._parameters_dirty = any(
             not math.isclose(
                 editor.value(),
-                self._recorded_parameter_values.get(parameter_id, editor.value()),
+                self._parameter_baseline_values.get(parameter_id, editor.value()),
                 rel_tol=1.0e-9,
                 abs_tol=5.0e-7,
             )
@@ -345,10 +386,30 @@ class ReplayPage(QWidget):
         return parameter.parameter_id if translated == code else translated
 
     def _Mode_Refresh(self) -> None:
-        what_if = self.mode_combo.currentData() == ReplayMode.WHAT_IF
+        mode = self.mode_combo.currentData()
+        what_if = mode == ReplayMode.WHAT_IF
+        if mode == ReplayMode.RECORDED_CONFIGURATION:
+            self._parameter_baseline_values = dict(self._recorded_parameter_values)
+        elif mode == ReplayMode.WHAT_IF:
+            self._parameter_baseline_values = {
+                **self._offline_parameter_values,
+                **self._recorded_parameter_values,
+            }
+        else:
+            self._parameter_baseline_values = dict(self._offline_parameter_values)
+        for parameter_id, editor in self._parameter_widgets.items():
+            editor.blockSignals(True)
+            editor.setValue(
+                self._parameter_baseline_values.get(
+                    parameter_id,
+                    float(self._parameter_specs[parameter_id].default),
+                )
+            )
+            editor.blockSignals(False)
         self.parameters_group.setEnabled(what_if)
         self.parameter_reset_button.setEnabled(what_if and self._dataset is not None)
         self._ParametersDirty_Refresh()
+        self._Availability_Refresh()
 
     def _CurrentPlugin_Get(self):
         return self._registry.Algorithm_Get(str(self.algorithm_combo.currentData()))
@@ -378,7 +439,18 @@ class ReplayPage(QWidget):
         plugin = self._CurrentPlugin_Get()
         source = ReplayRequest().input_source
         availability = plugin.availability(self._dataset, source)
+        configuration = plugin.ConfigurationAvailability_Get(
+            self._dataset,
+            input_available=availability.available,
+        )
+        mode = self.mode_combo.currentData()
         details = self.Fidelity_Text_Get(availability.fidelity)
+        tags = [self._translator.Text_Get("replay.tag.offline_plugin")]
+        if configuration.firmware_member:
+            tags.append(self._translator.Text_Get("replay.tag.firmware_member"))
+        if configuration.recorded_output_available:
+            tags.append(self._translator.Text_Get("replay.tag.recorded_output"))
+        details += " · " + " / ".join(tags)
         if availability.missing_inputs:
             details += " · " + self._translator.Text_Get(
                 "replay.missing_inputs", values=", ".join(availability.missing_inputs)
@@ -387,14 +459,33 @@ class ReplayPage(QWidget):
             details += " · " + self._Warnings_Text_Get(availability.warnings)
         self.availability_label.setText(details)
         self.availability_label.setToolTip("\n".join(availability.warnings))
-        self.run_button.setEnabled(availability.available)
+        mode_available = (
+            configuration.recorded_available
+            if mode == ReplayMode.RECORDED_CONFIGURATION
+            else configuration.offline_available
+        )
+        if mode == ReplayMode.RECORDED_CONFIGURATION and not mode_available:
+            missing = ", ".join(configuration.missing_recorded_parameters)
+            self.availability_label.setText(
+                details
+                + " · "
+                + self._translator.Text_Get(
+                    "replay.recorded_configuration_unavailable",
+                    values=missing or self._translator.Text_Get("status.none"),
+                )
+            )
+        self.run_button.setEnabled(availability.available and mode_available)
 
     def _Replay_Request(self) -> None:
         mode = self.mode_combo.currentData()
         parameters = (
             {name: editor.value() for name, editor in self._parameter_widgets.items()}
             if mode == ReplayMode.WHAT_IF
-            else {}
+            else (
+                dict(self._offline_parameter_values)
+                if mode == ReplayMode.OFFLINE
+                else {}
+            )
         )
         request = ReplayRequest(
             mode=mode,
@@ -421,6 +512,8 @@ class ReplayPage(QWidget):
             "Recorded": "status.recorded",
             "Recomputed": "status.recomputed",
             "What-if": "status.what_if",
+            "Offline": "status.recomputed",
+            "Recomputed from recorded configuration": "status.recomputed",
         }
         provenance = self._translator.Text_Get(
             provenance_codes.get(entry.result.provenance, "status.recomputed")
@@ -703,6 +796,10 @@ class ReplayPage(QWidget):
             ReplayMode.RECORDED_CONFIGURATION,
         )
         self.mode_combo.addItem(
+            self._translator.Text_Get("replay.mode.offline"),
+            ReplayMode.OFFLINE,
+        )
+        self.mode_combo.addItem(
             self._translator.Text_Get("replay.mode.what_if"), ReplayMode.WHAT_IF
         )
         self.mode_combo.setCurrentIndex(max(self.mode_combo.findData(mode), 0))
@@ -711,6 +808,7 @@ class ReplayPage(QWidget):
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
         self._ComboLabels_Refresh()
+        self._AlgorithmLabels_Refresh()
         self.controls_group.setTitle(translator.Text_Get("replay.configuration"))
         self.algorithm_label.setText(translator.Text_Get("label.algorithm"))
         self.mode_label.setText(translator.Text_Get("label.mode"))

@@ -19,6 +19,7 @@ class ReplayFidelity(StrEnum):
 
 class ReplayMode(StrEnum):
     RECORDED_CONFIGURATION = "recorded_configuration"
+    OFFLINE = "offline"
     WHAT_IF = "what_if"
 
 
@@ -161,6 +162,17 @@ class AlgorithmMetadata:
     standard_outputs: tuple[str, ...]
     diagnostic_outputs: tuple[str, ...]
     estimator_visualization: EstimatorVisualizationSpec | None = None
+    firmware_component_ids: tuple[str, ...] = ()
+    recorded_output_roles: tuple[str, ...] = ()
+    required_semantic_roles: tuple[str, ...] = ()
+    offline_default_parameters: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "offline_default_parameters",
+            MappingProxyType(dict(self.offline_default_parameters)),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +182,29 @@ class AlgorithmAvailability:
     missing_inputs: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     supported_input_sources: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AlgorithmConfigurationAvailability:
+    recorded_available: bool
+    offline_available: bool
+    firmware_member: bool
+    recorded_output_available: bool
+    recorded_parameters: Mapping[str, Any] = field(default_factory=dict)
+    offline_parameters: Mapping[str, Any] = field(default_factory=dict)
+    missing_recorded_parameters: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "recorded_parameters",
+            MappingProxyType(dict(self.recorded_parameters)),
+        )
+        object.__setattr__(
+            self,
+            "offline_parameters",
+            MappingProxyType(dict(self.offline_parameters)),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,11 +243,59 @@ class AlgorithmPlugin(ABC):
         """Return the parameter values represented by this particular recorded log."""
 
         del dataset
-        return MappingProxyType(
-            {
-                parameter.parameter_id: parameter.default
-                for parameter in self.metadata.parameter_schema
-            }
+        return MappingProxyType({})
+
+    def FirmwareMember_Is(self, dataset: FlightDataset) -> bool:
+        semantic_context = dataset.semantic_context
+        if semantic_context is None:
+            return False
+        return any(
+            semantic_context.FirmwareAlgorithm_IsMember(component_id)
+            for component_id in self.metadata.firmware_component_ids
+        )
+
+    def RecordedOutput_IsAvailable(self, dataset: FlightDataset) -> bool:
+        return bool(self.metadata.recorded_output_roles) and any(
+            dataset.Series_Get(role_id) is not None
+            for role_id in self.metadata.recorded_output_roles
+        )
+
+    def OfflineParameters_Get(self) -> Mapping[str, Any]:
+        declared = dict(self.metadata.offline_default_parameters)
+        for parameter in self.metadata.parameter_schema:
+            declared.setdefault(parameter.parameter_id, parameter.default)
+        return MappingProxyType(declared)
+
+    def ConfigurationAvailability_Get(
+        self,
+        dataset: FlightDataset,
+        *,
+        input_available: bool = True,
+    ) -> AlgorithmConfigurationAvailability:
+        recorded = dict(self.recorded_parameters(dataset))
+        required_parameter_ids = tuple(
+            parameter.parameter_id
+            for parameter in self.metadata.parameter_schema
+        )
+        missing = tuple(
+            parameter_id
+            for parameter_id in required_parameter_ids
+            if parameter_id not in recorded
+        )
+        firmware_member = self.FirmwareMember_Is(dataset)
+        recorded_output = self.RecordedOutput_IsAvailable(dataset)
+        return AlgorithmConfigurationAvailability(
+            recorded_available=(
+                input_available
+                and firmware_member
+                and not missing
+            ),
+            offline_available=input_available,
+            firmware_member=firmware_member,
+            recorded_output_available=recorded_output,
+            recorded_parameters=recorded,
+            offline_parameters=self.OfflineParameters_Get(),
+            missing_recorded_parameters=missing,
         )
 
     @abstractmethod

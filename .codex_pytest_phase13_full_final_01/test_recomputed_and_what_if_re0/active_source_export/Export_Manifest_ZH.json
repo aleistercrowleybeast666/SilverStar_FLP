@@ -1,0 +1,91 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_phase13_full_final_01\\test_recomputed_and_what_if_re0\\SYNTHETIC_replay_store.BIN",
+    "size_bytes": 3504,
+    "sha256": "5b65280977bf4f519271e5aab79dd3cd0043428928b1759790905c6e45d036d7"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [
+    {
+      "result_id": "pure_ins:recomputed:1",
+      "source_id": "replay:pure_ins:recomputed:1",
+      "algorithm_id": "silverstar.algorithm.pure_ins",
+      "algorithm_version": "0.1.0-firmware-SILV0008",
+      "mode": "recorded_configuration",
+      "provenance": "Recomputed from recorded configuration",
+      "input_source": "recorded_inertial_increment",
+      "parameters": {
+        "gravity_mps2": 9.779999732971191
+      },
+      "fidelity": "EXACT",
+      "warnings": [],
+      "firmware_member": false,
+      "recorded_output_available": true,
+      "channel_ids": [
+        "attitude.q_nb",
+        "mechanization.delta_theta_b",
+        "mechanization.delta_velocity_b",
+        "mechanization.dt",
+        "navigation.linear_accel_enu",
+        "navigation.position_enu",
+        "navigation.specific_force_enu",
+        "navigation.velocity_enu"
+      ]
+    },
+    {
+      "result_id": "pure_ins:what_if:1",
+      "source_id": "replay:pure_ins:what_if:1",
+      "algorithm_id": "silverstar.algorithm.pure_ins",
+      "algorithm_version": "0.1.0-firmware-SILV0008",
+      "mode": "what_if",
+      "provenance": "What-if",
+      "input_source": "recorded_inertial_increment",
+      "parameters": {
+        "gravity_mps2": 9.7
+      },
+      "fidelity": "EXACT",
+      "warnings": [],
+      "firmware_member": false,
+      "recorded_output_available": true,
+      "channel_ids": [
+        "attitude.q_nb",
+        "mechanization.delta_theta_b",
+        "mechanization.delta_velocity_b",
+        "mechanization.dt",
+        "navigation.linear_accel_enu",
+        "navigation.position_enu",
+        "navigation.specific_force_enu",
+        "navigation.velocity_enu"
+      ]
+    }
+  ],
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "replay:pure_ins:what_if:1",
+  "active_source_kind": "what_if",
+  "generated": [
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [
+    {
+      "item_id": "full_covariance_keyframes",
+      "localized_name": "完整协方差矩阵 P 关键帧",
+      "skipped_reason": "full_covariance_unavailable"
+    }
+  ],
+  "failed": [],
+  "files": [
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

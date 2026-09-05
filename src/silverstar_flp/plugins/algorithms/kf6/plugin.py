@@ -259,6 +259,17 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "kf6.measurement_r.velocity",
             "kf6.measurement_r.baro",
         ),
+        firmware_component_ids=("silverstar.algorithm.estimator.kf6",),
+        recorded_output_roles=(
+            "kf6.recorded.attitude.q_nb",
+            "kf6.recorded.navigation.velocity_enu",
+            "kf6.recorded.navigation.position_enu",
+            "kf6.recorded.covariance.diagonal",
+        ),
+        required_semantic_roles=(
+            "imu.corrected.accel_b",
+            "imu.corrected.gyro_b",
+        ),
         estimator_visualization=EstimatorVisualizationSpec(
             state_groups=(
                 StateGroupSpec(
@@ -364,7 +375,27 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
     )
 
     def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
-        return self._Parameters_Resolve(dataset, ReplayRequest())
+        records = dataset.Records_Get("SYSTEM_CONFIG")
+        if not records or "gravity_mps2" not in dataset.header:
+            return {}
+        config = records[0].payload
+        process = tuple(config.get("process_accel_std_mps2", ()))
+        nis = tuple(config.get("nis_profile", ()))
+        if len(process) != 3 or len(nis) != 7:
+            return {}
+        return {
+            "gravity_mps2": float(dataset.header["gravity_mps2"]),
+            "process_accel_std_e": float(process[0]),
+            "process_accel_std_n": float(process[1]),
+            "process_accel_std_u": float(process[2]),
+            "nis_1d_soft": float(nis[0]),
+            "nis_1d_hard": float(nis[1]),
+            "nis_2d_soft": float(nis[2]),
+            "nis_2d_hard": float(nis[3]),
+            "nis_3d_soft": float(nis[4]),
+            "nis_3d_hard": float(nis[5]),
+            "nis_max_r_scale": float(nis[6]),
+        }
 
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
@@ -408,6 +439,12 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         if str(dataset.header.get("build_id", "")) != CURRENT_BUILD_ID:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("firmware_build_differs_from_reimplementation")
+        if (
+            dataset.semantic_context is not None
+            and dataset.semantic_context.FirmwareVersion_Get() == "0.0.10"
+        ):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("fccg_0_0_10_host_golden_not_verified")
         if dataset.diagnostics.record_crc_failures or dataset.diagnostics.sequence_gap_count:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("source_log_has_integrity_or_sequence_gaps")
@@ -541,7 +578,15 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 **filter_instance.counters,
                 **source_diagnostics,
             },
-            provenance=("What-if" if request.mode == ReplayMode.WHAT_IF else "Recomputed"),
+            provenance=(
+                "What-if"
+                if request.mode == ReplayMode.WHAT_IF
+                else (
+                    "Offline"
+                    if request.mode == ReplayMode.OFFLINE
+                    else "Recomputed from recorded configuration"
+                )
+            ),
         )
 
     @staticmethod
@@ -566,7 +611,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "nis_3d_hard": nis[5],
             "nis_max_r_scale": nis[6],
         }
-        if request.mode == ReplayMode.WHAT_IF:
+        if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF):
             for key, value in request.parameters.items():
                 if key in parameters:
                     parameters[key] = float(value)
@@ -603,7 +648,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         increment_timestamps = [item.interval_end_timestamp_us for item in increments]
         first_increment_timestamp = increment_timestamps[0]
         last_increment_timestamp = increment_timestamps[-1]
-        states = dataset.Records_Get("KF6_STATE")
+        states = dataset.Records_Get("ESTIMATOR") or dataset.Records_Get("KF6_STATE")
         gnss_application: dict[int, int] = {}
         baro_application: dict[int, int] = {}
         for state in sorted(states, key=lambda item: item.record_sequence):

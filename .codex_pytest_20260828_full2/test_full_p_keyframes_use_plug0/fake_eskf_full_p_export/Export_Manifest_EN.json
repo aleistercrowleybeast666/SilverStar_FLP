@@ -1,0 +1,25 @@
+{
+  "language": "en_US",
+  "theme": "light",
+  "active_analysis_source": "replay:fake_eskf:recomputed:1",
+  "active_source_kind": "recomputed",
+  "generated": [
+    {
+      "item_id": "full_covariance_keyframes:test.algorithm.fake_eskf:recomputed",
+      "localized_name": "Full Covariance Matrix P Keyframes · Fake ESKF",
+      "path": "Fake_ESKF_Full_P_Keyframes_EN.txt"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "Export Manifest",
+      "path": "Export_Manifest_EN.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "Fake_ESKF_Full_P_Keyframes_EN.txt",
+    "Export_Manifest_EN.json"
+  ],
+  "failures": []
+}

@@ -1,0 +1,2 @@
+﻿timestamp_us,record_sequence,event_id,event_name,arg0,arg1
+1000000,3,3,MISSION_START,0,0

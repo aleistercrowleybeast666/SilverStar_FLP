@@ -1,0 +1,209 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_20260831_phase13_t\\test_unconfigured_measurement_0\\SYNTHETIC_fake_unconfigured_mag.BIN",
+    "size_bytes": 6376,
+    "sha256": "a0786b4e32707532dac78b9f1c426d850b00bad48cc343d6f8c5749af0a6f717"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [
+    {
+      "result_id": "fake_eskf:recomputed:1",
+      "source_id": "replay:fake_eskf:recomputed:1",
+      "algorithm_id": "test.algorithm.fake_eskf",
+      "algorithm_version": "test",
+      "mode": "recorded_configuration",
+      "provenance": "Recomputed",
+      "input_source": "corrected_imu",
+      "parameters": {},
+      "fidelity": "EXACT",
+      "warnings": [],
+      "firmware_member": false,
+      "recorded_output_available": false,
+      "channel_ids": [
+        "attitude.q_nb",
+        "fake.age.barometric_altitude",
+        "fake.age.gnss_position",
+        "fake.age.magnetometer",
+        "fake.age.star_tracker_attitude",
+        "fake.covariance.diagonal",
+        "fake.covariance.upper_triangle",
+        "fake.innovation.barometric_altitude",
+        "fake.innovation.gnss_position",
+        "fake.innovation.magnetometer",
+        "fake.innovation.star_tracker_attitude",
+        "fake.measurement_attempt_mask",
+        "fake.measurement_r.barometric_altitude",
+        "fake.measurement_r.gnss_position",
+        "fake.measurement_r.magnetometer",
+        "fake.measurement_r.star_tracker_attitude",
+        "fake.nis.barometric_altitude",
+        "fake.nis.gnss_position",
+        "fake.nis.magnetometer",
+        "fake.nis.star_tracker_attitude",
+        "fake.r_scale",
+        "fake.update_result",
+        "navigation.position_enu",
+        "navigation.velocity_enu"
+      ]
+    }
+  ],
+  "language": "en_US",
+  "theme": "light",
+  "active_analysis_source": "replay:fake_eskf:recomputed:1",
+  "active_source_kind": "recomputed",
+  "generated": [
+    {
+      "item_id": "standard_plot:Flight_Velocity_ENU",
+      "localized_name": "Flight Velocity (ENU)",
+      "path": "Plots_EN\\Flight_Velocity_ENU_EN.png"
+    },
+    {
+      "item_id": "standard_plot:Flight_Position_ENU",
+      "localized_name": "Flight Position (ENU)",
+      "path": "Plots_EN\\Flight_Position_ENU_EN.png"
+    },
+    {
+      "item_id": "standard_plot:Flight_Attitude",
+      "localized_name": "Software Attitude Quaternion (WXYZ, Body to ENU)",
+      "path": "Plots_EN\\Flight_Attitude_EN.png"
+    },
+    {
+      "item_id": "standard_plot:Flight_Acceleration_XYZ",
+      "localized_name": "Corrected Acceleration (Body XYZ)",
+      "path": "Plots_EN\\Flight_Acceleration_XYZ_EN.png"
+    },
+    {
+      "item_id": "standard_plot:Flight_Angular_Rate_XYZ",
+      "localized_name": "Corrected Angular Rate (Body XYZ)",
+      "path": "Plots_EN\\Flight_Angular_Rate_XYZ_EN.png"
+    },
+    {
+      "item_id": "standard_plot:state_std:test.algorithm.fake_eskf:recomputed:position_error",
+      "localized_name": "Fake ESKF · Offline Recomputed · Position Error State Standard Deviation (1σ)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Position_Error_Std_1Sigma_EN.png"
+    },
+    {
+      "item_id": "standard_plot:state_std:test.algorithm.fake_eskf:recomputed:velocity_error",
+      "localized_name": "Fake ESKF · Offline Recomputed · Velocity Error State Standard Deviation (1σ)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Velocity_Error_Std_1Sigma_EN.png"
+    },
+    {
+      "item_id": "standard_plot:state_std:test.algorithm.fake_eskf:recomputed:attitude_error",
+      "localized_name": "Fake ESKF · Offline Recomputed · Attitude Error State Standard Deviation (1σ)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Attitude_Error_Std_1Sigma_EN.png"
+    },
+    {
+      "item_id": "standard_plot:state_std:test.algorithm.fake_eskf:recomputed:gyro_bias",
+      "localized_name": "Fake ESKF · Offline Recomputed · Gyro Bias State Standard Deviation (1σ)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Gyro_Bias_Std_1Sigma_EN.png"
+    },
+    {
+      "item_id": "standard_plot:state_std:test.algorithm.fake_eskf:recomputed:accel_bias",
+      "localized_name": "Fake ESKF · Offline Recomputed · Accel Bias State Standard Deviation (1σ)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Accel_Bias_Std_1Sigma_EN.png"
+    },
+    {
+      "item_id": "standard_plot:innovation:test.algorithm.fake_eskf:recomputed:gnss_position",
+      "localized_name": "Fake ESKF · Offline Recomputed · GNSS Position · Innovation",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Innovation_GNSS_Position_EN.png"
+    },
+    {
+      "item_id": "standard_plot:nis:test.algorithm.fake_eskf:recomputed:gnss_position",
+      "localized_name": "Fake ESKF · Offline Recomputed · GNSS Position · Normalized Innovation Squared (NIS)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_NIS_GNSS_Position_EN.png"
+    },
+    {
+      "item_id": "standard_plot:measurement_std:test.algorithm.fake_eskf:recomputed:gnss_position",
+      "localized_name": "Fake ESKF · Offline Recomputed · GNSS Position · Measurement Standard Deviation sqrt(R)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_GNSS_Position_EN.png"
+    },
+    {
+      "item_id": "standard_plot:innovation:test.algorithm.fake_eskf:recomputed:barometric_altitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Barometric Altitude · Innovation",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Innovation_Barometer_EN.png"
+    },
+    {
+      "item_id": "standard_plot:nis:test.algorithm.fake_eskf:recomputed:barometric_altitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Barometric Altitude · Normalized Innovation Squared (NIS)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_NIS_Barometer_EN.png"
+    },
+    {
+      "item_id": "standard_plot:measurement_std:test.algorithm.fake_eskf:recomputed:barometric_altitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Barometric Altitude · Measurement Standard Deviation sqrt(R)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_Barometer_EN.png"
+    },
+    {
+      "item_id": "standard_plot:innovation:test.algorithm.fake_eskf:recomputed:star_tracker_attitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Star Tracker Attitude · Innovation",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Innovation_Star_Tracker_Attitude_EN.png"
+    },
+    {
+      "item_id": "standard_plot:nis:test.algorithm.fake_eskf:recomputed:star_tracker_attitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Star Tracker Attitude · Normalized Innovation Squared (NIS)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_NIS_Star_Tracker_Attitude_EN.png"
+    },
+    {
+      "item_id": "standard_plot:measurement_std:test.algorithm.fake_eskf:recomputed:star_tracker_attitude",
+      "localized_name": "Fake ESKF · Offline Recomputed · Star Tracker Attitude · Measurement Standard Deviation sqrt(R)",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_Star_Tracker_Attitude_EN.png"
+    },
+    {
+      "item_id": "standard_plot:measurement_update:test.algorithm.fake_eskf:recomputed",
+      "localized_name": "Fake ESKF · Offline Recomputed · Measurement Update Overview",
+      "path": "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Update_EN.png"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "Export Manifest",
+      "path": "Export_Manifest_EN.json"
+    }
+  ],
+  "skipped": [
+    {
+      "item_id": "standard_plot:innovation:test.algorithm.fake_eskf:recomputed:magnetometer",
+      "localized_name": "Fake ESKF · Offline Recomputed · Magnetometer · Innovation",
+      "skipped_reason": "measurement_not_configured"
+    },
+    {
+      "item_id": "standard_plot:nis:test.algorithm.fake_eskf:recomputed:magnetometer",
+      "localized_name": "Fake ESKF · Offline Recomputed · Magnetometer · Normalized Innovation Squared (NIS)",
+      "skipped_reason": "measurement_not_configured"
+    },
+    {
+      "item_id": "standard_plot:measurement_std:test.algorithm.fake_eskf:recomputed:magnetometer",
+      "localized_name": "Fake ESKF · Offline Recomputed · Magnetometer · Measurement Standard Deviation sqrt(R)",
+      "skipped_reason": "measurement_not_configured"
+    }
+  ],
+  "failed": [],
+  "files": [
+    "Plots_EN\\Flight_Velocity_ENU_EN.png",
+    "Plots_EN\\Flight_Position_ENU_EN.png",
+    "Plots_EN\\Flight_Attitude_EN.png",
+    "Plots_EN\\Flight_Acceleration_XYZ_EN.png",
+    "Plots_EN\\Flight_Angular_Rate_XYZ_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Position_Error_Std_1Sigma_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Velocity_Error_Std_1Sigma_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Attitude_Error_Std_1Sigma_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Gyro_Bias_Std_1Sigma_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Accel_Bias_Std_1Sigma_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Innovation_GNSS_Position_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_NIS_GNSS_Position_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_GNSS_Position_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Innovation_Barometer_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_NIS_Barometer_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_Barometer_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Innovation_Star_Tracker_Attitude_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_NIS_Star_Tracker_Attitude_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Std_Star_Tracker_Attitude_EN.png",
+    "Plots_EN\\Fake_ESKF_Recomputed_Measurement_Update_EN.png",
+    "Export_Manifest_EN.json"
+  ],
+  "failures": []
+}

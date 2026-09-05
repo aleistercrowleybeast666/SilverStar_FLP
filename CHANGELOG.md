@@ -33,3 +33,25 @@
   Project.
 - Added reference-only projects and independent-language CSV/JSON/PNG/GIF export.
 - Added CLI, synthetic integration tests, and PyInstaller preparation.
+- Split SSLOG0 framing/CRC/recovery into the trusted
+  `silverstar.flight_log.container.0_0` container plugin; the production registry now constructs
+  only an exact package-driven parser after Descriptor validation.
+- Added strict, non-executable `.ssdecoder` loading with bounded ZIP validation, checksum and
+  schema enforcement, container compatibility, whitelist-only Record decoding, instance-aware
+  project semantics, raw unknown-Record retention, Descriptor hash matching, bounded task-folder
+  discovery, content-addressed caching, and a protected `.ssplugin` trust boundary.
+- Enforced package/project-semantics schema 1.1, exactly five signed members, mandatory Descriptor
+  and Calibration Result, and exact generation-profile matching; removed 1.0, unsigned,
+  Descriptor-less, filename, and fixed-parser production fallbacks.
+- Added one atomic single-log coordinator for manual pair import, bounded folder search, strict
+  drag/drop, CLI, content cache, and `.ssflp` v2 restore with full decoder identity checks.
+- Added immutable `DatasetSemanticContext`, zero-copy raw-to-stable aliases, typed event names,
+  authoritative NONE/one-face/six-face calibration selection, and semantic GUI pages while
+  preserving the established GUI style and five-page navigation.
+- Separated firmware component membership, actual recorded outputs, complete recorded parameters,
+  and offline plugin availability. Added Offline mode and retained `APPROXIMATE` plus explicit
+  warning for unproven FCCG 0.0.10 Pure INS/KF_6 equivalence.
+- Expanded audit export/CLI inspection with log/package hashes, project/firmware/hardware/protocol
+  metadata, calibration, aliases, and replay provenance.
+- Added synthetic dual-IMU, same-physical-device multi-capability, strict rejection, coordinator,
+  calibration, CLI, project v2, immutable-alias, and audit-manifest regression coverage.

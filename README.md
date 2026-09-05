@@ -7,8 +7,9 @@ flight, and exports timestamp-faithful data products.
 
 Version: **v0.0.2**
 
-> Raw `.BIN` logs are opened read-only. A `.ssflp` project stores references, replay settings,
-> notes, and UI state; it never embeds or rewrites the raw log.
+> Raw `.BIN`/`.sslog` logs and `.ssdecoder` packages are opened read-only. A `.ssflp` v2 project
+> stores one log reference, exact decoder/cache identity, replay settings, notes, and UI state; it
+> never embeds or rewrites either source.
 
 ## Start here
 
@@ -32,11 +33,13 @@ installation you can also start it without manually activating the environment.
 python main.py
 ```
 
-Then choose **Open Flight Log** and select a flight-controller `.BIN` file. You can also drag a
-`.BIN` onto the window or pass it directly:
+Choose **Import** and either select exactly one flight log plus its `.ssdecoder`, or run the
+bounded task-folder search and select one exact pair. You can drag one log with an optional
+package onto the window; a log by itself invokes the same bounded exact search. Command-line GUI
+startup accepts the explicit pair:
 
 ```powershell
-python main.py D:\logs\flight.BIN
+python main.py D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder
 ```
 
 The dark-blue brand header shows the localized application name, `v0.0.2`, developer credit,
@@ -45,11 +48,14 @@ Open Project as one contiguous action group; the compact toolbar provides Import
 Project, and Open Project.
 Import and export use focused option dialogs. The five analysis pages are:
 
-1. Overview — mission/file summary, flight metrics, deploy altitude/reason, calibration model,
-   initial alignment result, and translated event timeline.
-2. Replay — Pure INS or KF6 from the fixed corrected-IMU input, using Recorded configuration or
-   What-if parameters. Every run is retained. A dedicated **Analysis Data Source** selector begins
-   with Recorded data and exposes only complete, successful runs.
+1. Overview — mission/file and exact decoder identity, flight metrics, deploy altitude/reason,
+   configured calibration flow plus the selected effective model, initial alignment result, and
+   translated event timeline.
+2. Replay — every installed offline algorithm, independently labeled for firmware membership,
+   recorded output, and offline-plugin availability. Recorded Configuration is enabled only when
+   every parameter was logged; Offline defaults and What-if remain distinct. Every run is
+   retained. A dedicated **Analysis Data Source** selector begins with Recorded data and exposes
+   only complete, successful runs.
 3. Flight — START-cropped ENU velocity/position, corrected IMU, authoritative software attitude,
    and a themed 3D attitude/trajectory replay with its own playback controls. Before Deploy the
    path/current point are red; after Deploy they are blue; Deploy is one extent-scaled orange
@@ -59,11 +65,13 @@ Import and export use focused option dialogs. The five analysis pages are:
    measurement-group innovations/NIS/noise/age, and generic sequential-update results. The page
    contains no KF6-specific channel IDs, so future estimator groups and sensors can be declared by
    a plugin without page-code changes.
-5. Data Explorer — all recorded and uniquely named replay channels plus every decoded record.
+5. Data Explorer — searchable raw/stable/capability/algorithm channel groups, Record View and
+   logging metadata, unknown raw payload hex, every decoded record, and uniquely named replays.
 
 The Replay page groups What-if parameters into Process Model, Initial Covariance, Measurement
-Noise, and Consistency Gating. It marks edited values and resets them to the values recorded in
-the log rather than schema defaults; the form scrolls when taller than the available window.
+Noise, and Consistency Gating. What-if starts from offline defaults overlaid only with parameter
+values genuinely present in the log; this never makes an incomplete Recorded Configuration
+available. The form scrolls when taller than the available window.
 Every combo box uses a conventional downward popup with at most ten visible rows; longer lists
 scroll inside the popup. Flight and State Estimation each provide a page-level **Reset Charts**
 button that restores every 2D chart on the page after manual zooming or panning.
@@ -76,11 +84,23 @@ share the same rocket attitude model, START-relative origin, and deploy/landing/
 
 ## What the parser supports
 
-The built-in parser ID is `silverstar.log_parser.sslog0`. It supports profile 0's 64-byte file
-header, 24-byte common record header, payload, and CRC-32/IEEE trailer. All current record types
-`0x01` through `0x19` are decoded, including both internal MISSION_CONFIG layouts.
+The trusted built-in container ID is `silverstar.flight_log.container.0_0`. It supports
+SSLOG0's 64-byte file header, 24-byte common record header, payload, CRC-32/IEEE trailer,
+resynchronization, truncation handling, and raw-frame diagnostics without knowing any Record
+fields or channels.
 
-- Unknown CRC-valid record types and versions are safely skipped by declared length.
+The firmware/FCCG schema ID `silverstar.sslog.container/0.0` is accepted only as an audited name
+for this same built-in wire contract; it does not register or execute a second plugin.
+
+Production opening is exact and configuration-driven. `LogOpenCoordinator` validates one package
+schema 1.1, requires a matching 64-byte log Descriptor, imports the verified package into the
+content-addressed cache, creates `DecoderProfileParserPlugin` dynamically, parses the Catalog,
+then applies Project Semantics and calibration before publishing a dataset. GUI manual import,
+bounded folder search, drag/drop, CLI, and project restore use this same atomic path. There is no
+Descriptor-less, package 1.0, unsigned, fixed-parser, or filename-based production fallback. See
+[Decoder_Profile_Package.md](docs/Decoder_Profile_Package.md).
+
+- Unknown CRC-valid types/versions retain their raw bytes and mark the dataset partial.
 - A bad record CRC or lost sync scans forward to the next byte-aligned `FLG1` candidate.
 - An incomplete final record is reported as a truncated tail and ignored.
 - Record counts, CRC errors, recoveries, sequence gaps, unknown types/versions, and offsets are
@@ -116,6 +136,7 @@ Every result is labeled:
 
 - **Recorded** — values actually logged by the flight controller;
 - **Recomputed** — replay using the recorded configuration;
+- **Offline** — replay using the offline plugin's declared defaults;
 - **What-if** — replay with explicitly modified parameters.
 
 Separately, fidelity is `EXACT`, `APPROXIMATE`, or `UNAVAILABLE`. Missing required input never
@@ -128,15 +149,16 @@ or decimation lower fidelity with an explicit warning. See [Replay.md](docs/Repl
 After installation:
 
 ```powershell
-sslog inspect D:\logs\flight.BIN
-sslog replay D:\logs\flight.BIN --algorithm pure_ins --source corrected_imu
-sslog replay D:\logs\flight.BIN --algorithm kf6 --parameter process_accel_std_u=2.5
-sslog export D:\logs\flight.BIN D:\exports --language en_US --theme dark
-sslog gui D:\logs\flight.BIN
+sslog inspect D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder
+sslog replay D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder --algorithm silverstar.algorithm.pure_ins --mode offline --source corrected_imu
+sslog replay D:\logs\flight.BIN --auto-find --algorithm kf6 --parameter process_accel_std_u=2.5
+sslog export D:\logs\flight.BIN D:\exports --decoder D:\logs\flight.ssdecoder --language en_US --theme dark
+sslog gui D:\logs\flight.BIN --auto-find
 ```
 
-`inspect` prints JSON metadata, record counts, channels, overview statistics, and parser
-diagnostics. CSV export is one file per channel so every sensor keeps its own timing.
+`inspect` also prints package/generation identity, semantic context, calibration, firmware
+components, and independent algorithm availability. Algorithm IDs are resolved dynamically from
+the offline registry. CSV export is one file per channel so every sensor keeps its own timing.
 
 ## Tests
 
@@ -151,7 +173,13 @@ NIS rejection, calibration/alignment/deploy summaries, replay-result coexistence
 readiness and return-to-Recorded behavior, Flight/State Estimation read-only source displays,
 dual Recorded navigation layers, unique plot colors, camera preservation, relative-origin 3D
 rendering, rocket PNG/GIF export, the <=60-frame combined GIF, partial export failures, project
-immutability, and a headless five-page GUI smoke test.
+immutability, and a headless five-page GUI smoke test. Dedicated decoder-profile tests cover ZIP
+limits and attacks, checksum/schema validation, the complete scalar whitelist, payload-size
+contracts, two IMU instances, canonical channels, same-physical-device capability linkage,
+Descriptor hash matching, atomic coordinator opening, mandatory/identity NONE calibration,
+zero-copy immutable aliases, CLI integration, audit-manifest provenance, cache reuse, bounded
+parent discovery, and trusted `.ssplugin` factory allowlisting. Package 1.0 and unsigned layouts
+are explicit rejection cases.
 
 No real flight log is included. Phase 2 requires frozen real logs and host-C golden vectors from
 the matching flight-controller build; this is tracked in [TARGETS.md](TARGETS.md).
@@ -170,10 +198,14 @@ control.
 
 ## Design boundaries
 
-There are exactly two plugin types:
+Users manage two log-decoding layers:
 
-- Log Parser Plugin — one incompatible log container generation;
-- Algorithm Plugin — one complete navigation/estimation algorithm.
+- trusted Log Container Plugin code for one incompatible container generation;
+- one exact data-only `.ssdecoder` 1.1 per generated project.
+
+Internally, Algorithm Plugins remain the separate replay/estimation extension point. A
+`.ssdecoder` may describe recorded algorithm streams, but field layout alone cannot implement or
+reproduce a new navigation algorithm.
 
 Pure INS and KF6 are the only first-release Algorithm Plugins. Deploy and landing replay are Core
 flight-analysis services. ESKF15 and ESKF24 are future targets only; their interface can be added
@@ -181,9 +213,8 @@ without changing the standard navigation pages, but neither is implemented now.
 
 ## Source of truth and remaining risk
 
-Protocol and algorithm behavior were derived from the current `Flight_Controller0.5` log,
-mechanization, attitude, KF, recovery, configuration, and host-test sources. The first release is a
-firmware-order NumPy `float32` reimplementation rather than a runtime firmware DLL; the rationale
-is recorded in Architecture.md. Numerical order is intentionally close to the C implementation,
-but cross-compiler floating-point differences remain possible. Never claim `EXACT` for a
-different firmware build without adding and passing its golden tests.
+Record/semantic authority comes from the exact matched `.ssdecoder`; algorithm implementation is
+still audited host code. The supplied SS_TEST_0 FCCG 0.0.10 package loads under the strict 1.1
+contract, but no matching real log/golden artifact is included here. Pure INS and KF_6 therefore
+remain `APPROXIMATE` for firmware 0.0.10 and retain build identity `SILV0008`. Never claim
+`EXACT` until the matching immutable real-log and host golden gate passes.

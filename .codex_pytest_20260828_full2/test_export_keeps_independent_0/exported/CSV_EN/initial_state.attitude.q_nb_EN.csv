@@ -1,0 +1,3 @@
+﻿# channel=initial_state.attitude.q_nb,unit=1,quantity=quaternion,source=INITIAL_STATE,synthetic=False
+timestamp_us,time_from_start_s,W,X,Y,Z,valid
+1000000,0.000000000,1.0,0.0,0.0,0.0,1

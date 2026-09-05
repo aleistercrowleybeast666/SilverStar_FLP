@@ -1,0 +1,12 @@
+SilverStar_FLP Export Failures
+====================================
+
+flight_replay_gif
+Item: 3D Flight Replay GIF
+Type: OSError
+Message: intentional_gif_failure
+
+manifest
+Item: Export Manifest
+Type: RuntimeError
+Message: intentional_manifest_failure

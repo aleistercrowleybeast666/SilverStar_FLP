@@ -273,6 +273,7 @@ class StateEstimationPage(QWidget):
             selected = max(recorded, key=self._SourceScore_Get, default=None)
         if selected is None:
             self._Content_Clear()
+            self._FirmwareEstimatorDiagnostic_Append()
             return
         try:
             plugin = self._registry.Algorithm_Get(str(selected.algorithm_id))
@@ -296,11 +297,37 @@ class StateEstimationPage(QWidget):
             self.diagnostic_label.setText(
                 self._translator.Text_Get("state.recomputed_diagnostic")
             )
+        self._FirmwareEstimatorDiagnostic_Append()
         self.source_value_label.setText(
             _Source_Label(self._translator, self._resolver, selected.source_id)
         )
         self._Selectors_Refresh()
         self._Refresh()
+
+    def _FirmwareEstimatorDiagnostic_Append(self) -> None:
+        if self._dataset is None or self._dataset.semantic_context is None:
+            return
+        plugin_components = {
+            component_id
+            for plugin in self._registry.algorithms
+            if plugin.metadata.estimator_visualization is not None
+            for component_id in plugin.metadata.firmware_component_ids
+        }
+        unmatched = tuple(
+            component_id
+            for component_id in self._dataset.semantic_context.FirmwareAlgorithms_Get()
+            if ".estimator." in component_id and component_id not in plugin_components
+        )
+        if not unmatched:
+            return
+        diagnostic = self._translator.Text_Get(
+            "state.firmware_estimator_without_plugin",
+            values=", ".join(unmatched),
+        )
+        current = self.diagnostic_label.text().strip()
+        self.diagnostic_label.setText(
+            f"{current} · {diagnostic}" if current else diagnostic
+        )
 
     def _SourceScore_Get(self, source: AnalysisSource) -> int:
         if self._resolver is None or source.algorithm_id is None:
@@ -828,3 +855,4 @@ class StateEstimationPage(QWidget):
                         else "state.recomputed_diagnostic"
                     )
                 )
+                self._FirmwareEstimatorDiagnostic_Append()

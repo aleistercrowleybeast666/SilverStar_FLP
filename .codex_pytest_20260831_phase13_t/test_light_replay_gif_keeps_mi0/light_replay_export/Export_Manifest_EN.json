@@ -1,0 +1,44 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_20260831_phase13_t\\test_light_replay_gif_keeps_mi0\\SYNTHETIC_light_replay.BIN",
+    "size_bytes": 6376,
+    "sha256": "d18677458e4965b3eb4f55b2fc8b9b27e1f022377b9e46a1a44c468b9ccfded4"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [],
+  "language": "en_US",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "csv:inertial.increment.dt",
+      "localized_name": "CSV Data · inertial.increment.dt",
+      "path": "CSV_EN\\inertial.increment.dt_EN.csv"
+    },
+    {
+      "item_id": "flight_replay_gif",
+      "localized_name": "3D Flight Replay GIF",
+      "path": "Flight_Replay_EN.gif"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "Export Manifest",
+      "path": "Export_Manifest_EN.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "CSV_EN\\inertial.increment.dt_EN.csv",
+    "Flight_Replay_EN.gif",
+    "Export_Manifest_EN.json"
+  ],
+  "failures": []
+}

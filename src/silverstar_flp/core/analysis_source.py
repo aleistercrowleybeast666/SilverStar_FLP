@@ -131,7 +131,11 @@ class ReplayResultStore:
         mode = (
             ReplayMode.WHAT_IF
             if result.provenance == "What-if"
-            else ReplayMode.RECORDED_CONFIGURATION
+            else (
+                ReplayMode.OFFLINE
+                if result.provenance == "Offline"
+                else ReplayMode.RECORDED_CONFIGURATION
+            )
         )
         same_mode_count = sum(
             entry.algorithm_id == result.algorithm_id and entry.mode == mode
@@ -139,7 +143,11 @@ class ReplayResultStore:
         )
         run_index = same_mode_count + 1
         algorithm_key = result.algorithm_id.rsplit(".", 1)[-1]
-        mode_key = "what_if" if mode == ReplayMode.WHAT_IF else "recomputed"
+        mode_key = {
+            ReplayMode.WHAT_IF: "what_if",
+            ReplayMode.OFFLINE: "offline",
+            ReplayMode.RECORDED_CONFIGURATION: "recomputed",
+        }[mode]
         result_id = f"{algorithm_key}:{mode_key}:{run_index}"
         source_id = f"replay:{result_id}"
         entry = ReplayStoredResult(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import colorsys
 import csv
+import hashlib
 import json
 import logging
 import re
@@ -774,6 +775,7 @@ class FlightExporter:
             self._Manifest_Write(
                 manifest_path,
                 output,
+                dataset,
                 prospective_generated,
                 skipped,
                 failures,
@@ -918,10 +920,11 @@ class FlightExporter:
             )
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    @staticmethod
     def _Manifest_Write(
+        self,
         path: Path,
         output: Path,
+        dataset: FlightDataset,
         generated: tuple[ExportGenerated, ...],
         skipped: list[ExportSkipped],
         failures: list[ExportFailure],
@@ -930,6 +933,41 @@ class FlightExporter:
         store: ReplayResultStore,
     ) -> None:
         active = store.ActiveSource_Get()
+        source_hash = hashlib.sha256()
+        with dataset.source_path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                source_hash.update(chunk)
+        semantic_context = dataset.semantic_context
+        semantic_payload = (
+            semantic_context.ToDict() if semantic_context is not None else None
+        )
+        replay_payload = []
+        for entry in store.Entries_Get():
+            firmware_member = False
+            recorded_output_available = False
+            try:
+                plugin = self._registry.Algorithm_Get(entry.algorithm_id)
+                firmware_member = plugin.FirmwareMember_Is(dataset)
+                recorded_output_available = plugin.RecordedOutput_IsAvailable(dataset)
+            except KeyError:
+                pass
+            replay_payload.append(
+                {
+                    "result_id": entry.result_id,
+                    "source_id": entry.source_id,
+                    "algorithm_id": entry.algorithm_id,
+                    "algorithm_version": entry.algorithm_version,
+                    "mode": entry.mode.value,
+                    "provenance": entry.result.provenance,
+                    "input_source": entry.input_source,
+                    "parameters": dict(entry.parameters),
+                    "fidelity": entry.fidelity.value,
+                    "warnings": list(entry.warnings),
+                    "firmware_member": firmware_member,
+                    "recorded_output_available": recorded_output_available,
+                    "channel_ids": sorted(entry.channels),
+                }
+            )
         generated_payload = [
             {
                 "item_id": item.item_id,
@@ -941,6 +979,46 @@ class FlightExporter:
         skipped_payload = [asdict(item) for item in skipped]
         failure_payload = [asdict(item) for item in failures]
         payload = {
+            "source_log": {
+                "path": str(dataset.source_path),
+                "size_bytes": dataset.file_size,
+                "sha256": source_hash.hexdigest(),
+            },
+            "decoder_profile": (
+                {
+                    **semantic_payload["package_identity"],
+                    "match_mode": "exact_generation_profile",
+                }
+                if semantic_payload is not None
+                else None
+            ),
+            "project": (
+                semantic_payload["package_identity"]["project_name"]
+                if semantic_payload is not None
+                else None
+            ),
+            "firmware": (
+                {
+                    "version": semantic_payload["package_identity"]["firmware_version"],
+                    "commit": semantic_payload["package_identity"]["firmware_commit"],
+                    "algorithm_components": semantic_payload["firmware_algorithm_ids"],
+                }
+                if semantic_payload is not None
+                else None
+            ),
+            "hardware": semantic_payload["hardware"] if semantic_payload is not None else None,
+            "protocols": semantic_payload["protocols"] if semantic_payload is not None else None,
+            "calibration": (
+                semantic_payload["calibration"]
+                if semantic_payload is not None
+                else None
+            ),
+            "stable_aliases": (
+                semantic_payload["stable_aliases"]
+                if semantic_payload is not None
+                else {}
+            ),
+            "replay_results": replay_payload,
             "language": language.value,
             "theme": theme.value,
             "active_analysis_source": active.source_id,

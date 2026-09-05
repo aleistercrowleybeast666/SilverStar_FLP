@@ -94,7 +94,9 @@ class OverviewPage(QWidget):
         calibration_layout = QVBoxLayout(self.calibration_group)
         self.calibration_summary = QGridLayout()
         self.calibration_value_labels: dict[str, QLabel] = {}
-        for row, field in enumerate(("mode", "status", "faces", "samples", "rejected", "retries")):
+        for row, field in enumerate(
+            ("configured", "mode", "status", "faces", "samples", "rejected", "retries")
+        ):
             title = QLabel()
             title.setObjectName("muted")
             value = QLabel("—")
@@ -191,6 +193,20 @@ class OverviewPage(QWidget):
             f"{self._translator.Text_Get('overview.recorded_navigation')}: "
             f"{summary.source_name}{synthetic}{start_note}"
         )
+        if dataset.semantic_context is not None:
+            context = dataset.semantic_context
+            identity = context.PackageIdentity_Get()
+            self.file_label.setText(
+                self.file_label.text()
+                + "\n"
+                + self._translator.Text_Get(
+                    "overview.decoder_identity",
+                    project=context.Project_Get(),
+                    firmware=context.FirmwareVersion_Get(),
+                    package_hash=identity.package_sha256,
+                    generation_hash=identity.generation_profile_sha256,
+                )
+            )
         self.duration_card.value_label.setText(
             f"{summary.duration_s:.3f} s" if summary.duration_s is not None else "—"
         )
@@ -346,6 +362,11 @@ class OverviewPage(QWidget):
                 else self._translator.Text_Get("status.na")
             )
             values = {
+                "configured": (
+                    " / ".join(calibration.configured_modes)
+                    if calibration.configured_modes
+                    else self._translator.Text_Get("calibration.configured_none")
+                ),
                 "mode": self._translator.Text_Get(mode_code),
                 "status": self._translator.Text_Get(status_code),
                 "faces": faces,
@@ -355,6 +376,13 @@ class OverviewPage(QWidget):
             }
         for field, value in values.items():
             self.calibration_value_labels[field].setText(value)
+        self.calibration_note.setText(
+            self._translator.Text_Get(
+                "calibration.none_identity_note"
+                if calibration.present and calibration.mode == 0
+                else "calibration.corrected_imu_note"
+            )
+        )
         _Status_Apply(self.calibration_group, status_level)
         dimensionless = self._translator.Text_Get("unit.dimensionless")
         model_rows = (
@@ -452,6 +480,7 @@ class OverviewPage(QWidget):
         self.quality_card.setTitle(translator.Text_Get("label.data_quality"))
         self.calibration_group.setTitle(translator.Text_Get("label.calibration"))
         calibration_titles = {
+            "configured": "calibration.configured_flow",
             "mode": "label.mode",
             "status": "label.status",
             "faces": "calibration.faces",
@@ -472,7 +501,6 @@ class OverviewPage(QWidget):
                 translator.Text_Get("label.unit"),
             ]
         )
-        self.calibration_note.setText(translator.Text_Get("calibration.corrected_imu_note"))
         self.calibration_group.setToolTip(translator.Text_Get("calibration.corrected_imu_tooltip"))
 
         self.alignment_group.setTitle(translator.Text_Get("label.initial_alignment"))

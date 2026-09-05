@@ -1,0 +1,38 @@
+{
+  "source_log": {
+    "path": "D:\\python_software\\SilverStar_FLP\\.codex_pytest_20260831_phase13_t\\test_full_p_keyframes_use_anal0\\SYNTHETIC_full_p_without_landing.BIN",
+    "size_bytes": 7232,
+    "sha256": "2d8ab0afc4927a76415c596b092a324b72d8f8a8772554b55014a68e3b570e85"
+  },
+  "decoder_profile": null,
+  "project": null,
+  "firmware": null,
+  "hardware": null,
+  "protocols": null,
+  "calibration": null,
+  "stable_aliases": {},
+  "replay_results": [],
+  "language": "zh_CN",
+  "theme": "light",
+  "active_analysis_source": "recorded",
+  "active_source_kind": "recorded",
+  "generated": [
+    {
+      "item_id": "full_covariance_keyframes:silverstar.algorithm.kf6:recorded",
+      "localized_name": "完整协方差矩阵 P 关键帧 · KF_6",
+      "path": "KF6_Full_P_Keyframes_ZH.txt"
+    },
+    {
+      "item_id": "manifest",
+      "localized_name": "导出清单",
+      "path": "Export_Manifest_ZH.json"
+    }
+  ],
+  "skipped": [],
+  "failed": [],
+  "files": [
+    "KF6_Full_P_Keyframes_ZH.txt",
+    "Export_Manifest_ZH.json"
+  ],
+  "failures": []
+}

@@ -2,29 +2,41 @@
 
 ## Design boundary
 
-SilverStar_FLP has exactly two plugin types:
+The log input boundary has two user-managed layers:
 
-1. **Log Parser Plugin** converts one incompatible flight-log container generation into a
-   GUI-independent `FlightDataset`. SSLOG0 is one parser plugin. Record decoders are a private
-   `(record_type, record_version)` registry inside that parser, not plugins.
-2. **Algorithm Plugin** represents one complete navigation/state-estimation algorithm. The
-   built-ins are Pure INS and KF_6. Plotting, export, project persistence, Data Explorer, deploy
-   replay, landing replay, and GUI code remain Core services.
+1. A trusted **Log Container Plugin** implements one incompatible wire container. It owns only
+   File/Record headers, CRC, sync recovery, truncation and `RawRecordFrame` production. The
+   protected built-in is `silverstar.flight_log.container.0_0`.
+2. One declarative **Decoder Profile Package** (`.ssdecoder`) belongs to each generated project.
+   Its Record Catalog defines payload layouts and its Project Semantics defines devices,
+   partitions and channels. Both documents are pure data in one checksummed ZIP.
+
+Algorithm Plugins remain a separate internal extension point for complete navigation and
+state-estimation algorithms. Pure INS and KF_6 are the built-ins. A decoder package describes
+recorded data but never supplies executable algorithm behavior. Plotting, export, project
+persistence, Data Explorer, deploy replay, landing replay, and GUI code remain Core services.
+
+The production registry contains trusted containers and offline algorithms, not a fixed Record
+parser. `LogOpenCoordinator` creates `DecoderProfileParserPlugin` only after an exact package 1.1
+and Descriptor match. The historical fixed parser module remains for frozen test fixtures but is
+not reachable from GUI, CLI, project restore, or drag/drop.
 
 The GUI never reads byte offsets. It consumes `FlightDataset`, standard channels, algorithm
 results, stable diagnostic codes, and metadata.
 
 ## Protocol truth and data flow
 
-The implementation is based on the current `Flight_Controller0.5` sources, especially
-`STORAGE_AND_FLIGHT_LOG.md`, `logger_bus.*`, `logger_task.c`, `ins_mechanization.c`,
-`attitude_frame.c`, `navigation_kf.c`, and their Host Tests. AIR frames are deliberately outside
-the SSLOG parser.
+Record and project meaning comes only from the matched `.ssdecoder`. Offline numerical algorithms
+remain audited host implementations based on their documented firmware source/build identity.
+AIR frames are deliberately outside the SSLOG container.
 
 ```text
 read-only SSLOG BIN
-  -> SSLOG0 parser (header/record CRC, FLG1 recovery, decoder registry)
-  -> FlightDataset (independent multi-rate time series + decoded records)
+  -> trusted SSLOG0 container (header/record CRC, FLG1 recovery, RawRecordFrame)
+  -> mandatory bootstrap Descriptor + exact .ssdecoder 1.1 validation/cache
+  -> dynamic Record Catalog parser (raw Records and instance channels)
+  -> semantic adapter + mandatory Calibration Result
+  -> FlightDataset + DatasetSemanticContext (immutable raw data + zero-copy stable aliases)
   -> Algorithm Plugin replay
   -> ReplayResultStore (every Recomputed and What-if run is retained)
   -> AnalysisSource + ChannelResolver
@@ -35,9 +47,21 @@ read-only SSLOG BIN
 Every series owns its real timestamp array. No channel is reconstructed from a nominal sample
 frequency and unlike-rate records are not forced into one large table.
 
+Decoder-profile discovery is bounded by file count, byte count, recursion depth and parent depth.
+Matching uses the logged `DECODER_PROFILE_DESCRIPTOR` and requires package/container identity plus
+generation-profile, Record Catalog, and Project Semantics hashes simultaneously. There is one
+`exact_generation_profile` mode and no ranking/fallback. Manual import validates before copying
+into a content-addressed user cache; the source package is never changed. A trusted `.ssplugin` is
+discovered only in the configured FLP plugin directory and can instantiate code only through a
+host allowlist. A task-directory `.ssdecoder` can never carry or execute container code.
+
+Manual GUI import, folder search, strict drag/drop, CLI, and project restore all call the same
+coordinator. They publish a new dataset/project only after the whole operation succeeds.
+
 ## Analysis surface
 
-Overview is recorded mission truth: file integrity, START-cropped metrics, Calibration Result,
+Overview is recorded mission truth: exact decoder/project/firmware identity, file integrity,
+START-cropped metrics, configured calibration flow and selected effective Calibration Result,
 Initial Alignment/INITIAL_STATE, actual deploy event/detail, and the translated event timeline.
 Flight owns velocity, position, corrected IMU, attitude, and 3D playback. State Estimation owns
 filter internals only. Replay is page two, the source-generation entry point, and the only page
@@ -51,7 +75,8 @@ covariance, innovation, NIS, measurement diagnostics, and a generic update-event
 ESKF_15/24 state or sensor groups are plugin metadata changes, not page changes.
 
 `ReplayResultStore` assigns a unique result/source ID to every run and never replaces a prior
-Recomputed or What-if result. `ChannelResolver` is the single Recorded/replay lookup layer used
+Recorded-configuration, Offline, or What-if result. `ChannelResolver` is the single
+Recorded/replay lookup layer used
 by Flight, State Estimation, Data Explorer, and export. Only complete results with valid attitude,
 velocity, and position can be selected. Recorded Pure INS and Recorded KF_6 navigation are
 separate layers. A replay source is plotted with both recorded layers as dashed references;
@@ -70,8 +95,8 @@ INITIAL_STATE.q_nb
   -> software q_nb -> ENU specific force -> gravity compensation -> v -> p
 ```
 
-`HW_QUAT_NATIVE` remains diagnostic/reference data after START. `PURE_INS` and `KF6_STATE` are
-recorded outputs used for comparison; neither is fed back as normal replay input.
+`HW_QUAT_NATIVE` remains diagnostic/reference data after START. Recorded Pure INS and estimator
+outputs are comparison layers; neither is fed back as normal replay input.
 
 ## Visualization invariants
 
@@ -102,9 +127,22 @@ embedded interface headers; shipping a DLL would either bind FLP to an external 
 or duplicate that configuration behind an ABI. The Python implementation keeps What-if parameter
 editing and PyInstaller distribution straightforward. Operation order, quaternion convention,
 two-sample grouping, gravity sign, KF state ordering, Joseph update, NIS gates, and timestamps are
-kept aligned with `SILV0008`. A firmware build-tag mismatch lowers replay fidelity rather than
-silently claiming an exact reproduction. The remaining drift risk is documented and guarded by
-golden/integration tests.
+kept aligned with `SILV0008`. Firmware component membership from Project Semantics is independent
+of host-plugin availability and recorded output. FCCG 0.0.10 has not passed its matching real-log
+host golden gate, so both Pure INS and KF_6 remain `APPROXIMATE` with an explicit warning; neither
+the implementation ID nor fidelity is silently upgraded.
+
+## Project and audit boundary
+
+`.ssflp` v2 contains exactly one `log_reference`, decoder source/cache references, complete
+package/generation/Catalog/Semantics hashes, container ID/version, exact match mode, replay
+settings, notes, and UI state. Old versions are rejected. Save uses a same-directory temporary
+file, flush/fsync, and atomic replacement. Restore verifies every stored identity before changing
+the current GUI state.
+
+The audit export manifest hashes the source log and records decoder identity, project/firmware/
+hardware/protocol metadata, firmware components, effective calibration, raw-to-stable aliases,
+and every replay plugin/mode/provenance/fidelity/parameter set.
 
 ## KF6 state convention
 
@@ -115,6 +153,7 @@ The current firmware source is authoritative: KF6 state order is
 ## Responsiveness and errors
 
 Parsing, replay, export, and GIF creation accept a cooperative `TaskContext`. The GUI runs them in
-worker threads, reports progress, and requests cancellation without terminating Python. Core and
-plugins emit stable codes; the i18n layer translates them. Full tracebacks go to the application
-log while dialogs show concise user-facing messages.
+worker threads, reports progress, and requests cancellation without terminating Python. A failed
+open never clears the current dataset or replay store. Core and plugins emit stable codes; the
+i18n layer translates them. Full tracebacks go to the application log while dialogs show concise
+user-facing messages.

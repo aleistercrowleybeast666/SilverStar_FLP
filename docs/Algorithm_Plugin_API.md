@@ -13,6 +13,32 @@ diagnostic views without changing the common page.
 Recorded, Recomputed, and What-if are provenance labels. Fidelity is separate: it describes input
 and implementation completeness, never whether a curve merely looks close.
 
+## Firmware, recorded data, and offline execution are independent
+
+`project_semantics.json.algorithms` is normalized from the current 1.1 `list[str]` into immutable
+firmware component references. It answers only whether an algorithm component was built into the
+flight-controller project. It is never an allowlist for desktop plugins.
+
+`AlgorithmMetadata` and `AlgorithmConfigurationAvailability` keep four facts separate:
+
+- `firmware_component_ids` / `firmware_member`: the package says the component was onboard;
+- `recorded_output_roles` / `recorded_output_available`: this log actually contains a recorded
+  output that the plugin knows how to present;
+- `recorded_parameters` / `recorded_available`: the log contains every required configuration
+  value, the component was onboard, and the replay inputs are available;
+- `offline_default_parameters` / `offline_available`: the installed desktop plugin can run from
+  the available semantic inputs, regardless of firmware membership.
+
+These flags must not be inferred from one another. In particular, an installed Pure INS, KF_6, or
+future ESKF plugin stays visible and can run offline when its component ID is absent from the
+firmware list. Conversely, a firmware component without a compatible visualization plugin remains
+visible as package metadata and its raw records remain available in Data Explorer.
+
+`ReplayMode.RECORDED_CONFIGURATION` is enabled only for a complete logged parameter set.
+`ReplayMode.OFFLINE` uses the plugin's explicit offline defaults. `ReplayMode.WHAT_IF` starts with
+offline defaults and overlays only parameter values that were genuinely recorded; a partial
+recorded set is never advertised as a complete Recorded configuration.
+
 The desktop Replay page always constructs `ReplayRequest(input_source="corrected_imu")`. Plugins
 must retain explicit availability checks and must not silently fall back. The internal API may
 continue to accept `recorded_inertial_increment` for CLI, validation, and golden-vector work.
@@ -20,10 +46,14 @@ continue to accept `recorded_inertial_increment` for CLI, validation, and golden
 Each user-editable parameter supplies stable `label_key`, `group_key`, and `tooltip_key` values,
 plus unit/range/step metadata. The GUI translates those keys, keeps the raw `parameter_id` in the
 tooltip, and builds the What-if group selector without parameter-specific branches.
-`recorded_parameters(dataset)` returns the values represented by that particular log. Reset uses
-this mapping, not `ParameterSpec.default`; scale parameters that do not exist as firmware values
-use their recorded neutral factor (`1.0`). Warnings remain stable raw codes in algorithm results
-and are translated only at the GUI/export boundary.
+`recorded_parameters(dataset)` returns only values represented by that particular log. It must not
+fill missing firmware values from `ParameterSpec.default`. The What-if reset baseline uses explicit
+offline defaults overlaid with this audited subset. Warnings remain stable raw codes in algorithm
+results and are translated only at the GUI/export boundary.
+
+The built-in Pure INS and KF_6 implementations remain version `0.0.10` and report
+`APPROXIMATE` with the existing `SILV0008` warning; the package adaptation does not upgrade their
+fidelity claim.
 
 ## Estimator visualization metadata
 
@@ -84,6 +114,9 @@ the GUI must report the missing inputs and must not manufacture a result.
 
 ## Plugin boundary
 
-`builtin_registry()` remains the only discovery mechanism and registers SSLOG0, Pure INS, and
-KF_6. Future SSLOG1/ESKF modules are added explicitly. This API does not implement a plugin store,
-entry-point discovery, online installation, signatures, hot reload, or dependency management.
+`builtin_registry()` remains the only discovery mechanism and registers the audited SSLOG0
+container plus the Pure INS and KF_6 offline algorithms. It does not register a fixed record
+parser: `LogOpenCoordinator` constructs `DecoderProfileParserPlugin(container, verified_package)`
+for each accepted log. Future container or algorithm modules are added explicitly. This API does
+not implement a plugin store, entry-point discovery, online installation, signatures, hot reload,
+or dependency management.

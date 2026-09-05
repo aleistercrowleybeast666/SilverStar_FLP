@@ -9,7 +9,12 @@ from PIL import Image
 
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import TimeSeries
-from silverstar_flp.core.project import Project_Load, Project_Save, ProjectDocument
+from silverstar_flp.core.project import (
+    Project_Load,
+    Project_Save,
+    ProjectDecoderProfile,
+    ProjectDocument,
+)
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
     TRAJECTORY_LANDING_COLOR,
@@ -17,6 +22,7 @@ from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_PRE_DEPLOY_COLOR,
     RocketFaceColors_Get,
 )
+from silverstar_flp.decoder_profiles.discovery import DecoderProfileCacheReference
 from silverstar_flp.export.plot_metadata import ChannelDisplayMetadata_Get
 from silverstar_flp.export.service import (
     ExportLanguage,
@@ -29,18 +35,49 @@ from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from tests.sslog_synthetic import AnalysisFlight_Build, StationaryFlight_Build
 
 
+def _ProjectDocument_Build(
+    log_path: Path,
+    project_path: Path,
+) -> ProjectDocument:
+    package_hash = "2" * 64
+    generation_hash = "3" * 64
+    document = ProjectDocument(project_path=project_path)
+    document.LogReference_Set(log_path)
+    document.decoder_profile = ProjectDecoderProfile(
+        source_reference=str(project_path.parent / "synthetic.ssdecoder"),
+        cache_reference=DecoderProfileCacheReference(
+            generation_profile_sha256=generation_hash,
+            package_sha256=package_hash,
+            relative_path=f"{generation_hash[:32]}/{package_hash}.ssdecoder",
+        ),
+        package_sha256=package_hash,
+        generation_profile_sha256=generation_hash,
+        record_catalog_sha256="4" * 64,
+        record_catalog_hash_128="4" * 32,
+        project_semantics_sha256="5" * 64,
+        project_semantics_hash_128="5" * 32,
+        container_plugin_id="silverstar.flight_log.container.0_0",
+        container_plugin_version="0.0.0",
+        exact_match_mode="exact_generation_profile",
+    )
+    return document
+
+
 def test_project_contains_references_only_and_raw_log_remains_unchanged(tmp_path: Path) -> None:
     log_path = StationaryFlight_Build(tmp_path / "SYNTHETIC_project_source.BIN")
     before = hashlib.sha256(log_path.read_bytes()).hexdigest()
     project_path = tmp_path / "flight.ssflp"
-    document = ProjectDocument(project_path=project_path)
-    document.LogReference_Add(log_path)
+    document = _ProjectDocument_Build(log_path, project_path)
     document.notes = "synthetic fixture"
     Project_Save(document, project_path)
     loaded = Project_Load(project_path)
-    assert loaded.LogPaths_Resolve() == (log_path.resolve(),)
+    assert loaded.LogPath_Resolve() == log_path.resolve()
+    assert loaded.decoder_profile is not None
+    assert loaded.decoder_profile.exact_match_mode == "exact_generation_profile"
     project_text = project_path.read_text(encoding="utf-8")
     assert "SSLOG0" not in project_text
+    assert '"log_reference"' in project_text
+    assert '"log_references"' not in project_text
     assert hashlib.sha256(log_path.read_bytes()).hexdigest() == before
 
 
@@ -49,8 +86,7 @@ def test_project_save_as_keeps_log_reference_resolvable(tmp_path: Path) -> None:
     source_folder.mkdir()
     log_path = StationaryFlight_Build(source_folder / "SYNTHETIC_save_as_source.BIN")
     original_path = source_folder / "flight.ssflp"
-    document = ProjectDocument(project_path=original_path)
-    document.LogReference_Add(log_path)
+    document = _ProjectDocument_Build(log_path, original_path)
     Project_Save(document, original_path)
 
     loaded = Project_Load(original_path)
@@ -58,8 +94,8 @@ def test_project_save_as_keeps_log_reference_resolvable(tmp_path: Path) -> None:
     Project_Save(loaded, saved_as_path)
 
     saved_as = Project_Load(saved_as_path)
-    assert saved_as.LogPaths_Resolve() == (log_path.resolve(),)
-    assert Project_Load(original_path).LogPaths_Resolve() == (log_path.resolve(),)
+    assert saved_as.LogPath_Resolve() == log_path.resolve()
+    assert Project_Load(original_path).LogPath_Resolve() == log_path.resolve()
 
 
 def test_export_keeps_independent_channel_timestamps_and_language_suffix(

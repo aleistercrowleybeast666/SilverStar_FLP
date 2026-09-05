@@ -36,8 +36,19 @@ from silverstar_flp.app.version import PRODUCT_NAME, __version__
 from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
-from silverstar_flp.core.project import Project_Load, Project_Save, ProjectDocument
+from silverstar_flp.core.project import (
+    Project_Load,
+    Project_Save,
+    ProjectDecoderProfile,
+    ProjectDocument,
+)
 from silverstar_flp.export.service import ExportManifest, FlightExporter
+from silverstar_flp.log_open import (
+    LogOpenCoordinator,
+    LogOpenRequest,
+    LogOpenResult,
+    LogOpenSourceMode,
+)
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
 from silverstar_flp.plugins.registry import PluginRegistry
 from silverstar_flp.ui.pages import (
@@ -72,12 +83,16 @@ class MainWindow(QMainWindow):
         language: str = "zh_CN",
         theme: str = "light",
         initial_path: Path | None = None,
+        initial_decoder_path: Path | None = None,
+        initial_auto_find: bool = False,
     ) -> None:
         super().__init__()
         self._registry = registry
+        self._log_open_coordinator = LogOpenCoordinator(registry)
         self._translator = Translator(language)
         self._theme = theme
         self._dataset: FlightDataset | None = None
+        self._log_open_result: LogOpenResult | None = None
         self._replay_store = ReplayResultStore()
         self._channel_resolver: ChannelResolver | None = None
         self._project = ProjectDocument()
@@ -94,7 +109,14 @@ class MainWindow(QMainWindow):
         self.Language_Apply(language)
         self.Theme_Apply(theme)
         if initial_path is not None:
-            QTimer.singleShot(0, lambda: self.Path_Open(initial_path))
+            QTimer.singleShot(
+                0,
+                lambda: self.Path_Open(
+                    initial_path,
+                    decoder_path=initial_decoder_path,
+                    auto_find=initial_auto_find,
+                ),
+            )
 
     def _Ui_Build(self) -> None:
         central = QWidget()
@@ -202,7 +224,8 @@ class MainWindow(QMainWindow):
         self.replay_page.replayRequested.connect(self._Replay_Start)
         self.replay_page.analysisSourceRequested.connect(self._AnalysisSource_Set)
         self.import_dialog = ImportDialog(self._translator, self)
-        self.import_dialog.importRequested.connect(self.Path_Open)
+        self.import_dialog.importRequested.connect(self.LogPair_Open)
+        self.import_dialog.folderSearchRequested.connect(self._FolderSearch_Start)
         self.export_dialog = ExportDialog(self._translator, self)
         self.export_dialog.exportRequested.connect(self._Export_Start)
         self.export_dialog.manifestOpenRequested.connect(self._ExportManifest_Open)
@@ -274,52 +297,213 @@ class MainWindow(QMainWindow):
         if theme is not None:
             self.Theme_Apply(str(theme))
 
-    def Path_Open(self, path: Path) -> None:
+    def Path_Open(
+        self,
+        path: Path,
+        *,
+        decoder_path: Path | None = None,
+        auto_find: bool = False,
+    ) -> None:
         source_path = Path(path)
-        if source_path.suffix.lower() != ".ssflp":
-            self.Log_Open(source_path)
+        suffix = source_path.suffix.casefold()
+        if suffix == ".ssflp":
+            self._Project_Open(source_path)
             return
+        if suffix == ".ssdecoder":
+            self.import_dialog.Paths_Set(decoder_path=source_path)
+            self.import_dialog.open()
+            return
+        if suffix not in (".bin", ".sslog"):
+            self._Error_Show(f"log_open_extension_unsupported:{suffix}")
+            return
+        if decoder_path is not None:
+            self.LogPair_Open(source_path, decoder_path)
+        elif auto_find:
+            self.Log_Open(
+                source_path,
+                auto_find=True,
+                source_mode=LogOpenSourceMode.FOLDER_SEARCH,
+            )
+        else:
+            self.import_dialog.Paths_Set(log_path=source_path)
+            self.import_dialog.open()
+
+    def LogPair_Open(self, log_path: Path, decoder_path: Path) -> None:
+        self.Log_Open(
+            log_path,
+            decoder_path=decoder_path,
+            source_mode=LogOpenSourceMode.MANUAL,
+        )
+
+    def Log_Open(
+        self,
+        path: Path,
+        *,
+        decoder_path: Path | None = None,
+        auto_find: bool = False,
+        source_mode: LogOpenSourceMode = LogOpenSourceMode.MANUAL,
+        project: ProjectDocument | None = None,
+    ) -> None:
+        source_path = Path(path)
+        target_project = project or ProjectDocument()
+        request = LogOpenRequest(
+            log_path=source_path,
+            decoder_package_path=decoder_path,
+            auto_find=auto_find,
+            task_directory=source_path.parent if auto_find else None,
+            source_mode=source_mode,
+        )
+        self.status_label.setText(self._translator.Text_Get("status.loading"))
+        worker = FunctionWorker(
+            lambda context: self._log_open_coordinator.Open(request, context)
+        )
+        self._Task_Start(
+            worker,
+            lambda result: self._LogOpenResult_Set(result, target_project),
+            lambda message: self._Error_Show(message),
+        )
+
+    def _ProjectLogOpen_Run(
+        self,
+        project: ProjectDocument,
+        request: LogOpenRequest,
+        context: object,
+    ) -> LogOpenResult:
+        result = self._log_open_coordinator.Open(request, context)
+        expected = project.decoder_profile
+        if expected is None:
+            raise ValueError("project_decoder_profile_missing")
+        actual = self._DecoderProfile_Build(result)
+        comparisons = (
+            (expected.package_sha256, actual.package_sha256),
+            (
+                expected.generation_profile_sha256,
+                actual.generation_profile_sha256,
+            ),
+            (expected.record_catalog_sha256, actual.record_catalog_sha256),
+            (expected.record_catalog_hash_128, actual.record_catalog_hash_128),
+            (
+                expected.project_semantics_sha256,
+                actual.project_semantics_sha256,
+            ),
+            (
+                expected.project_semantics_hash_128,
+                actual.project_semantics_hash_128,
+            ),
+            (expected.container_plugin_id, actual.container_plugin_id),
+            (expected.container_plugin_version, actual.container_plugin_version),
+            (expected.exact_match_mode, actual.exact_match_mode),
+        )
+        if any(saved != opened for saved, opened in comparisons):
+            raise ValueError("project_decoder_identity_mismatch")
+        return result
+
+    def _Project_Open(self, path: Path) -> None:
         try:
-            self._project = Project_Load(source_path)
-            paths = self._project.LogPaths_Resolve()
-            if not paths:
-                raise ValueError("project_has_no_log_reference")
-            index = min(max(self._project.active_log_index, 0), len(paths) - 1)
-            self.Log_Open(paths[index])
+            project = Project_Load(Path(path))
+            if project.decoder_profile is None:
+                raise ValueError("project_decoder_profile_missing")
+            decoder_source_path = project.DecoderSourcePath_Resolve()
+            request = LogOpenRequest(
+                log_path=project.LogPath_Resolve(),
+                decoder_package_path=decoder_source_path,
+                cache_reference=project.decoder_profile.cache_reference,
+                task_directory=(
+                    decoder_source_path.parent
+                    if decoder_source_path is not None
+                    else project.project_path.parent
+                    if project.project_path is not None
+                    else None
+                ),
+                source_mode=LogOpenSourceMode.PROJECT,
+            )
         except Exception as exc:
             logging.exception("Project open failed")
             self._Error_Show(str(exc))
-
-    def Log_Open(self, path: Path) -> None:
-        source_path = Path(path).resolve()
-        if not source_path.is_file():
-            self._Error_Show(f"file_not_found: {source_path}")
-            return
-        parser = self._registry.LogParser_Probe(source_path)
-        if parser is None:
-            self._Error_Show(self._translator.Text_Get("error.parser_unrecognized"))
             return
         self.status_label.setText(self._translator.Text_Get("status.loading"))
-        worker = FunctionWorker(lambda context: parser.parse(source_path, context))
+        worker = FunctionWorker(
+            lambda context: self._ProjectLogOpen_Run(project, request, context)
+        )
         self._Task_Start(
             worker,
-            self._Dataset_Set,
+            lambda result: self._LogOpenResult_Set(result, project),
             lambda message: self._Error_Show(message),
         )
+
+    def _FolderSearch_Start(self, folder_path: Path) -> None:
+        selected_path = Path(folder_path)
+        self.status_label.setText(self._translator.Text_Get("status.searching_pairs"))
+        worker = FunctionWorker(
+            lambda context: self._log_open_coordinator.PairDiscovery_Run(selected_path)
+        )
+        self._Task_Start(
+            worker,
+            self._FolderSearch_Set,
+            lambda message: self._Error_Show(message),
+        )
+
+    def _FolderSearch_Set(self, discovery: object) -> None:
+        self.import_dialog.PairDiscovery_Set(discovery)
+        self.import_dialog.show()
+        self.import_dialog.raise_()
+        self.status_label.setText(self._translator.Text_Get("status.ready"))
+
+    def _DecoderProfile_Build(
+        self,
+        result: LogOpenResult,
+    ) -> ProjectDecoderProfile:
+        package = result.package
+        container = self._registry.LogContainer_Get(
+            package.required_container_plugin_id
+        )
+        return ProjectDecoderProfile(
+            source_reference=str(result.source_package_path.resolve()),
+            cache_reference=result.cache_reference,
+            package_sha256=package.package_sha256,
+            generation_profile_sha256=package.generation_profile_sha256,
+            record_catalog_sha256=package.checksums["record_catalog.json"],
+            record_catalog_hash_128=package.record_catalog_hash_128,
+            project_semantics_sha256=package.checksums["project_semantics.json"],
+            project_semantics_hash_128=package.project_semantics_hash_128,
+            container_plugin_id=container.metadata.plugin_id,
+            container_plugin_version=container.metadata.version,
+            exact_match_mode=result.match_mode,
+        )
+
+    def _LogOpenResult_Set(
+        self,
+        result: LogOpenResult,
+        project: ProjectDocument,
+    ) -> None:
+        project.LogReference_Set(result.dataset.source_path)
+        project.decoder_profile = self._DecoderProfile_Build(result)
+        self._project = project
+        self._log_open_result = result
+        self._Dataset_Set(result.dataset)
 
     def _Dataset_Set(self, dataset: FlightDataset) -> None:
         self._dataset = dataset
         self._replay_store.Clear()
         self._channel_resolver = ChannelResolver(dataset, self._replay_store)
         self.export_action.setEnabled(True)
-        self._project.LogReference_Add(dataset.source_path)
-        self.status_label.setText(
-            self._translator.Text_Get(
+        semantic_context = dataset.semantic_context
+        if semantic_context is None:
+            status_text = self._translator.Text_Get(
                 "status.loaded_file",
                 name=dataset.source_path.name,
                 count=dataset.diagnostics.decoded_record_count,
             )
-        )
+        else:
+            identity = semantic_context.PackageIdentity_Get()
+            status_text = self._translator.Text_Get(
+                "status.loaded_exact",
+                name=dataset.source_path.name,
+                project=semantic_context.Project_Get(),
+                firmware=semantic_context.FirmwareVersion_Get(),
+                package_hash=identity.package_sha256[:12],
+            )
+        self.status_label.setText(status_text)
         self._Pages_Refresh()
 
     def _Pages_Refresh(self) -> None:
@@ -451,7 +635,8 @@ class MainWindow(QMainWindow):
         logging.error("Background task failed: %s\n%s", message, traceback_text)
         if self._worker_error_callback is not None:
             self._worker_error_callback(message)
-        self._Error_Show(message)
+        else:
+            self._Error_Show(message)
 
     def _Task_Finish(self) -> None:
         self.progress_bar.setVisible(False)
@@ -480,16 +665,7 @@ class MainWindow(QMainWindow):
         )
         if not selected:
             return
-        try:
-            self._project = Project_Load(Path(selected))
-            log_paths = self._project.LogPaths_Resolve()
-            if not log_paths:
-                raise ValueError("project_has_no_log_reference")
-            index = min(max(self._project.active_log_index, 0), len(log_paths) - 1)
-            self.Log_Open(log_paths[index])
-        except Exception as exc:
-            logging.exception("Project open failed")
-            self._Error_Show(str(exc))
+        self._Project_Open(Path(selected))
 
     def _Project_Save(self) -> None:
         path = self._project.project_path
@@ -535,10 +711,18 @@ class MainWindow(QMainWindow):
             self._Error_Show(str(exc))
 
     def _Error_Show(self, message: str) -> None:
+        code, separator, details = message.partition(":")
+        translation_key = f"error.code.{code.strip()}"
+        translated = self._translator.Text_Get(translation_key)
+        display_message = (
+            translated + (f"\n{details.strip()}" if separator and details.strip() else "")
+            if translated != translation_key
+            else message
+        )
         QMessageBox.critical(
             self,
             self._translator.Text_Get("error.title"),
-            f"{message}\n\n{self._translator.Text_Get('error.detail_saved')}",
+            f"{display_message}\n\n{self._translator.Text_Get('error.detail_saved')}",
         )
 
     def Language_Apply(self, language: str) -> None:
@@ -585,6 +769,18 @@ class MainWindow(QMainWindow):
         self.export_dialog.Language_Apply(self._translator)
         if self._dataset is None:
             self.status_label.setText(self._translator.Text_Get("status.ready"))
+        elif self._dataset.semantic_context is not None:
+            context = self._dataset.semantic_context
+            identity = context.PackageIdentity_Get()
+            self.status_label.setText(
+                self._translator.Text_Get(
+                    "status.loaded_exact",
+                    name=self._dataset.source_path.name,
+                    project=context.Project_Get(),
+                    firmware=context.FirmwareVersion_Get(),
+                    package_hash=identity.package_sha256[:12],
+                )
+            )
         else:
             self.status_label.setText(
                 self._translator.Text_Get(
@@ -613,25 +809,66 @@ class MainWindow(QMainWindow):
         self.state_estimation_page.Theme_Apply(theme)
         self.export_dialog.Theme_Set(theme)
 
+    @staticmethod
+    def _DropPaths_Validate(urls: list[QUrl]) -> tuple[Path, ...] | None:
+        if not urls or any(not url.isLocalFile() for url in urls):
+            return None
+        paths = tuple(Path(url.toLocalFile()) for url in urls)
+        project_paths = tuple(
+            path for path in paths if path.suffix.casefold() == ".ssflp"
+        )
+        log_paths = tuple(
+            path for path in paths if path.suffix.casefold() in (".bin", ".sslog")
+        )
+        decoder_paths = tuple(
+            path for path in paths if path.suffix.casefold() == ".ssdecoder"
+        )
+        if len(project_paths) == 1 and len(paths) == 1:
+            return paths
+        if (
+            len(log_paths) == 1
+            and len(decoder_paths) <= 1
+            and len(paths) == len(log_paths) + len(decoder_paths)
+        ):
+            return paths
+        return None
+
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        urls = event.mimeData().urls()
-        if urls and urls[0].isLocalFile():
-            suffix = Path(urls[0].toLocalFile()).suffix.lower()
-            if suffix in (".bin", ".ssflp"):
-                event.acceptProposedAction()
+        if self._DropPaths_Validate(event.mimeData().urls()) is not None:
+            event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent) -> None:
-        path = Path(event.mimeData().urls()[0].toLocalFile())
-        if path.suffix.lower() == ".ssflp":
-            try:
-                self._project = Project_Load(path)
-                paths = self._project.LogPaths_Resolve()
-                if paths:
-                    self.Log_Open(paths[0])
-            except Exception as exc:
-                self._Error_Show(str(exc))
+        paths = self._DropPaths_Validate(event.mimeData().urls())
+        if paths is None:
+            self._Error_Show("drop_selection_invalid")
+            event.ignore()
+            return
+        project_paths = tuple(
+            path for path in paths if path.suffix.casefold() == ".ssflp"
+        )
+        if project_paths:
+            self._Project_Open(project_paths[0])
+            event.acceptProposedAction()
+            return
+        log_path = next(
+            path for path in paths if path.suffix.casefold() in (".bin", ".sslog")
+        )
+        decoder_path = next(
+            (path for path in paths if path.suffix.casefold() == ".ssdecoder"),
+            None,
+        )
+        if decoder_path is None:
+            self.Log_Open(
+                log_path,
+                auto_find=True,
+                source_mode=LogOpenSourceMode.DRAG_DROP,
+            )
         else:
-            self.Log_Open(path)
+            self.Log_Open(
+                log_path,
+                decoder_path=decoder_path,
+                source_mode=LogOpenSourceMode.DRAG_DROP,
+            )
         event.acceptProposedAction()
 
     def closeEvent(self, event: QCloseEvent) -> None:
