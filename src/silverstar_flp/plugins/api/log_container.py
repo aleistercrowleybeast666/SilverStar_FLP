@@ -42,6 +42,9 @@ class ParseOptions:
     context: TaskContext = field(default_factory=TaskContext)
     source_size: int | None = None
     maximum_payload_length: int = 1_048_576
+    maximum_resync_scan_bytes: int = 65_536
+    maximum_resync_candidates: int = 1_024
+    damaged_span_preview_bytes: int = 96
 
 
 @dataclass(frozen=True, slots=True)

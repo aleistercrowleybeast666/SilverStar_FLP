@@ -31,7 +31,8 @@ def test_pure_ins_stationary_replay_uses_software_quaternion_and_real_dt(
 ) -> None:
     plugin = PureInsAlgorithmPlugin()
     result = plugin.run(stationary_dataset, ReplayRequest(input_source=source))
-    assert result.fidelity.value == "EXACT"
+    assert result.fidelity.value == "APPROXIMATE"
+    assert "host_golden_not_verified" in result.warnings
     assert result.diagnostics["software_quaternion_propagation"] is True
     assert result.diagnostics["output_count"] == 8
     assert np.allclose(
@@ -88,7 +89,8 @@ def test_kf6_stationary_replay_has_finite_positive_covariance(stationary_dataset
     )
     state = result.channels["kf6.state"].values
     diagonal = result.channels["kf6.covariance.diagonal"].values
-    assert result.fidelity.value == "EXACT"
+    assert result.fidelity.value == "APPROXIMATE"
+    assert "host_golden_not_verified" in result.warnings
     assert tuple(result.diagnostics["state_order"]) == (
         "pE",
         "pN",

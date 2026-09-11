@@ -7,6 +7,7 @@ from pathlib import Path
 
 from silverstar_flp.core.context import TaskContext
 from silverstar_flp.core.dataset import FlightDataset
+from silverstar_flp.core.diagnostics import DataQualitySummary, ParserDiagnostics
 from silverstar_flp.decoder_profiles.descriptor import DecoderProfileDescriptor
 from silverstar_flp.decoder_profiles.discovery import (
     DecoderProfileCache,
@@ -100,6 +101,8 @@ class LogOpenResult:
     descriptor: DecoderProfileDescriptor
     cache_reference: DecoderProfileCacheReference
     source_package_path: Path
+    parse_diagnostics: ParserDiagnostics
+    data_quality: DataQualitySummary
     match_mode: str = "exact_generation_profile"
 
 
@@ -408,4 +411,6 @@ class LogOpenCoordinator:
             descriptor=descriptor,
             cache_reference=reference,
             source_package_path=Path(source_package_path),
+            parse_diagnostics=dataset.diagnostics,
+            data_quality=dataset.data_quality,
         )

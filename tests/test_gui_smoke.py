@@ -86,6 +86,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert not hasattr(window, "navigation_page")
     assert window.flight_page.tabs.count() == 6
     assert window.state_estimation_page.tabs.count() == 5
+    assert window.explorer_page.tabs.count() == 3
     assert (
         window.overview_page.calibration_group.geometry().top()
         == window.overview_page.alignment_group.geometry().top()
@@ -98,7 +99,17 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert all(button.text() not in ("查看详情", "Details") for button in overview_buttons)
     assert window.overview_page.calibration_group.property("statusLevel") == "success"
     assert window.overview_page.alignment_group.property("statusLevel") == "success"
+    assert window.overview_page.quality_card.property("statusLevel") == "success"
     assert window.explorer_page.channel_list.count() == len(dataset.series)
+    assert (
+        window.explorer_page.diagnostics_table.rowCount()
+        == len(dataset.diagnostics.diagnostics)
+    )
+    record_headers = [
+        window.explorer_page.record_table.horizontalHeaderItem(column).text()
+        for column in range(window.explorer_page.record_table.columnCount())
+    ]
+    assert "file_offset" in record_headers
     assert window.pages.indexOf(window.export_dialog) == -1
     assert window.import_dialog.isModal()
     assert window.export_dialog.isModal()

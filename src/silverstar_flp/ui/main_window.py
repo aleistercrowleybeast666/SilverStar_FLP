@@ -487,24 +487,37 @@ class MainWindow(QMainWindow):
         self._replay_store.Clear()
         self._channel_resolver = ChannelResolver(dataset, self._replay_store)
         self.export_action.setEnabled(True)
+        self.status_label.setText(self._DatasetStatus_TextGet(dataset))
+        self._Pages_Refresh()
+
+    def _DatasetStatus_TextGet(self, dataset: FlightDataset) -> str:
+        warning = bool(
+            dataset.data_quality is not None
+            and dataset.data_quality.status.value == "warnings"
+        )
         semantic_context = dataset.semantic_context
         if semantic_context is None:
-            status_text = self._translator.Text_Get(
-                "status.loaded_file",
+            return self._translator.Text_Get(
+                (
+                    "status.loaded_file_warnings"
+                    if warning
+                    else "status.loaded_file"
+                ),
                 name=dataset.source_path.name,
                 count=dataset.diagnostics.decoded_record_count,
             )
-        else:
-            identity = semantic_context.PackageIdentity_Get()
-            status_text = self._translator.Text_Get(
-                "status.loaded_exact",
-                name=dataset.source_path.name,
-                project=semantic_context.Project_Get(),
-                firmware=semantic_context.FirmwareVersion_Get(),
-                package_hash=identity.package_sha256[:12],
-            )
-        self.status_label.setText(status_text)
-        self._Pages_Refresh()
+        identity = semantic_context.PackageIdentity_Get()
+        return self._translator.Text_Get(
+            (
+                "status.loaded_exact_warnings"
+                if warning
+                else "status.loaded_exact"
+            ),
+            name=dataset.source_path.name,
+            project=semantic_context.Project_Get(),
+            firmware=semantic_context.FirmwareVersion_Get(),
+            package_hash=identity.package_sha256[:12],
+        )
 
     def _Pages_Refresh(self) -> None:
         if self._dataset is None or self._channel_resolver is None:
@@ -769,25 +782,9 @@ class MainWindow(QMainWindow):
         self.export_dialog.Language_Apply(self._translator)
         if self._dataset is None:
             self.status_label.setText(self._translator.Text_Get("status.ready"))
-        elif self._dataset.semantic_context is not None:
-            context = self._dataset.semantic_context
-            identity = context.PackageIdentity_Get()
-            self.status_label.setText(
-                self._translator.Text_Get(
-                    "status.loaded_exact",
-                    name=self._dataset.source_path.name,
-                    project=context.Project_Get(),
-                    firmware=context.FirmwareVersion_Get(),
-                    package_hash=identity.package_sha256[:12],
-                )
-            )
         else:
             self.status_label.setText(
-                self._translator.Text_Get(
-                    "status.loaded_file",
-                    name=self._dataset.source_path.name,
-                    count=self._dataset.diagnostics.decoded_record_count,
-                )
+                self._DatasetStatus_TextGet(self._dataset)
             )
         self.setWindowTitle(PRODUCT_NAME)
 

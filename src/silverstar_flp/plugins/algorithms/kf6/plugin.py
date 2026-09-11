@@ -270,6 +270,32 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "imu.corrected.accel_b",
             "imu.corrected.gyro_b",
         ),
+        optional_semantic_roles=(
+            "gnss.measurement.position_enu",
+            "gnss.measurement.velocity_enu",
+            "baro.measurement.relative_altitude",
+            "kf6.recorded.navigation.position_enu",
+        ),
+        cadence_contract={
+            "prediction": "recorded IMU/inertial-increment timestamps",
+            "measurements": "event-driven; GNSS may legally have zero samples",
+            "state_output": "one output per accepted prediction interval",
+        },
+        gap_tolerance_contract={
+            "interpolation": "forbidden",
+            "corrected_imu": "reset three-sample coning/sculling history",
+            "measurements": "missing optional measurements do not block prediction",
+        },
+        parameter_source_contract={
+            "recorded_configuration": "SSLOG header, SYSTEM_CONFIG, and INITIAL_STATE",
+            "offline": "plugin defaults or explicit what-if values",
+        },
+        coordinate_frame_contract={
+            "quaternion_order": "WXYZ",
+            "quaternion_convention": "Hamilton body-to-ENU",
+            "state_order": "pE,pN,pU,vE,vN,vU",
+            "navigation_frame": "ENU",
+        },
         estimator_visualization=EstimatorVisualizationSpec(
             state_groups=(
                 StateGroupSpec(
@@ -439,13 +465,20 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         if str(dataset.header.get("build_id", "")) != CURRENT_BUILD_ID:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("firmware_build_differs_from_reimplementation")
-        if (
-            dataset.semantic_context is not None
-            and dataset.semantic_context.FirmwareVersion_Get() == "0.0.10"
-        ):
+        firmware_version = (
+            dataset.semantic_context.FirmwareVersion_Get()
+            if dataset.semantic_context is not None
+            else ""
+        )
+        if firmware_version == "0.0.10":
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("fccg_0_0_10_host_golden_not_verified")
-        if dataset.diagnostics.record_crc_failures or dataset.diagnostics.sequence_gap_count:
+        elif not self.metadata.exact_validation_reference:
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("host_golden_not_verified")
+        if dataset.data_quality is not None and (
+            dataset.data_quality.status.value == "warnings"
+        ):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("source_log_has_integrity_or_sequence_gaps")
         return AlgorithmAvailability(True, fidelity, (), tuple(warnings), tuple(supported))
@@ -460,8 +493,15 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         availability = self.availability(dataset, request.input_source)
         if not availability.available:
             raise ValueError("replay_unavailable:" + ",".join(availability.missing_inputs))
-        initial = dataset.Records_Get("INITIAL_STATE")[0]
-        system_config = dataset.Records_Get("SYSTEM_CONFIG")[0]
+        initial = dataset.initial_state
+        if initial is None:
+            raise ValueError("replay_initial_state_missing")
+        system_config = dataset.RecordAtOrBefore_Get(
+            "SYSTEM_CONFIG",
+            dataset.start_timestamp_us or initial.timestamp_us,
+        )
+        if system_config is None:
+            raise ValueError("replay_system_config_missing")
         start_timestamp = dataset.start_timestamp_us or initial.timestamp_us
         mechanism_config = Mechanization_ConfigurationGet(dataset)
         mission_bounds = MissionReplayBounds_Get(dataset)
@@ -551,6 +591,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         elif len(state_decimation) > 7 and int(state_decimation[7]) != 1 and schedule:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_state_timing_reference_is_decimated")
+        if source_diagnostics.get("sample_gap_count", 0):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("input_sample_gaps_detected")
         channels = self._Channels_Build(snapshots)
         task_context.Progress_Report(1.0, "replay.complete")
         return AlgorithmResult(
@@ -591,7 +634,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
 
     @staticmethod
     def _Parameters_Resolve(dataset: FlightDataset, request: ReplayRequest) -> dict[str, float]:
-        config = dataset.Records_Get("SYSTEM_CONFIG")[0].payload
+        initial = dataset.initial_state
+        boundary = dataset.start_timestamp_us or (
+            initial.timestamp_us
+            if initial is not None
+            else 0
+        )
+        record = dataset.RecordAtOrBefore_Get("SYSTEM_CONFIG", boundary)
+        if record is None:
+            raise ValueError("replay_system_config_missing")
+        config = record.payload
         process = tuple(float(value) for value in config["process_accel_std_mps2"])
         nis = tuple(float(value) for value in config["nis_profile"])
         parameters = {

@@ -487,6 +487,12 @@ class ProjectSemantics:
                     record_name,
                 )
             partition_by = tuple(partition_value)
+            first_layout = layouts[0]
+            field_names = {
+                field_layout.name
+                for field_layout in first_layout.fields
+                if field_layout.name is not None
+            }
             base_template = self.raw_channel_id_templates.get(record_name)
             if base_template is None:
                 base_template = self.raw_channel_id_templates.get("default")
@@ -502,16 +508,27 @@ class ProjectSemantics:
                     record_name,
                 )
             template_fields = _TemplateFields_Get(base_template)
+            available_template_fields = {
+                "record",
+                "record_name",
+                *field_names,
+            }
+            if "source_descriptor_id" in field_names:
+                available_template_fields.update(
+                    {
+                        "descriptor_id",
+                        "physical_device_id",
+                        "capability_class",
+                        "plugin_id",
+                        "model",
+                    }
+                )
+            if not template_fields.issubset(available_template_fields):
+                base_template = "{record}"
+                template_fields = _TemplateFields_Get(base_template)
             for partition in partition_by:
                 if partition not in template_fields:
                     base_template += f":{{{partition}}}"
-
-            first_layout = layouts[0]
-            field_names = {
-                field_layout.name
-                for field_layout in first_layout.fields
-                if field_layout.name is not None
-            }
             selected_columns = view.get("columns")
             if isinstance(selected_columns, list) and all(
                 isinstance(item, str) for item in selected_columns

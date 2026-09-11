@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from silverstar_flp.core.dataset import DecodedRecord, FlightDataset, TimeSeries
+from silverstar_flp.core.diagnostics import DataQualitySummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,23 @@ class AlignmentOverview:
     attitude_source: int | None = None
     used_sources: tuple[str, ...] = ()
     historical_mode: bool = False
+    history_count: int = 0
+    ready_history_count: int = 0
+    result_timestamp_us: int | None = None
+    initial_state_timestamp_us: int | None = None
+    initial_state_authoritative: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GnssOverview:
+    native_configured: bool
+    measurement_configured: bool
+    native_sample_count: int
+    measurement_sample_count: int
+    latest_online: bool | None
+    latest_fix_type: int | None
+    position_usable_count: int
+    velocity_usable_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +101,8 @@ class FlightSummary:
     deploy: DeployOverview
     calibration: CalibrationOverview
     alignment: AlignmentOverview
+    gnss: GnssOverview
+    data_quality: DataQualitySummary
     timeline: tuple[TimelineEvent, ...]
     decoded_record_count: int
     crc_failure_count: int
@@ -153,11 +173,18 @@ def _Record_ForMission(
 ) -> DecodedRecord | None:
     if not records:
         return None
-    ordered = sorted(records, key=lambda item: item.timestamp_us)
+    ordered = sorted(
+        records,
+        key=lambda item: (
+            item.timestamp_us,
+            item.record_sequence,
+            item.file_offset,
+        ),
+    )
     if start_timestamp_us is None:
         return ordered[-1]
     before_start = [record for record in ordered if record.timestamp_us <= start_timestamp_us]
-    return before_start[-1] if before_start else ordered[-1]
+    return before_start[-1] if before_start else None
 
 
 def _FloatTuple(payload: dict[str, Any] | Any, key: str, length: int) -> tuple[float, ...] | None:
@@ -262,8 +289,29 @@ def _Alignment_Build(
     dataset: FlightDataset,
     start_timestamp_us: int | None,
 ) -> AlignmentOverview:
-    result_record = _Record_ForMission(
-        dataset.Records_Get("ALIGNMENT_RESULT"), start_timestamp_us
+    history = tuple(
+        record
+        for record in dataset.Records_Get("ALIGNMENT_RESULT")
+        if start_timestamp_us is None or record.timestamp_us <= start_timestamp_us
+    )
+    ready_history = tuple(
+        record
+        for record in history
+        if bool(record.payload.get("ready", 0))
+        and int(record.payload.get("state", -1)) == 3
+        and _FloatTuple(record.payload, "q_nb", 4) is not None
+    )
+    result_record = (
+        max(
+            ready_history,
+            key=lambda item: (
+                item.timestamp_us,
+                item.record_sequence,
+                item.file_offset,
+            ),
+        )
+        if ready_history
+        else None
     )
     initial_record = _Record_ForMission(dataset.Records_Get("INITIAL_STATE"), start_timestamp_us)
     mission_record = _Record_ForMission(dataset.Records_Get("MISSION_CONFIG"), start_timestamp_us)
@@ -327,6 +375,83 @@ def _Alignment_Build(
             attitude_source,
         ),
         historical_mode=mode in (0, 1, 2),
+        history_count=len(history),
+        ready_history_count=len(ready_history),
+        result_timestamp_us=(
+            result_record.timestamp_us
+            if result_record is not None
+            else None
+        ),
+        initial_state_timestamp_us=(
+            initial_record.timestamp_us
+            if initial_record is not None
+            else None
+        ),
+        initial_state_authoritative=initial_record is not None,
+    )
+
+
+def _StreamConfigured_Check(dataset: FlightDataset, suffix: str) -> bool:
+    semantic_context = dataset.semantic_context
+    if semantic_context is None:
+        return bool(dataset.Records_Get(suffix))
+    expected = f"_{suffix}".upper()
+    return any(
+        bool(stream.get("enabled", True))
+        and str(stream.get("record", "")).upper().endswith(expected)
+        for stream in semantic_context.logging_streams
+    )
+
+
+def _Gnss_Build(dataset: FlightDataset) -> GnssOverview:
+    native = dataset.Records_Get("GNSS_NATIVE")
+    measurements = dataset.Records_Get("GNSS_MEASUREMENT")
+    latest = (
+        max(
+            native,
+            key=lambda item: (
+                item.timestamp_us,
+                item.record_sequence,
+                item.file_offset,
+            ),
+        )
+        if native
+        else None
+    )
+    position_usable_count = sum(
+        1
+        for record in native
+        if bool(record.payload.get("position_usable", 0))
+        and (
+            int(record.payload.get("latitude_e7", 0)) != 0
+            or int(record.payload.get("longitude_e7", 0)) != 0
+        )
+    )
+    velocity_usable_count = sum(
+        1
+        for record in native
+        if int(record.payload.get("velocity_valid_mask", 0)) != 0
+    )
+    return GnssOverview(
+        native_configured=_StreamConfigured_Check(dataset, "GNSS_NATIVE"),
+        measurement_configured=_StreamConfigured_Check(
+            dataset,
+            "GNSS_MEASUREMENT",
+        ),
+        native_sample_count=len(native),
+        measurement_sample_count=len(measurements),
+        latest_online=(
+            bool(latest.payload.get("online", 0))
+            if latest is not None
+            else None
+        ),
+        latest_fix_type=(
+            int(latest.payload.get("fix_type", 0))
+            if latest is not None
+            else None
+        ),
+        position_usable_count=position_usable_count,
+        velocity_usable_count=velocity_usable_count,
     )
 
 
@@ -465,6 +590,8 @@ def FlightSummary_Build(dataset: FlightDataset) -> FlightSummary:
     duration = dataset.mission_duration_s
     if duration is not None and (not math.isfinite(duration) or duration < 0.0):
         duration = None
+    if dataset.data_quality is None:
+        raise ValueError("dataset_data_quality_missing")
     return FlightSummary(
         source_name=source_name,
         mission_start_timestamp_us=start_timestamp_us,
@@ -476,6 +603,8 @@ def FlightSummary_Build(dataset: FlightDataset) -> FlightSummary:
         deploy=_Deploy_Build(dataset, start_timestamp_us),
         calibration=_Calibration_Build(dataset, start_timestamp_us),
         alignment=_Alignment_Build(dataset, start_timestamp_us),
+        gnss=_Gnss_Build(dataset),
+        data_quality=dataset.data_quality,
         timeline=events,
         decoded_record_count=dataset.diagnostics.decoded_record_count,
         crc_failure_count=dataset.diagnostics.record_crc_failures,

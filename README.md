@@ -50,7 +50,7 @@ Import and export use focused option dialogs. The five analysis pages are:
 
 1. Overview — mission/file and exact decoder identity, flight metrics, deploy altitude/reason,
    configured calibration flow plus the selected effective model, initial alignment result, and
-   translated event timeline.
+   GNSS online/fix/usability state, translated event timeline, and explicit Data Quality status.
 2. Replay — every installed offline algorithm, independently labeled for firmware membership,
    recorded output, and offline-plugin availability. Recorded Configuration is enabled only when
    every parameter was logged; Offline defaults and What-if remain distinct. Every run is
@@ -66,7 +66,8 @@ Import and export use focused option dialogs. The five analysis pages are:
    contains no KF6-specific channel IDs, so future estimator groups and sensors can be declared by
    a plugin without page-code changes.
 5. Data Explorer — searchable raw/stable/capability/algorithm channel groups, Record View and
-   logging metadata, unknown raw payload hex, every decoded record, and uniquely named replays.
+   logging metadata, configured streams with zero actual samples, unknown raw payload hex, every
+   decoded record with file offsets, parser diagnostics/damaged spans, and uniquely named replays.
 
 The Replay page groups What-if parameters into Process Model, Initial Covariance, Measurement
 Noise, and Consistency Gating. What-if starts from offline defaults overlaid only with parameter
@@ -101,12 +102,22 @@ Descriptor-less, package 1.0, unsigned, fixed-parser, or filename-based producti
 [Decoder_Profile_Package.md](docs/Decoder_Profile_Package.md).
 
 - Unknown CRC-valid types/versions retain their raw bytes and mark the dataset partial.
-- A bad record CRC or lost sync scans forward to the next byte-aligned `FLG1` candidate.
+- A bad CRC, invalid length, or lost sync performs a bounded scan; a `FLG1` candidate is accepted
+  only after header, length, timestamp, complete-frame, and CRC validation.
+- Bad frames are excluded without payload repair. Diagnostics retain recovered offsets and a
+  bounded raw-hex preview of each damaged byte span.
 - An incomplete final record is reported as a truncated tail and ignored.
 - Record counts, CRC errors, recoveries, sequence gaps, unknown types/versions, and offsets are
   retained in parser diagnostics.
-- Each channel owns its real `timestamp_us`; unlike-rate sensors are never forced into one table
+- Decoded Records retain file order/offset even when interleaved timestamps regress. Each channel
+  independently sorts its real `timestamp_us`; unlike-rate sensors are never forced into one table
   and timestamps are never rebuilt from nominal rates.
+
+A ready calibration mode `NONE` is a legal identity model (zero bias, unit scale, zero
+sample/reject/retry counts) even when only `SixFace` is configured; its `start_sequence` is
+provenance and may be nonzero. A configured/online GNSS with no fix and zero usable fusion
+measurements is also legal. These states are reported explicitly instead of being treated as
+missing packages or parser failure.
 
 AIR telemetry frames are intentionally not treated as flight logs. See [SSLOG.md](docs/SSLOG.md).
 
@@ -141,7 +152,9 @@ Every result is labeled:
 
 Separately, fidelity is `EXACT`, `APPROXIMATE`, or `UNAVAILABLE`. Missing required input never
 causes a hidden source switch. Build mismatch, data gaps, missing measurement-application timing,
-or decimation lower fidelity with an explicit warning. See [Replay.md](docs/Replay.md) and
+or decimation lower fidelity with an explicit warning. Input gaps are segmented without silent
+interpolation. `EXACT` additionally requires clean source integrity and a matching immutable
+host-C Golden reference. See [Replay.md](docs/Replay.md) and
 [Architecture.md](docs/Architecture.md).
 
 ## Command line
@@ -177,9 +190,11 @@ immutability, and a headless five-page GUI smoke test. Dedicated decoder-profile
 limits and attacks, checksum/schema validation, the complete scalar whitelist, payload-size
 contracts, two IMU instances, canonical channels, same-physical-device capability linkage,
 Descriptor hash matching, atomic coordinator opening, mandatory/identity NONE calibration,
-zero-copy immutable aliases, CLI integration, audit-manifest provenance, cache reuse, bounded
-parent discovery, and trusted `.ssplugin` factory allowlisting. Package 1.0 and unsigned layouts
-are explicit rejection cases.
+including nonzero start sequence and configured-SixFace independence, zero-copy immutable
+aliases, online/no-fix GNSS with zero measurements, multiple Alignment/INITIAL_STATE authority,
+candidate-validated bounded recovery, per-channel timestamp sorting, CLI integration,
+audit-manifest provenance, cache reuse, bounded parent discovery, and trusted `.ssplugin` factory
+allowlisting. Package 1.0 and unsigned layouts are explicit rejection cases.
 
 No real flight log is included. Phase 2 requires frozen real logs and host-C golden vectors from
 the matching flight-controller build; this is tracked in [TARGETS.md](TARGETS.md).
@@ -214,7 +229,8 @@ without changing the standard navigation pages, but neither is implemented now.
 ## Source of truth and remaining risk
 
 Record/semantic authority comes from the exact matched `.ssdecoder`; algorithm implementation is
-still audited host code. The supplied SS_TEST_0 FCCG 0.0.10 package loads under the strict 1.1
-contract, but no matching real log/golden artifact is included here. Pure INS and KF_6 therefore
+still audited host code. The external SS0014 compatibility sample proves current 0.0.10 package
+matching, corruption exclusion/recovery, semantic adaptation, GUI degradation, and audit export
+when its opt-in gate is run. It is not a numerical host-C Golden. Pure INS and KF_6 therefore
 remain `APPROXIMATE` for firmware 0.0.10 and retain build identity `SILV0008`. Never claim
 `EXACT` until the matching immutable real-log and host golden gate passes.

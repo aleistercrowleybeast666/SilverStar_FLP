@@ -9,8 +9,12 @@ from silverstar_flp.core.i18n import Translator
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from tests.sslog_synthetic import (
     START_TIMESTAMP_US,
+    AlignmentResult_Payload,
     AnalysisFlight_Build,
+    Event_Payload,
+    InitialState_Payload,
     StationaryFlight_Build,
+    SyntheticSslogBuilder,
 )
 
 
@@ -121,6 +125,53 @@ def test_alignment_sources_are_not_invented_without_alignment_result(
     assert alignment.selected_mask is None
     assert alignment.ready_mask is None
     assert alignment.attitude_source is None
+
+
+def test_latest_valid_alignment_is_history_and_initial_state_is_authoritative(
+    tmp_path: Path,
+) -> None:
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        0x18,
+        AlignmentResult_Payload(
+            state=3,
+            ready=1,
+            q_nb=(1.0, 0.0, 0.0, 0.0),
+        ),
+        START_TIMESTAMP_US - 30,
+    )
+    builder.Record_Add(
+        0x18,
+        AlignmentResult_Payload(
+            state=5,
+            ready=0,
+            q_nb=(0.0, 0.0, 1.0, 0.0),
+        ),
+        START_TIMESTAMP_US - 20,
+    )
+    builder.Record_Add(
+        0x0D,
+        InitialState_Payload(
+            alignment_algorithm=3,
+            q_nb=(0.0, 1.0, 0.0, 0.0),
+        ),
+        START_TIMESTAMP_US - 10,
+    )
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US)
+    dataset = Sslog0ParserPlugin().parse(
+        builder.File_Write(tmp_path / "SYNTHETIC_alignment_history.BIN")
+    )
+
+    alignment = FlightSummary_Build(dataset).alignment
+    assert alignment.history_count == 2
+    assert alignment.ready_history_count == 1
+    assert alignment.result_timestamp_us == START_TIMESTAMP_US - 30
+    assert alignment.initial_state_timestamp_us == START_TIMESTAMP_US - 10
+    assert alignment.initial_state_authoritative
+    assert alignment.quaternion_record == "INITIAL_STATE"
+    assert alignment.q_nb == pytest.approx((0.0, 1.0, 0.0, 0.0))
+    assert alignment.state == 3
+    assert alignment.ready
 
 
 @pytest.mark.parametrize(

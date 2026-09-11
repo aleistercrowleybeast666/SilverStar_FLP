@@ -96,16 +96,24 @@ pair if more than one exists. Drag/drop accepts one `.ssflp`, or one log with ze
 
 ## Calibration authority
 
-Every opened log requires a valid `CALIBRATION_RESULT`. FLP selects the latest result not later
-than mission `START`, or otherwise the initial-state/first-corrected-IMU boundary. The result must
-be ready, finite, declared by the package modes, and consistent with later `IMU_CORRECTED`
-records.
+Every opened log requires a valid `CALIBRATION_RESULT`. FLP selects the latest **valid** result not
+later than mission `START`, or otherwise the initial-state/first-corrected-IMU boundary. Invalid
+later attempts remain visible as history but do not replace an earlier valid result. The effective
+result must be ready, finite, allowed by the current semantic contract, and consistent with later
+`IMU_CORRECTED` records.
 
 Mode `NONE` is a valid ready result only with zero bias, unit scale, zero face mask, and zero
-samples/rejects/retries. It means no one-face/six-face run occurred and the identity correction
-model is active; it is not missing data. One-face and six-face results must meet their respective
-face/sample completion rules. Any missing, future-only, incomplete, non-finite, undeclared, or
-inconsistent result rejects the open.
+samples/rejects/retries. Its `start_sequence` is provenance and is not required to be zero.
+`NONE` is independent of `modes.calibration`: a package may configure only `SixFace` while a
+particular log legally records a ready identity result because no calibration run occurred.
+One-face and six-face results must be declared and meet their respective face/sample completion
+rules. A missing/future-only set or a set with no finite, complete, consistent result rejects the
+open.
+
+GNSS stream configuration is also independent of recorded usability. An enabled native GNSS may
+be online with `fix_type=0`, unusable position/velocity, and zero `GNSS_MEASUREMENT` records. That
+is a legal indoor/no-fix log, not a decoder failure. Offline algorithm availability follows each
+plugin's required/optional input contract rather than assuming GNSS measurements are mandatory.
 
 ## Algorithms, projects, and audit export
 
@@ -126,9 +134,12 @@ settings, notes, and UI state. Older project versions are rejected. Saves are at
 embed or rewrite the log/package.
 
 The export manifest records the source-log SHA-256, exact decoder identity, project/firmware/
-hardware/protocol metadata, firmware component list, selected calibration, raw-to-stable aliases,
-and each replay plugin/mode/provenance/fidelity/parameter set. CLI `inspect`, `replay`, and `export`
-require either `--decoder PACKAGE.ssdecoder` or `--auto-find` and use this same coordinator.
+hardware/protocol metadata, firmware component list, selected calibration and alignment
+provenance, GNSS usability, complete Data Quality/Parser diagnostics (including damaged spans),
+configured streams with actual sample counts, raw-to-stable aliases, exported-channel provenance,
+and each replay plugin/mode/provenance/fidelity/parameter/input-contract set. CLI `inspect`,
+`replay`, and `export` require either `--decoder PACKAGE.ssdecoder` or `--auto-find` and use this
+same coordinator.
 
 ## Validation boundary
 

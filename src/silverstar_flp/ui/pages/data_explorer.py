@@ -91,6 +91,26 @@ class DataExplorerPage(QWidget):
         self.record_table.verticalHeader().setVisible(False)
         record_layout.addWidget(self.record_table)
         self.tabs.addTab(record_widget, "")
+
+        diagnostics_widget = QWidget()
+        diagnostics_layout = QVBoxLayout(diagnostics_widget)
+        self.diagnostics_summary = QLabel("—")
+        self.diagnostics_summary.setObjectName("muted")
+        self.diagnostics_summary.setWordWrap(True)
+        self.diagnostics_summary.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        diagnostics_layout.addWidget(self.diagnostics_summary)
+        self.diagnostics_table = QTableWidget()
+        self.diagnostics_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.diagnostics_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.diagnostics_table.verticalHeader().setVisible(False)
+        diagnostics_layout.addWidget(self.diagnostics_table)
+        self.tabs.addTab(diagnostics_widget, "")
         layout.addWidget(self.tabs)
         self.Language_Apply(translator)
 
@@ -146,10 +166,21 @@ class DataExplorerPage(QWidget):
         self.channel_group_combo.blockSignals(False)
         self.record_combo.blockSignals(True)
         self.record_combo.clear()
-        self.record_combo.addItems(sorted(dataset.records))
+        record_names = set(dataset.records)
+        if dataset.semantic_context is not None:
+            for stream in dataset.semantic_context.logging_streams:
+                raw_name = str(stream.get("record", ""))
+                prefix = "FLIGHT_LOG_RECORD_"
+                record_names.add(
+                    raw_name[len(prefix) :]
+                    if raw_name.startswith(prefix)
+                    else raw_name
+                )
+        self.record_combo.addItems(sorted(name for name in record_names if name))
         self.record_combo.blockSignals(False)
         self._Channels_Filter()
         self._Records_Show()
+        self._Diagnostics_Show()
 
     def _Channels_Filter(self, *_args: object) -> None:
         needle = self.search_edit.text().strip().casefold()
@@ -283,14 +314,25 @@ class DataExplorerPage(QWidget):
             self.record_table.setRowCount(0)
             return
         fields = sorted({field for record in records for field in record.payload})
-        headers = ["timestamp_us", "record_sequence", "valid_flags", *fields]
+        headers = [
+            "file_offset",
+            "timestamp_us",
+            "record_sequence",
+            "valid_flags",
+            *fields,
+        ]
         self.record_table.setColumnCount(len(headers))
         self.record_table.setHorizontalHeaderLabels(headers)
         indices = np.unique(np.linspace(0, len(records) - 1, min(len(records), 2000)).astype(int))
         self.record_table.setRowCount(len(indices))
         for row, record_index in enumerate(indices):
             record = records[record_index]
-            prefix = [record.timestamp_us, record.record_sequence, record.valid_flags]
+            prefix = [
+                record.file_offset,
+                record.timestamp_us,
+                record.record_sequence,
+                record.valid_flags,
+            ]
             values = prefix + [record.payload.get(field, "") for field in fields]
             for column, value in enumerate(values):
                 if isinstance(value, bytes):
@@ -301,6 +343,70 @@ class DataExplorerPage(QWidget):
                     text = str(value)
                 self.record_table.setItem(row, column, QTableWidgetItem(text))
         self.record_table.resizeColumnsToContents()
+
+    def _Diagnostics_Show(self) -> None:
+        if self._dataset is None:
+            return
+        diagnostics = self._dataset.diagnostics
+        quality = self._dataset.data_quality
+        self.diagnostics_summary.setText(
+            self._translator.Text_Get(
+                "explorer.diagnostics_summary",
+                status=(
+                    self._translator.Text_Get(
+                        f"data_quality.{quality.status.value}"
+                    )
+                    if quality is not None
+                    else self._translator.Text_Get("status.na")
+                ),
+                crc=diagnostics.record_crc_failures,
+                length=diagnostics.record_length_failures,
+                resync=diagnostics.resync_count,
+                damaged=len(diagnostics.damaged_spans),
+                unknown=(
+                    diagnostics.unknown_record_type_count
+                    + diagnostics.unknown_record_version_count
+                ),
+            )
+        )
+        headers = (
+            self._translator.Text_Get("diagnostic.severity"),
+            self._translator.Text_Get("diagnostic.code"),
+            self._translator.Text_Get("diagnostic.offset"),
+            self._translator.Text_Get("diagnostic.sequence"),
+            self._translator.Text_Get("diagnostic.details"),
+        )
+        self.diagnostics_table.setColumnCount(len(headers))
+        self.diagnostics_table.setHorizontalHeaderLabels(headers)
+        self.diagnostics_table.setRowCount(len(diagnostics.diagnostics))
+        for row, diagnostic in enumerate(diagnostics.diagnostics):
+            values = (
+                diagnostic.severity.value,
+                diagnostic.code,
+                (
+                    str(diagnostic.offset)
+                    if diagnostic.offset is not None
+                    else "—"
+                ),
+                (
+                    str(diagnostic.record_sequence)
+                    if diagnostic.record_sequence is not None
+                    else "—"
+                ),
+                json.dumps(
+                    diagnostic.details,
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            )
+            for column, value in enumerate(values):
+                self.diagnostics_table.setItem(
+                    row,
+                    column,
+                    QTableWidgetItem(value),
+                )
+        self.diagnostics_table.resizeColumnsToContents()
+        self.diagnostics_table.horizontalHeader().setStretchLastSection(True)
 
     def ExportChannels_Get(self) -> tuple[str, ...]:
         return tuple(
@@ -333,4 +439,6 @@ class DataExplorerPage(QWidget):
         self.record_type_label.setText(translator.Text_Get("explorer.record_type"))
         self.tabs.setTabText(0, translator.Text_Get("explorer.channels"))
         self.tabs.setTabText(1, translator.Text_Get("explorer.decoded_records"))
+        self.tabs.setTabText(2, translator.Text_Get("explorer.diagnostics"))
         self._Channel_Show(self.channel_list.currentItem())
+        self._Diagnostics_Show()

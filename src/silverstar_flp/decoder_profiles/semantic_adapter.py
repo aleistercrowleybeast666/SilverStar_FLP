@@ -651,6 +651,10 @@ def _StableSeries_Adapt(
                     valid=np.asarray(
                         [
                             bool(record.payload.get("position_usable", True))
+                            and (
+                                int(record.payload["latitude_e7"]) != 0
+                                or int(record.payload["longitude_e7"]) != 0
+                            )
                             for record in ordered
                         ],
                         dtype=np.bool_,
@@ -720,10 +724,39 @@ def _CalibrationSnapshot_Get(
     ]
     if not eligible:
         raise DecoderProfileError("calibration_result_before_boundary_missing")
-    record = max(
+    latest_error: DecoderProfileError | None = None
+    for record in sorted(
         eligible,
-        key=lambda item: (item.timestamp_us, item.record_sequence),
-    )
+        key=lambda item: (
+            item.timestamp_us,
+            item.record_sequence,
+            item.file_offset,
+        ),
+        reverse=True,
+    ):
+        try:
+            return _CalibrationSnapshot_FromRecord(
+                dataset,
+                package,
+                record,
+                boundary,
+                boundary_kind,
+            )
+        except DecoderProfileError as exc:
+            if latest_error is None:
+                latest_error = exc
+    if latest_error is not None:
+        raise latest_error
+    raise DecoderProfileError("calibration_result_before_boundary_missing")
+
+
+def _CalibrationSnapshot_FromRecord(
+    dataset: FlightDataset,
+    package: DecoderProfilePackage,
+    record: DecodedRecord,
+    boundary: int,
+    boundary_kind: str,
+) -> CalibrationSnapshot:
     payload = record.payload
     required_scalar_fields = (
         "source_id",
@@ -771,8 +804,10 @@ def _CalibrationSnapshot_Get(
     reject_count = int(payload["reject_count"])
     retry_count = int(payload["retry_count"])
     start_sequence = int(payload["start_sequence"])
-    counters = (samples, reject_count, retry_count, start_sequence)
+    counters = (samples, reject_count, retry_count)
     if any(value < 0 for value in counters):
+        raise DecoderProfileError("calibration_result_counter_invalid")
+    if start_sequence < 0:
         raise DecoderProfileError("calibration_result_counter_invalid")
     accel_bias = _Vector3_Get(payload, "accel_bias_mps2")
     accel_scale = _Vector3_Get(payload, "accel_scale")

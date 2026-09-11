@@ -1,5 +1,12 @@
 from silverstar_flp.core.dataset import DecodedRecord, FlightDataset, TimeSeries
-from silverstar_flp.core.diagnostics import Diagnostic, DiagnosticSeverity, ParserDiagnostics
+from silverstar_flp.core.diagnostics import (
+    DamagedSpan,
+    DataQualityStatus,
+    DataQualitySummary,
+    Diagnostic,
+    DiagnosticSeverity,
+    ParserDiagnostics,
+)
 from silverstar_flp.core.semantic_context import (
     CalibrationSnapshot,
     DatasetSemanticContext,
@@ -11,6 +18,9 @@ __all__ = [
     "CalibrationSnapshot",
     "DatasetSemanticContext",
     "DecoderPackageIdentity",
+    "DamagedSpan",
+    "DataQualityStatus",
+    "DataQualitySummary",
     "Diagnostic",
     "DiagnosticSeverity",
     "FlightDataset",

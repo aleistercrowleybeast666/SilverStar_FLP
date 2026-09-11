@@ -27,6 +27,14 @@ NONE calibration, immutable zero-copy aliases, independent firmware/recorded/off
 status, package-aware CLI inspection, `.ssflp` v2, audit-manifest provenance, explicit
 `.ssplugin` trust, host factory allowlisting, and built-in container protection.
 
+Current compatibility fixtures additionally cover `NONE + READY` with zero bias/unit scale and a
+nonzero `start_sequence` while only `SixFace` is configured; latest-valid calibration selection;
+online/no-fix GNSS with zero measurement Records; multiple Alignment results with
+`INITIAL_STATE` authority; file-order timestamp regressions with per-channel sorting; unknown
+current Records; Descriptor/device/source namespace separation; false `FLG1` candidates; invalid
+length recovery; bounded resynchronization failure; damaged-span raw hex; and explicit Data
+Quality fields.
+
 These synthetic fixtures validate protocol mechanics only. The supplied
 `SS_TEST_0.ssdecoder` can independently prove package/schema/checksum loading (expected package
 SHA-256 `3af0242c22fdb85028e9244d370cafd3934037868a6c56188c5164f0546784bc`), but it cannot
@@ -76,3 +84,16 @@ event timestamp. A new firmware build tag remains APPROXIMATE until those vector
 Manual release validation must additionally open the requested real `SS0007.BIN` and compare its
 Overview calibration/alignment/deploy values with decoded records. Synthetic fixtures cannot be
 used to mark that real-log check as passed.
+
+The supplied current compatibility sample has its own opt-in, read-only gate:
+
+```powershell
+$env:SILVERSTAR_SS0014_ROOT = 'D:\stm32_project\SS0_0_5_TEST_0'
+python -m pytest -q tests/test_ss0014_manual.py
+```
+
+The test locks both source hashes, opens only through `LogOpenCoordinator`, verifies the legal
+identity calibration, online/no-fix GNSS and zero measurement count, Alignment/INITIAL_STATE
+provenance, exact decoder match, valid-record/CRC/length/resync/sequence diagnostics, approximate
+algorithm fidelity, GUI degradation, export audit fields, and source immutability. It is real-log
+compatibility evidence, not a numerical host-C Golden, so it does not justify `EXACT` replay.

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+- Adapted exact `.ssdecoder` 1.1 opening to the current FCCG 0.0.10 Record Catalog and Project
+  Semantics without adding legacy/package/fixed-parser fallbacks.
+- Accepted ready identity `CALIBRATION_RESULT mode=NONE` independently of configured one/six-face
+  procedures, allowed nonzero `start_sequence` provenance, and selected the latest valid result
+  before START while retaining all attempts.
+- Added candidate-validated, byte/candidate-bounded current-SSLOG0 recovery with CRC/length/
+  resynchronization counts, damaged-span offsets/raw hex, corrupt-frame exclusion, and no payload
+  repair.
+- Added explicit immutable Data Quality, GNSS online/fix/usability and configured-zero-sample
+  semantics, per-channel timestamp ordering, multi-Alignment history with `INITIAL_STATE`
+  authority, and current SYSTEM_CONFIG/stream-descriptor cadence compatibility.
+- Extended the existing five-page GUI in its original style with GNSS/Data Quality cards and a
+  Data Explorer diagnostics inner tab; decoded records now expose file offsets and configured
+  zero-sample streams.
+- Extended algorithm input-contract metadata, approximate gap handling, CLI inspection, and
+  export manifests with alignment/GNSS/integrity/configuration/channel provenance.
+- Added synthetic regression coverage and a hash-locked, opt-in, read-only SS0014 compatibility
+  gate. The sample is not a numerical Golden, so FCCG 0.0.10 replay remains `APPROXIMATE`.
+
 ## 0.0.2
 
 - Added complete SSLOG0 profile 0 parser and all current record layouts.

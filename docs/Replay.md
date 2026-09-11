@@ -12,6 +12,11 @@ KF6 consumes an independently propagated attitude/mechanization prediction plus 
 barometer measurements, restored P0/Q/R/NIS configuration, and optional What-if overrides.
 Recorded algorithm outputs are comparison targets, never replay inputs.
 
+GNSS is optional according to the KF_6 input contract. A receiver may be configured and online
+while reporting no fix, no usable position/velocity, and no `GNSS_MEASUREMENT` Records. Replay
+does not manufacture a 0/0 position, does not disable the whole algorithm for that condition, and
+continues with available prediction/barometer inputs.
+
 Every run is appended to `ReplayResultStore` with a unique `result_id`, algorithm, mode, input
 source, parameter snapshot, fidelity, warnings, time coverage, channels, and diagnostics.
 Recomputed and What-if runs from Pure INS and KF6 therefore coexist.
@@ -47,8 +52,16 @@ explicit offline defaults overlaid by the partial or complete values returned by
 tooltips distinguish process noise Q from IMU white noise and distinguish dynamic recorded sensor
 uncertainty × R scale from a fixed sensor accuracy.
 
-Pure INS and KF_6 remain `APPROXIMATE` for firmware `0.0.10` and retain warning `SILV0008`.
+Pure INS and KF_6 remain `APPROXIMATE` for firmware `0.0.10`. Their audited host
+implementation retains the `SILV0008` identity and emits explicit build/Golden warnings.
 Exact package matching changes input provenance, not algorithm fidelity.
+
+Corrected-IMU cadence is evaluated from recorded sample timestamps within the logged
+SYSTEM_CONFIG bounds; stream-descriptor decimation is used when current SYSTEM_CONFIG no longer
+contains the historical decimation array. A detected gap clears the coning/sculling history and
+starts a new segment. No sample or trajectory point is interpolated across that input gap, and
+the result remains `APPROXIMATE`. `EXACT` additionally requires an explicit matching Golden
+validation reference and clean source integrity.
 
 The Replay page owns the only editable **Analysis Data Source** selector:
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, is_dataclass
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +27,13 @@ from silverstar_flp.plugins.registry import PluginRegistry, builtin_registry
 
 
 def _Json_Default(value: Any) -> Any:
+    if hasattr(value, "ToDict"):
+        return value.ToDict()
     if is_dataclass(value):
-        return asdict(value)
+        return {
+            item.name: getattr(value, item.name)
+            for item in fields(value)
+        }
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, bytes):
@@ -99,6 +104,29 @@ def _Command_Inspect(options: argparse.Namespace) -> int:
                 "missing_recorded_parameters": configuration.missing_recorded_parameters,
                 "fidelity": availability.fidelity,
                 "warnings": availability.warnings,
+                "input_contract": {
+                    "required_records": plugin.metadata.required_records,
+                    "optional_records": plugin.metadata.optional_records,
+                    "required_semantic_roles": (
+                        plugin.metadata.required_semantic_roles
+                    ),
+                    "optional_semantic_roles": (
+                        plugin.metadata.optional_semantic_roles
+                    ),
+                    "cadence": dict(plugin.metadata.cadence_contract),
+                    "gap_tolerance": dict(
+                        plugin.metadata.gap_tolerance_contract
+                    ),
+                    "parameter_sources": dict(
+                        plugin.metadata.parameter_source_contract
+                    ),
+                    "coordinate_frame": dict(
+                        plugin.metadata.coordinate_frame_contract
+                    ),
+                    "exact_validation_reference": (
+                        plugin.metadata.exact_validation_reference or None
+                    ),
+                },
             }
         )
     payload = {
@@ -118,6 +146,11 @@ def _Command_Inspect(options: argparse.Namespace) -> int:
         ),
         "header": dict(dataset.header),
         "diagnostics": dataset.diagnostics.to_dict(),
+        "data_quality": (
+            dataset.data_quality.ToDict()
+            if dataset.data_quality is not None
+            else None
+        ),
         "record_counts": {
             name: len(records) for name, records in dataset.records.items()
         },

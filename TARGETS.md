@@ -21,6 +21,9 @@
   v2 restore; no production fixed-parser or Descriptor-less fallback
 - semantic Overview/Replay/State/Data Explorer pages and audit export manifest with full decoder,
   firmware, calibration, alias, and replay provenance
+- current SSLOG0 compatibility: ready NONE identity with nonzero sequence, GNSS online/no-fix and
+  configured zero samples, multi-result Alignment/INITIAL_STATE authority, candidate-validated
+  bounded corruption recovery, explicit Data Quality, and diagnostic/audit GUI degradation
 
 ## Phase 2
 
@@ -28,6 +31,8 @@
   golden datasets
 - validate the supplied FCCG 0.0.10 package against its matching immutable real log and frozen host
   golden output before changing Pure INS/KF_6 fidelity from `APPROXIMATE`
+- retain SS0014 as a hash-locked compatibility/corruption gate; add a separate frozen host-C
+  numerical Golden before making any algorithm-equivalence claim
 - improve parameter scanning and high-dynamic timing/OOSM analysis
 
 ## Future

@@ -69,6 +69,14 @@ class DecoderProfileParserPlugin(LogParserPlugin):
                     ),
                 )
                 header = self.container.header_read(source, options)
+                header_record_limit = int(header.get("maximum_record_size", 0))
+                options.maximum_payload_length = min(
+                    1_048_576,
+                    max(
+                        options.maximum_payload_length,
+                        header_record_limit,
+                    ),
+                )
                 for frame in self.container.iter_frames(source, options):
                     try:
                         bootstrap_descriptor = DecoderProfileDescriptor.FromRawPayload(
@@ -208,7 +216,11 @@ class DecoderProfileParserPlugin(LogParserPlugin):
                     self.package.semantics.firmware_version
                 ),
                 "decoder_profile_match_mode": match_mode,
-                "parse_status": "partial" if partial else "complete",
+                "parse_status": (
+                    "partial"
+                    if partial or diagnostics.has_integrity_warnings
+                    else "complete"
+                ),
                 "synthetic": False,
             },
         )

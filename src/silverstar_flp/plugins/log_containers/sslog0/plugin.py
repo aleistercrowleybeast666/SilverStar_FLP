@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 import zlib
 from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
 from typing import Any, BinaryIO
 
 from silverstar_flp.core.diagnostics import DiagnosticSeverity
@@ -22,6 +23,21 @@ FILE_MAGIC = b"SSLOG0\x00\x00"
 SYNC_VALUE = 0x31474C46
 SYNC_BYTES = b"FLG1"
 COMMON_HEADER_STRUCT = struct.Struct("<IBBHIQI")
+_MAXIMUM_PLAUSIBLE_TIMESTAMP_US = 1_000_000_000_000_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class _RecordCandidate:
+    offset: int
+    record_version: int
+    record_type: int
+    payload_length: int
+    record_sequence: int
+    timestamp_us: int
+    valid_flags: int
+    total_size: int
+    expected_crc: int | None = None
+    actual_crc: int | None = None
 
 
 class Sslog0ContainerPlugin(LogContainerPlugin):
@@ -86,127 +102,181 @@ class Sslog0ContainerPlugin(LogContainerPlugin):
         file_size = len(data)
         offset = FILE_HEADER_SIZE
         previous_sequence: int | None = None
-        crc_failure_pending = False
 
         while offset < file_size:
             options.context.Cancel_RaiseIfRequested()
             remaining = file_size - offset
-            if remaining < RECORD_HEADER_SIZE:
-                diagnostics.truncated_tail = True
-                diagnostics.trailing_bytes = remaining
-                diagnostics.Diagnostic_Add(
+            status, candidate = self._RecordCandidate_Parse(
+                data,
+                offset,
+                options.maximum_payload_length,
+            )
+            if status == "valid" and candidate is not None:
+                pass
+            elif status == "truncated_header":
+                self._TruncatedTail_Report(
+                    options,
+                    data,
+                    offset,
+                    remaining,
                     "truncated_record_header",
-                    DiagnosticSeverity.WARNING,
-                    offset=offset,
-                    remaining=remaining,
                 )
                 break
-
-            if data[offset : offset + 4] != SYNC_BYTES:
-                next_sync = data.find(SYNC_BYTES, offset + 1)
-                if next_sync < 0:
-                    diagnostics.truncated_tail = True
-                    diagnostics.trailing_bytes = remaining
+            else:
+                if status == "crc_failure" and candidate is not None:
+                    diagnostics.record_crc_failures += 1
                     diagnostics.Diagnostic_Add(
-                        "sync_not_found_before_eof",
+                        "record_crc_failure",
                         DiagnosticSeverity.WARNING,
                         offset=offset,
-                        remaining=remaining,
+                        record_sequence=candidate.record_sequence,
+                        record_type=candidate.record_type,
+                        record_version=candidate.record_version,
+                        payload_length=candidate.payload_length,
+                        timestamp_us=candidate.timestamp_us,
+                        expected_crc=candidate.expected_crc,
+                        actual_crc=candidate.actual_crc,
+                    )
+                elif status in {
+                    "length_limit",
+                    "truncated_payload",
+                    "timestamp_invalid",
+                }:
+                    diagnostics.record_length_failures += 1
+                    details: dict[str, Any] = {
+                        "remaining": remaining,
+                        "maximum_payload_length": options.maximum_payload_length,
+                    }
+                    sequence = None
+                    if candidate is not None:
+                        sequence = candidate.record_sequence
+                        details.update(
+                            {
+                                "record_type": candidate.record_type,
+                                "record_version": candidate.record_version,
+                                "payload_length": candidate.payload_length,
+                                "timestamp_us": candidate.timestamp_us,
+                            }
+                        )
+                    diagnostics.Diagnostic_Add(
+                        f"record_{status}",
+                        DiagnosticSeverity.WARNING,
+                        offset=offset,
+                        record_sequence=sequence,
+                        **details,
+                    )
+
+                recovered, candidate_count = self._ResyncCandidate_Find(
+                    data,
+                    offset,
+                    options,
+                )
+                if recovered is None:
+                    diagnostics.resync_failure_count += 1
+                    diagnostics.Diagnostic_Add(
+                        "record_resync_limit_reached",
+                        DiagnosticSeverity.WARNING,
+                        offset=offset,
+                        record_sequence=(
+                            candidate.record_sequence
+                            if candidate is not None
+                            else None
+                        ),
+                        reason=status,
+                        scanned_bytes=min(
+                            options.maximum_resync_scan_bytes,
+                            max(0, file_size - offset - 1),
+                        ),
+                        candidate_count=candidate_count,
+                        maximum_candidates=options.maximum_resync_candidates,
+                    )
+                    tail_code = (
+                        "truncated_record_payload"
+                        if status == "truncated_payload"
+                        else "sync_not_found_within_resync_limit"
+                    )
+                    self._TruncatedTail_Report(
+                        options,
+                        data,
+                        offset,
+                        remaining,
+                        tail_code,
+                        candidate,
                     )
                     break
-                diagnostics.recovered_after_sync_loss += 1
-                diagnostics.Diagnostic_Add(
-                    "sync_loss_recovered",
-                    DiagnosticSeverity.WARNING,
-                    offset=offset,
-                    recovered_offset=next_sync,
-                    skipped_bytes=next_sync - offset,
-                )
-                offset = next_sync
-                continue
 
-            (
-                sync,
-                record_version,
-                record_type,
-                payload_length,
-                record_sequence,
-                timestamp_us,
-                valid_flags,
-            ) = COMMON_HEADER_STRUCT.unpack_from(data, offset)
-            if sync != SYNC_VALUE:
-                offset += 1
-                continue
-            if payload_length > options.maximum_payload_length:
-                diagnostics.Diagnostic_Add(
-                    "record_payload_length_exceeds_limit",
-                    DiagnosticSeverity.WARNING,
-                    offset=offset,
-                    record_sequence=record_sequence,
-                    payload_length=payload_length,
-                    maximum_payload_length=options.maximum_payload_length,
+                recovered_offset = recovered.offset
+                raw_end = min(
+                    recovered_offset,
+                    offset + max(0, options.damaged_span_preview_bytes),
                 )
-                next_sync = data.find(SYNC_BYTES, offset + 4)
-                if next_sync < 0:
-                    diagnostics.truncated_tail = True
-                    diagnostics.trailing_bytes = remaining
-                    break
-                diagnostics.recovered_after_sync_loss += 1
-                offset = next_sync
-                continue
-
-            total_size = RECORD_HEADER_SIZE + payload_length + RECORD_CRC_SIZE
-            if total_size > remaining:
-                next_sync = data.find(SYNC_BYTES, offset + 4)
-                if next_sync >= 0:
+                diagnostics.DamagedSpan_Add(
+                    start_offset=offset,
+                    end_offset=recovered_offset,
+                    reason=status,
+                    raw_bytes=bytes(data[offset:raw_end]),
+                    record_sequence=(
+                        candidate.record_sequence
+                        if candidate is not None
+                        else None
+                    ),
+                    record_type=(
+                        candidate.record_type
+                        if candidate is not None
+                        else None
+                    ),
+                    record_version=(
+                        candidate.record_version
+                        if candidate is not None
+                        else None
+                    ),
+                    timestamp_us=(
+                        candidate.timestamp_us
+                        if candidate is not None
+                        else None
+                    ),
+                )
+                diagnostics.resync_count += 1
+                if status == "crc_failure":
+                    diagnostics.recovered_after_crc += 1
+                else:
                     diagnostics.recovered_after_sync_loss += 1
-                    diagnostics.Diagnostic_Add(
-                        "invalid_length_recovered",
-                        DiagnosticSeverity.WARNING,
-                        offset=offset,
-                        record_sequence=record_sequence,
-                        payload_length=payload_length,
-                        recovered_offset=next_sync,
-                    )
-                    offset = next_sync
-                    continue
-                diagnostics.truncated_tail = True
-                diagnostics.trailing_bytes = remaining
                 diagnostics.Diagnostic_Add(
-                    "truncated_record_payload",
+                    "record_resynchronized",
                     DiagnosticSeverity.WARNING,
                     offset=offset,
-                    record_sequence=record_sequence,
-                    payload_length=payload_length,
-                    remaining=remaining,
+                    record_sequence=(
+                        candidate.record_sequence
+                        if candidate is not None
+                        else None
+                    ),
+                    reason=status,
+                    recovered_offset=recovered_offset,
+                    skipped_bytes=recovered_offset - offset,
+                    candidate_count=candidate_count,
+                    raw_hex=bytes(data[offset:raw_end]).hex().upper(),
+                    raw_preview_truncated=raw_end < recovered_offset,
                 )
-                break
-
-            crc_offset = offset + RECORD_HEADER_SIZE + payload_length
-            expected_crc = struct.unpack_from("<I", data, crc_offset)[0]
-            actual_crc = zlib.crc32(data[offset:crc_offset]) & 0xFFFFFFFF
-            if expected_crc != actual_crc:
-                diagnostics.record_crc_failures += 1
-                diagnostics.Diagnostic_Add(
-                    "record_crc_failure",
-                    DiagnosticSeverity.WARNING,
-                    offset=offset,
-                    record_sequence=record_sequence,
-                    expected_crc=expected_crc,
-                    actual_crc=actual_crc,
-                )
-                next_sync = data.find(SYNC_BYTES, offset + 1)
-                if next_sync < 0:
-                    diagnostics.truncated_tail = True
-                    diagnostics.trailing_bytes = file_size - offset
-                    break
-                crc_failure_pending = True
-                offset = next_sync
+                offset = recovered_offset
                 continue
 
-            if crc_failure_pending:
-                diagnostics.recovered_after_crc += 1
-                crc_failure_pending = False
+            record_version = candidate.record_version
+            record_type = candidate.record_type
+            payload_length = candidate.payload_length
+            record_sequence = candidate.record_sequence
+            timestamp_us = candidate.timestamp_us
+            valid_flags = candidate.valid_flags
+            total_size = candidate.total_size
+            crc_offset = offset + RECORD_HEADER_SIZE + payload_length
+            expected_crc = candidate.expected_crc
+            actual_crc = candidate.actual_crc
+            if expected_crc != actual_crc:
+                # The candidate parser owns CRC validation; keep this defensive
+                # branch so corrupt payload bytes can never be yielded.
+                raise ContainerError(
+                    "record_crc_validation_state_invalid",
+                    f"offset={offset}",
+                )
 
             diagnostics.record_count += 1
             diagnostics.first_timestamp_us = (
@@ -237,7 +307,11 @@ class Sslog0ContainerPlugin(LogContainerPlugin):
                         offset=offset,
                         record_sequence=record_sequence,
                         previous_sequence=previous_sequence,
+                        expected_sequence=expected_sequence,
+                        actual_sequence=record_sequence,
                         missing_count=int(missing),
+                        gap_size=int(missing),
+                        timestamp_us=timestamp_us,
                     )
             previous_sequence = record_sequence
 
@@ -259,6 +333,161 @@ class Sslog0ContainerPlugin(LogContainerPlugin):
                     0.02 + (0.80 * offset / max(file_size, 1)),
                     "parser.records",
                 )
+
+    @staticmethod
+    def _RecordCandidate_Parse(
+        data: bytes,
+        offset: int,
+        maximum_payload_length: int,
+    ) -> tuple[str, _RecordCandidate | None]:
+        remaining = len(data) - offset
+        if remaining < RECORD_HEADER_SIZE:
+            return "truncated_header", None
+        if data[offset : offset + 4] != SYNC_BYTES:
+            return "sync_loss", None
+        (
+            sync,
+            record_version,
+            record_type,
+            payload_length,
+            record_sequence,
+            timestamp_us,
+            valid_flags,
+        ) = COMMON_HEADER_STRUCT.unpack_from(data, offset)
+        if sync != SYNC_VALUE:
+            return "sync_loss", None
+        total_size = RECORD_HEADER_SIZE + payload_length + RECORD_CRC_SIZE
+        candidate = _RecordCandidate(
+            offset=offset,
+            record_version=record_version,
+            record_type=record_type,
+            payload_length=payload_length,
+            record_sequence=record_sequence,
+            timestamp_us=timestamp_us,
+            valid_flags=valid_flags,
+            total_size=total_size,
+        )
+        if timestamp_us > _MAXIMUM_PLAUSIBLE_TIMESTAMP_US:
+            return "timestamp_invalid", candidate
+        if payload_length > maximum_payload_length:
+            return "length_limit", candidate
+        if total_size > remaining:
+            return "truncated_payload", candidate
+        crc_offset = offset + RECORD_HEADER_SIZE + payload_length
+        expected_crc = struct.unpack_from("<I", data, crc_offset)[0]
+        actual_crc = zlib.crc32(data[offset:crc_offset]) & 0xFFFFFFFF
+        candidate = _RecordCandidate(
+            offset=candidate.offset,
+            record_version=candidate.record_version,
+            record_type=candidate.record_type,
+            payload_length=candidate.payload_length,
+            record_sequence=candidate.record_sequence,
+            timestamp_us=candidate.timestamp_us,
+            valid_flags=candidate.valid_flags,
+            total_size=candidate.total_size,
+            expected_crc=expected_crc,
+            actual_crc=actual_crc,
+        )
+        if expected_crc != actual_crc:
+            return "crc_failure", candidate
+        return "valid", candidate
+
+    def _ResyncCandidate_Find(
+        self,
+        data: bytes,
+        damaged_offset: int,
+        options: ParseOptions,
+    ) -> tuple[_RecordCandidate | None, int]:
+        scan_stop = min(
+            len(data),
+            damaged_offset + 1 + max(0, options.maximum_resync_scan_bytes),
+        )
+        search_offset = damaged_offset + 1
+        candidate_count = 0
+        while (
+            search_offset < scan_stop
+            and candidate_count < options.maximum_resync_candidates
+        ):
+            candidate_offset = data.find(
+                SYNC_BYTES,
+                search_offset,
+                scan_stop,
+            )
+            if candidate_offset < 0:
+                break
+            candidate_count += 1
+            options.diagnostics.resync_candidate_count += 1
+            status, candidate = self._RecordCandidate_Parse(
+                data,
+                candidate_offset,
+                options.maximum_payload_length,
+            )
+            if status == "valid" and candidate is not None:
+                return candidate, candidate_count
+            search_offset = candidate_offset + 1
+        return None, candidate_count
+
+    @staticmethod
+    def _TruncatedTail_Report(
+        options: ParseOptions,
+        data: bytes,
+        offset: int,
+        remaining: int,
+        code: str,
+        candidate: _RecordCandidate | None = None,
+    ) -> None:
+        diagnostics = options.diagnostics
+        raw_end = min(
+            len(data),
+            offset + max(0, options.damaged_span_preview_bytes),
+        )
+        raw_bytes = bytes(data[offset:raw_end])
+        diagnostics.truncated_tail = True
+        diagnostics.trailing_bytes = remaining
+        diagnostics.DamagedSpan_Add(
+            start_offset=offset,
+            end_offset=offset + remaining,
+            reason=code,
+            raw_bytes=raw_bytes,
+            record_sequence=(
+                candidate.record_sequence
+                if candidate is not None
+                else None
+            ),
+            record_type=(
+                candidate.record_type
+                if candidate is not None
+                else None
+            ),
+            record_version=(
+                candidate.record_version
+                if candidate is not None
+                else None
+            ),
+            timestamp_us=(
+                candidate.timestamp_us
+                if candidate is not None
+                else None
+            ),
+        )
+        diagnostics.Diagnostic_Add(
+            code,
+            DiagnosticSeverity.WARNING,
+            offset=offset,
+            record_sequence=(
+                candidate.record_sequence
+                if candidate is not None
+                else None
+            ),
+            remaining=remaining,
+            payload_length=(
+                candidate.payload_length
+                if candidate is not None
+                else None
+            ),
+            raw_hex=raw_bytes.hex().upper(),
+            raw_preview_truncated=raw_end < offset + remaining,
+        )
 
     @staticmethod
     def Header_ParseBytes(

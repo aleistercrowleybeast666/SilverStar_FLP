@@ -256,12 +256,55 @@ def Mechanization_ConfigurationGet(dataset: Any) -> dict[str, Any]:
             "imu_corrected_decimation": None,
             "inertial_increment_decimation": None,
         }
-    payload = records[0].payload
+    start_timestamp = dataset.start_timestamp_us
+    selected = (
+        dataset.RecordAtOrBefore_Get("SYSTEM_CONFIG", start_timestamp)
+        if start_timestamp is not None
+        else None
+    )
+    if selected is None:
+        selected = max(
+            records,
+            key=lambda item: (
+                item.timestamp_us,
+                item.record_sequence,
+                item.file_offset,
+            ),
+        )
+    payload = selected.payload
     decimation = tuple(payload.get("log_decimation", ()))
+    corrected_decimation = payload.get("imu_corrected_decimation")
+    increment_decimation = decimation[5] if len(decimation) > 5 else None
+    semantic_context = dataset.semantic_context
+    if semantic_context is not None:
+        for stream in semantic_context.logging_streams:
+            record_name = str(stream.get("record", "")).upper()
+            value = stream.get("decimation_factor")
+            if record_name.endswith("_IMU_CORRECTED") and value is not None:
+                corrected_decimation = value
+            elif record_name.endswith("_INERTIAL_INCREMENT") and value is not None:
+                increment_decimation = value
     return {
-        "minimum_sample_rate_hz": float(payload["mechanization_min_sample_rate_hz"]),
-        "maximum_sample_rate_hz": float(payload["mechanization_max_sample_rate_hz"]),
-        "subsample_count": int(payload["mechanization_subsample_count"]),
-        "imu_corrected_decimation": int(payload["imu_corrected_decimation"]),
-        "inertial_increment_decimation": int(decimation[5]) if len(decimation) > 5 else None,
+        "minimum_sample_rate_hz": float(
+            payload.get("mechanization_min_sample_rate_hz", 50.0)
+        ),
+        "maximum_sample_rate_hz": float(
+            payload.get("mechanization_max_sample_rate_hz", 500.0)
+        ),
+        "subsample_count": int(
+            payload.get(
+                "mechanization_subsample_count",
+                dataset.header.get("mechanization_subsample_count", 2),
+            )
+        ),
+        "imu_corrected_decimation": (
+            int(corrected_decimation)
+            if corrected_decimation is not None
+            else None
+        ),
+        "inertial_increment_decimation": (
+            int(increment_decimation)
+            if increment_decimation is not None
+            else None
+        ),
     }

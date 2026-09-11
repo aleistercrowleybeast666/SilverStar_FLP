@@ -20,6 +20,7 @@ from silverstar_flp.analysis.overview import (
     CalibrationOverview,
     DeployOverview,
     FlightSummary_Build,
+    GnssOverview,
 )
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
@@ -75,6 +76,7 @@ class OverviewPage(QWidget):
         self.speed_card = _MetricCard(translator.Text_Get("label.max_speed"))
         self.acceleration_card = _MetricCard(translator.Text_Get("label.max_acceleration"))
         self.deploy_card = _MetricCard(translator.Text_Get("label.deploy_altitude"))
+        self.gnss_card = _MetricCard(translator.Text_Get("label.gnss_status"))
         self.quality_card = _MetricCard(translator.Text_Get("label.data_quality"))
         cards = (
             self.duration_card,
@@ -82,6 +84,7 @@ class OverviewPage(QWidget):
             self.speed_card,
             self.acceleration_card,
             self.deploy_card,
+            self.gnss_card,
             self.quality_card,
         )
         for index, card in enumerate(cards):
@@ -222,15 +225,34 @@ class OverviewPage(QWidget):
             else "—"
         )
         self._Deploy_Set(summary.deploy)
+        self._Gnss_Set(summary.gnss)
         self.quality_card.value_label.setText(
-            self._translator.Text_Get("overview.records", count=summary.decoded_record_count)
+            self._translator.Text_Get(
+                "data_quality.clean"
+                if summary.data_quality.status.value == "clean"
+                else "data_quality.warnings"
+            )
         )
         self.quality_card.detail_label.setText(
             self._translator.Text_Get(
                 "overview.quality_detail",
-                crc=summary.crc_failure_count,
-                gaps=summary.sequence_gap_count,
+                records=summary.data_quality.valid_record_count,
+                crc=summary.data_quality.crc_failure_count,
+                length=summary.data_quality.length_failure_count,
+                resync=summary.data_quality.resync_count,
+                gaps=summary.data_quality.sequence_gap_count,
+                unknown=summary.data_quality.unknown_record_count,
+                decoder=summary.data_quality.decoder_failure_count,
+                overflow=summary.data_quality.logger_overflow_count,
             )
+        )
+        _Status_Apply(
+            self.quality_card,
+            (
+                "success"
+                if summary.data_quality.status.value == "clean"
+                else "warning"
+            ),
         )
         self._Calibration_Set(summary.calibration)
         self._Alignment_Set(summary.alignment)
@@ -260,6 +282,36 @@ class OverviewPage(QWidget):
                     item.setForeground(QColor("#FFFFFF"))
                 self.timeline_table.setItem(row, column, item)
         self.timeline_table.resizeColumnsToContents()
+
+    def _Gnss_Set(self, gnss: GnssOverview) -> None:
+        if not gnss.native_configured and not gnss.measurement_configured:
+            value_code = "gnss.not_configured"
+            status_level = "neutral"
+        elif gnss.latest_online is None:
+            value_code = "gnss.configured_no_samples"
+            status_level = "warning"
+        elif not gnss.latest_online:
+            value_code = "gnss.offline"
+            status_level = "warning"
+        elif gnss.latest_fix_type in (None, 0) or gnss.position_usable_count == 0:
+            value_code = "gnss.online_no_fix"
+            status_level = "warning"
+        else:
+            value_code = "gnss.online_fixed"
+            status_level = "success"
+        self.gnss_card.value_label.setText(
+            self._translator.Text_Get(value_code)
+        )
+        self.gnss_card.detail_label.setText(
+            self._translator.Text_Get(
+                "gnss.detail",
+                native=gnss.native_sample_count,
+                measurements=gnss.measurement_sample_count,
+                position=gnss.position_usable_count,
+                velocity=gnss.velocity_usable_count,
+            )
+        )
+        _Status_Apply(self.gnss_card, status_level)
 
     def _Deploy_Set(self, deploy: DeployOverview) -> None:
         self.deploy_card.value_label.setText(
@@ -467,6 +519,17 @@ class OverviewPage(QWidget):
         ]
         if alignment.historical_mode:
             notes.append(self._translator.Text_Get("alignment.historical"))
+        notes.append(
+            self._translator.Text_Get(
+                "alignment.history",
+                count=alignment.history_count,
+                ready=alignment.ready_history_count,
+            )
+        )
+        if alignment.initial_state_authoritative:
+            notes.append(
+                self._translator.Text_Get("alignment.initial_state_authoritative")
+            )
         self.alignment_note.setText(" · ".join(notes))
 
     def Language_Apply(self, translator: Translator) -> None:
@@ -477,6 +540,7 @@ class OverviewPage(QWidget):
         self.speed_card.setTitle(translator.Text_Get("label.max_speed"))
         self.acceleration_card.setTitle(translator.Text_Get("label.max_acceleration"))
         self.deploy_card.setTitle(translator.Text_Get("label.deploy_altitude"))
+        self.gnss_card.setTitle(translator.Text_Get("label.gnss_status"))
         self.quality_card.setTitle(translator.Text_Get("label.data_quality"))
         self.calibration_group.setTitle(translator.Text_Get("label.calibration"))
         calibration_titles = {

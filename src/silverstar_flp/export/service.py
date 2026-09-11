@@ -782,6 +782,7 @@ class FlightExporter:
                 language,
                 requested.theme,
                 store,
+                tuple(channels),
             )
             files.append(manifest_path)
             generated.append(
@@ -931,6 +932,7 @@ class FlightExporter:
         language: ExportLanguage,
         theme: ExportTheme,
         store: ReplayResultStore,
+        exported_channel_ids: tuple[str, ...],
     ) -> None:
         active = store.ActiveSource_Get()
         source_hash = hashlib.sha256()
@@ -949,8 +951,31 @@ class FlightExporter:
                 plugin = self._registry.Algorithm_Get(entry.algorithm_id)
                 firmware_member = plugin.FirmwareMember_Is(dataset)
                 recorded_output_available = plugin.RecordedOutput_IsAvailable(dataset)
+                input_contract = {
+                    "required_records": plugin.metadata.required_records,
+                    "optional_records": plugin.metadata.optional_records,
+                    "required_semantic_roles": (
+                        plugin.metadata.required_semantic_roles
+                    ),
+                    "optional_semantic_roles": (
+                        plugin.metadata.optional_semantic_roles
+                    ),
+                    "cadence": dict(plugin.metadata.cadence_contract),
+                    "gap_tolerance": dict(
+                        plugin.metadata.gap_tolerance_contract
+                    ),
+                    "parameter_sources": dict(
+                        plugin.metadata.parameter_source_contract
+                    ),
+                    "coordinate_frame": dict(
+                        plugin.metadata.coordinate_frame_contract
+                    ),
+                    "exact_validation_reference": (
+                        plugin.metadata.exact_validation_reference or None
+                    ),
+                }
             except KeyError:
-                pass
+                input_contract = None
             replay_payload.append(
                 {
                     "result_id": entry.result_id,
@@ -966,8 +991,59 @@ class FlightExporter:
                     "firmware_member": firmware_member,
                     "recorded_output_available": recorded_output_available,
                     "channel_ids": sorted(entry.channels),
+                    "input_contract": input_contract,
                 }
             )
+        configured_streams = []
+        if semantic_context is not None:
+            for stream in semantic_context.logging_streams:
+                raw_record_name = str(stream.get("record", ""))
+                prefix = "FLIGHT_LOG_RECORD_"
+                record_name = (
+                    raw_record_name[len(prefix) :]
+                    if raw_record_name.startswith(prefix)
+                    else raw_record_name
+                )
+                configured_streams.append(
+                    {
+                        **dict(stream),
+                        "record_name": record_name,
+                        "recorded_sample_count": len(
+                            dataset.Records_Get(record_name)
+                        ),
+                    }
+                )
+        resolver = ChannelResolver(dataset, store)
+        explorer_channels = resolver.ExplorerChannels_Get()
+        channel_provenance: dict[str, Any] = {}
+        for channel_id in exported_channel_ids:
+            series = explorer_channels.get(channel_id)
+            if series is None:
+                continue
+            raw_channel_id = (
+                semantic_context.StableRole_Get(channel_id)
+                if semantic_context is not None
+                else None
+            )
+            channel_provenance[channel_id] = {
+                "source": series.source,
+                "record_name": series.metadata.get("record_name"),
+                "field_name": series.metadata.get("field_name"),
+                "stable_role": channel_id if raw_channel_id is not None else None,
+                "raw_channel_id": raw_channel_id,
+                "descriptor_id": series.metadata.get("descriptor_id"),
+                "physical_device_id": series.metadata.get(
+                    "physical_device_id"
+                ),
+                "capability_class": series.metadata.get("capability_class"),
+                "instance_id": series.metadata.get("instance_id"),
+                "quantity": series.quantity,
+                "unit": series.unit,
+                "sample_count": series.count,
+                "valid_sample_count": int(np.count_nonzero(series.valid)),
+                "timestamps": "recorded_per_channel",
+            }
+        summary = FlightSummary_Build(dataset)
         generated_payload = [
             {
                 "item_id": item.item_id,
@@ -1013,11 +1089,21 @@ class FlightExporter:
                 if semantic_payload is not None
                 else None
             ),
+            "alignment": asdict(summary.alignment),
+            "gnss_usability": asdict(summary.gnss),
+            "data_quality": (
+                dataset.data_quality.ToDict()
+                if dataset.data_quality is not None
+                else None
+            ),
+            "parser_diagnostics": dataset.diagnostics.to_dict(),
+            "configured_streams": configured_streams,
             "stable_aliases": (
                 semantic_payload["stable_aliases"]
                 if semantic_payload is not None
                 else {}
             ),
+            "exported_channel_provenance": channel_provenance,
             "replay_results": replay_payload,
             "language": language.value,
             "theme": theme.value,

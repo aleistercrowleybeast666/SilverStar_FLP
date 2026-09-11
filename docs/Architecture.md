@@ -32,11 +32,12 @@ AIR frames are deliberately outside the SSLOG container.
 
 ```text
 read-only SSLOG BIN
-  -> trusted SSLOG0 container (header/record CRC, FLG1 recovery, RawRecordFrame)
+  -> trusted SSLOG0 container (CRC plus bounded/validated FLG1 recovery, RawRecordFrame)
   -> mandatory bootstrap Descriptor + exact .ssdecoder 1.1 validation/cache
   -> dynamic Record Catalog parser (raw Records and instance channels)
   -> semantic adapter + mandatory Calibration Result
-  -> FlightDataset + DatasetSemanticContext (immutable raw data + zero-copy stable aliases)
+  -> FlightDataset + DataQualitySummary + DatasetSemanticContext
+     (immutable raw data + zero-copy stable aliases)
   -> Algorithm Plugin replay
   -> ReplayResultStore (every Recomputed and What-if run is retained)
   -> AnalysisSource + ChannelResolver
@@ -45,7 +46,14 @@ read-only SSLOG BIN
 ```
 
 Every series owns its real timestamp array. No channel is reconstructed from a nominal sample
-frequency and unlike-rate records are not forced into one large table.
+frequency and unlike-rate records are not forced into one large table. Decoded Records preserve
+file order and offsets, while each channel sorts its own timestamps; interleaved producers do not
+impose a global monotonic timestamp contract.
+
+Current-SSLOG corruption recovery never trusts magic alone. Each candidate must pass complete
+header, bounded length, timestamp, frame-size, and CRC validation within fixed scan/candidate
+limits. Invalid frames never reach the dynamic payload decoder. The damaged byte span and bounded
+raw hex remain diagnostic evidence; there is no payload repair or legacy parser fallback.
 
 Decoder-profile discovery is bounded by file count, byte count, recursion depth and parent depth.
 Matching uses the logged `DECODER_PROFILE_DESCRIPTOR` and requires package/container identity plus
@@ -62,7 +70,8 @@ coordinator. They publish a new dataset/project only after the whole operation s
 
 Overview is recorded mission truth: exact decoder/project/firmware identity, file integrity,
 START-cropped metrics, configured calibration flow and selected effective Calibration Result,
-Initial Alignment/INITIAL_STATE, actual deploy event/detail, and the translated event timeline.
+Initial Alignment/INITIAL_STATE, GNSS configured/online/fix/usability state, actual deploy
+event/detail, and the translated event timeline.
 Flight owns velocity, position, corrected IMU, attitude, and 3D playback. State Estimation owns
 filter internals only. Replay is page two, the source-generation entry point, and the only page
 allowed to change the global Analysis Data Source. Flight and State Estimation show that source
@@ -97,6 +106,11 @@ INITIAL_STATE.q_nb
 
 `HW_QUAT_NATIVE` remains diagnostic/reference data after START. Recorded Pure INS and estimator
 outputs are comparison layers; neither is fed back as normal replay input.
+
+All `ALIGNMENT_RESULT` records remain history. The latest valid-ready result at or before START
+provides result provenance, but the latest valid `INITIAL_STATE` at or before START is the
+authoritative adopted state and quaternion. A later stale/failed Alignment record does not erase
+an earlier valid result.
 
 ## Visualization invariants
 
@@ -141,8 +155,10 @@ file, flush/fsync, and atomic replacement. Restore verifies every stored identit
 the current GUI state.
 
 The audit export manifest hashes the source log and records decoder identity, project/firmware/
-hardware/protocol metadata, firmware components, effective calibration, raw-to-stable aliases,
-and every replay plugin/mode/provenance/fidelity/parameter set.
+hardware/protocol metadata, firmware components, effective calibration, alignment provenance,
+GNSS usability, parser/Data Quality diagnostics and damaged spans, configured-versus-recorded
+stream counts, exported-channel provenance, raw-to-stable aliases, and every replay
+plugin/mode/provenance/fidelity/parameter/input-contract set.
 
 ## KF6 state convention
 

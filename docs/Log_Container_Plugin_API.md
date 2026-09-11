@@ -26,8 +26,9 @@ decoder-package schema, Record Version and firmware version.
 ## Stable objects
 
 `ProbeResult` reports confidence, the container format ID and optional inert metadata.
-`ParseOptions` carries diagnostics, cancellation/progress context, source size and the maximum
-accepted payload length. `RawRecordFrame` contains:
+`ParseOptions` carries diagnostics, cancellation/progress context, source size, maximum accepted
+payload length, maximum resynchronization scan bytes/candidate count, and damaged-span preview
+length. `RawRecordFrame` contains:
 
 - `record_type` and `record_version`;
 - declared `payload_length`;
@@ -50,11 +51,16 @@ to `ParseOptions.diagnostics`.
 
 ## SSLOG0 responsibility
 
-The built-in container validates the 64-byte File Header, checks the 24-byte common Record Header
-and 4-byte CRC-32 trailer, scans forward to the next byte-aligned `FLG1` after corruption or lost
-sync, reports sequence gaps and preserves already yielded records when the tail is truncated.
-Unknown Record IDs need no special container behavior: declared length and CRC delimit the opaque
-payload.
+The built-in container validates the 64-byte File Header and checks the 24-byte common Record
+Header plus 4-byte CRC-32 trailer. After corruption or lost sync, it accepts a byte-aligned
+`FLG1` candidate only when magic, complete header, bounded length, timestamp, complete frame, and
+CRC all pass within the configured scan/candidate limits. Bad frames are excluded without repair;
+damaged-span offsets and bounded raw hex are diagnostic output. It reports sequence gaps and
+preserves already yielded records when the tail is truncated. Unknown Record IDs need no special
+container behavior: declared length and CRC delimit the opaque payload.
+
+The container never requires timestamps to increase globally. Record order follows source
+offsets; per-channel ordering belongs to dataset construction.
 
 Field names such as `accel_b_mps2`, KF state order, event catalogs, devices and channels are
 strictly outside this layer.

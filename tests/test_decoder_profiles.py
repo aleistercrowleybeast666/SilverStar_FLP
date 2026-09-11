@@ -5,11 +5,13 @@ import json
 import stat
 import struct
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from silverstar_flp.analysis.overview import FlightSummary_Build
 from silverstar_flp.cli import _Algorithm_Resolve
 from silverstar_flp.cli import main as Cli_Main
 from silverstar_flp.core.diagnostics import ParserDiagnostics
@@ -420,12 +422,18 @@ def _CalibrationPayload_Build(
     )
 
 
-def _CalibrationNonePayload_Build(*, samples: int = 0, ready: int = 1) -> bytes:
+def _CalibrationNonePayload_Build(
+    *,
+    samples: int = 0,
+    ready: int = 1,
+    start_sequence: int = 0,
+) -> bytes:
     return _CalibrationPayload_Build(
         mode=0,
         completed_face_mask=0,
         samples=samples,
         ready=ready,
+        start_sequence=start_sequence,
     )
 
 
@@ -718,6 +726,359 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     ]
     assert audit["calibration"]["identity_model"] is True
     assert audit["stable_aliases"]["imu.native.accel_b"] == raw_channel_id
+
+
+def test_none_identity_is_legal_with_six_face_config_and_nonzero_start_sequence(
+    tmp_path: Path,
+) -> None:
+    semantics = _SemanticsDocument_Build()
+    semantics["modes"] = {"calibration": ["SixFace"]}
+    files, _ = _PackageFiles_Build(semantics_document=semantics)
+    package_path, hashes = _Package_Write(
+        tmp_path / "none_with_six_face.ssdecoder",
+        files=files,
+    )
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        DESCRIPTOR_RECORD_TYPE,
+        _DescriptorPayload_Build(hashes),
+        START_TIMESTAMP_US - 5,
+    )
+    builder.Record_Add(
+        0x17,
+        _CalibrationNonePayload_Build(start_sequence=1),
+        START_TIMESTAMP_US - 4,
+    )
+    builder.Record_Add(
+        0x17,
+        _CalibrationNonePayload_Build(samples=1, start_sequence=2),
+        START_TIMESTAMP_US - 2,
+    )
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US)
+    result = LogOpenCoordinator(
+        builtin_registry(),
+        cache=DecoderProfileCache(tmp_path / "cache"),
+    ).Open(
+        LogOpenRequest(
+            log_path=builder.File_Write(tmp_path / "none_with_six_face.sslog"),
+            decoder_package_path=package_path,
+        )
+    )
+
+    calibration = result.dataset.semantic_context.calibration
+    assert len(result.dataset.Records_Get("CALIBRATION_RESULT")) == 2
+    assert calibration.mode_name == "NONE"
+    assert calibration.identity_model
+    assert calibration.start_sequence == 1
+    assert calibration.timestamp_us == START_TIMESTAMP_US - 4
+    assert result.parse_diagnostics is result.dataset.diagnostics
+    assert result.data_quality is result.dataset.data_quality
+
+
+def test_file_order_timestamps_may_regress_while_each_channel_is_sorted(
+    tmp_path: Path,
+) -> None:
+    package_path, hashes = _Package_Write(tmp_path / "time_order.ssdecoder")
+    package = DecoderProfilePackage.Load(
+        package_path,
+        container_plugins=_ContainerMap_Get(),
+    )
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        DESCRIPTOR_RECORD_TYPE,
+        _DescriptorPayload_Build(hashes),
+        START_TIMESTAMP_US - 1,
+    )
+    builder.Record_Add(
+        IMU_RECORD_TYPE,
+        _ImuPayload_Build(1, 0, START_TIMESTAMP_US + 20, (2.0, 0.0, 0.0)),
+        START_TIMESTAMP_US + 20,
+    )
+    builder.Record_Add(
+        IMU_RECORD_TYPE,
+        _ImuPayload_Build(1, 0, START_TIMESTAMP_US + 10, (1.0, 0.0, 0.0)),
+        START_TIMESTAMP_US + 10,
+    )
+    dataset = DecoderProfileParserPlugin(
+        Sslog0ContainerPlugin(),
+        package,
+    ).parse(builder.File_Write(tmp_path / "time_order.sslog"))
+
+    records = dataset.Records_Get("IMU_NATIVE")
+    assert [record.timestamp_us for record in records] == [
+        START_TIMESTAMP_US + 20,
+        START_TIMESTAMP_US + 10,
+    ]
+    series = dataset.Series_Get("IMU_NATIVE:1:0.accel_b_mps2")
+    assert series is not None
+    assert series.timestamp_us.tolist() == [
+        START_TIMESTAMP_US + 10,
+        START_TIMESTAMP_US + 20,
+    ]
+    assert series.values[:, 0].tolist() == [1.0, 2.0]
+
+
+def test_current_container_resync_rejects_false_magic_until_crc_valid_candidate(
+    tmp_path: Path,
+) -> None:
+    package_path, hashes = _Package_Write(tmp_path / "resync.ssdecoder")
+    package = DecoderProfilePackage.Load(
+        package_path,
+        container_plugins=_ContainerMap_Get(),
+    )
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        DESCRIPTOR_RECORD_TYPE,
+        _DescriptorPayload_Build(hashes),
+        START_TIMESTAMP_US - 1,
+    )
+    false_header = struct.pack(
+        "<IBBHIQI",
+        0x31474C46,
+        0,
+        0x02,
+        4,
+        99,
+        START_TIMESTAMP_US,
+        0,
+    )
+    false_payload = b"FAKE"
+    false_crc = (zlib.crc32(false_header + false_payload) ^ 0xFFFFFFFF) & 0xFFFFFFFF
+    builder.records[0] += (
+        b"DAMAGED"
+        + false_header
+        + false_payload
+        + struct.pack("<I", false_crc)
+    )
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US)
+    dataset = DecoderProfileParserPlugin(
+        Sslog0ContainerPlugin(),
+        package,
+    ).parse(builder.File_Write(tmp_path / "resync.sslog"))
+
+    assert dataset.diagnostics.record_count == 2
+    assert dataset.diagnostics.resync_count == 1
+    assert dataset.diagnostics.resync_candidate_count == 2
+    assert dataset.diagnostics.record_crc_failures == 0
+    assert len(dataset.diagnostics.damaged_spans) == 1
+    assert dataset.diagnostics.damaged_spans[0].reason == "sync_loss"
+    assert dataset.diagnostics.damaged_spans[0].raw_hex.startswith(
+        b"DAMAGED".hex().upper()
+    )
+    assert dataset.metadata["parse_status"] == "partial"
+
+
+def test_current_container_recovers_from_invalid_length_at_expected_boundary(
+    tmp_path: Path,
+) -> None:
+    package_path, hashes = _Package_Write(tmp_path / "length.ssdecoder")
+    package = DecoderProfilePackage.Load(
+        package_path,
+        container_plugins=_ContainerMap_Get(),
+    )
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        DESCRIPTOR_RECORD_TYPE,
+        _DescriptorPayload_Build(hashes),
+        START_TIMESTAMP_US - 1,
+    )
+    builder.records[0] += struct.pack(
+        "<IBBHIQI",
+        0x31474C46,
+        0,
+        0x02,
+        500,
+        99,
+        START_TIMESTAMP_US,
+        0,
+    )
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US)
+    dataset = DecoderProfileParserPlugin(
+        Sslog0ContainerPlugin(),
+        package,
+    ).parse(builder.File_Write(tmp_path / "length.sslog"))
+
+    assert dataset.diagnostics.record_length_failures == 1
+    assert dataset.diagnostics.resync_count == 1
+    assert dataset.diagnostics.recovered_after_sync_loss == 1
+    assert len(dataset.Records_Get("EVENT")) == 1
+
+
+def test_current_container_resync_scan_is_bounded(tmp_path: Path) -> None:
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(0x02, Event_Payload(0x01), START_TIMESTAMP_US)
+    builder.records[0] += b"X" * 64
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US + 1)
+    path = builder.File_Write(tmp_path / "bounded_resync.sslog")
+    container = Sslog0ContainerPlugin()
+    diagnostics = ParserDiagnostics()
+    with path.open("rb") as source:
+        options = ParseOptions(
+            diagnostics=diagnostics,
+            source_size=path.stat().st_size,
+            maximum_resync_scan_bytes=16,
+            maximum_resync_candidates=2,
+        )
+        container.header_read(source, options)
+        frames = tuple(container.iter_frames(source, options))
+
+    assert len(frames) == 1
+    assert diagnostics.resync_failure_count == 1
+    assert diagnostics.truncated_tail
+
+
+def test_default_channel_template_does_not_alias_descriptor_namespaces() -> None:
+    catalog_document = _CatalogDocument_Build()
+    catalog_document["records"].append(
+        {
+            "id": "0x41",
+            "version": 0,
+            "name": "DEVICE_DESCRIPTOR",
+            "payload_size": 7,
+            "fields": [
+                {"name": "descriptor_id", "type": "u16"},
+                {"name": "instance_id", "type": "u8"},
+                {"name": "physical_device_id", "type": "u16"},
+                {"name": "status", "type": "u16"},
+            ],
+        }
+    )
+    semantics_document = _SemanticsDocument_Build()
+    semantics_document["record_views"].append(
+        {
+            "record": "FLIGHT_LOG_RECORD_DEVICE_DESCRIPTOR",
+            "record_type": "0x41",
+            "record_version": 0,
+            "payload_size": 7,
+            "partition_by": ["instance_id", "physical_device_id"],
+            "columns": ["status"],
+        }
+    )
+    semantics = ProjectSemantics.FromDocument(
+        semantics_document
+    ).Catalog_Bind(RecordCatalog.FromDocument(catalog_document))
+
+    definitions = semantics.ChannelDefinitions_Get(
+        "DEVICE_DESCRIPTOR",
+        {
+            "descriptor_id": 1,
+            "instance_id": 0,
+            "physical_device_id": 10,
+            "status": 7,
+        },
+    )
+    assert definitions[0].channel_id == "DEVICE_DESCRIPTOR:0:10.status"
+
+
+def test_gnss_online_without_fix_and_zero_measurements_is_legal(
+    tmp_path: Path,
+) -> None:
+    catalog_document = _CatalogDocument_Build()
+    catalog_document["records"].append(
+        {
+            "id": "0x42",
+            "version": 0,
+            "name": "GNSS_NATIVE",
+            "payload_size": 24,
+            "fields": [
+                {"name": "source_descriptor_id", "type": "u16"},
+                {"name": "instance_id", "type": "u8"},
+                {"type": "pad", "count": 1},
+                {"name": "sample_timestamp_us", "type": "u64"},
+                {"name": "online", "type": "u8"},
+                {"name": "fix_type", "type": "u8"},
+                {"name": "position_usable", "type": "u8"},
+                {"name": "velocity_valid_mask", "type": "u8"},
+                {"name": "latitude_e7", "type": "u32"},
+                {"name": "longitude_e7", "type": "u32"},
+            ],
+        }
+    )
+    semantics_document = _SemanticsDocument_Build()
+    semantics_document["record_views"].append(
+        {
+            "record": "FLIGHT_LOG_RECORD_GNSS_NATIVE",
+            "record_type": "0x42",
+            "record_version": 0,
+            "payload_size": 24,
+            "partition_by": ["source_descriptor_id", "instance_id"],
+            "columns": [
+                "online",
+                "fix_type",
+                "position_usable",
+                "velocity_valid_mask",
+                "latitude_e7",
+                "longitude_e7",
+            ],
+        }
+    )
+    semantics_document["logging_streams"].extend(
+        [
+            {
+                "record": "FLIGHT_LOG_RECORD_GNSS_NATIVE",
+                "enabled": True,
+            },
+            {
+                "record": "FLIGHT_LOG_RECORD_GNSS_MEASUREMENT",
+                "enabled": True,
+            },
+        ]
+    )
+    files, _ = _PackageFiles_Build(
+        catalog_document=catalog_document,
+        semantics_document=semantics_document,
+    )
+    package_path, hashes = _Package_Write(
+        tmp_path / "gnss_no_fix.ssdecoder",
+        files=files,
+    )
+    builder = SyntheticSslogBuilder()
+    builder.Record_Add(
+        DESCRIPTOR_RECORD_TYPE,
+        _DescriptorPayload_Build(hashes),
+        START_TIMESTAMP_US - 3,
+    )
+    builder.Record_Add(
+        0x17,
+        _CalibrationNonePayload_Build(start_sequence=1),
+        START_TIMESTAMP_US - 2,
+    )
+    builder.Record_Add(0x02, Event_Payload(0x03), START_TIMESTAMP_US)
+    builder.Record_Add(
+        0x42,
+        struct.pack(
+            "<HBxQ4BII",
+            2,
+            1,
+            START_TIMESTAMP_US + 1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ),
+        START_TIMESTAMP_US + 1,
+    )
+    dataset = LogOpenCoordinator(
+        builtin_registry(),
+        cache=DecoderProfileCache(tmp_path / "cache"),
+    ).Open(
+        LogOpenRequest(
+            log_path=builder.File_Write(tmp_path / "gnss_no_fix.sslog"),
+            decoder_package_path=package_path,
+        )
+    ).dataset
+
+    gnss = FlightSummary_Build(dataset).gnss
+    assert gnss.native_configured
+    assert gnss.measurement_configured
+    assert gnss.native_sample_count == 1
+    assert gnss.measurement_sample_count == 0
+    assert gnss.latest_online
+    assert gnss.latest_fix_type == 0
+    assert gnss.position_usable_count == 0
+    assert gnss.velocity_usable_count == 0
 
 
 def test_log_open_coordinator_rejects_non_identity_none_calibration(

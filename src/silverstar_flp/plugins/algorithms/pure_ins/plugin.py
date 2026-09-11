@@ -102,6 +102,30 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             "imu.corrected.accel_b",
             "imu.corrected.gyro_b",
         ),
+        optional_semantic_roles=(
+            "inertial.increment.delta_theta_b",
+            "inertial.increment.delta_velocity_b",
+            "pure_ins.recorded.attitude.q_nb",
+        ),
+        cadence_contract={
+            "corrected_imu": "recorded sample timestamps within SYSTEM_CONFIG bounds",
+            "recorded_inertial_increment": "recorded interval timestamps",
+            "mechanization_subsample_count": 2,
+        },
+        gap_tolerance_contract={
+            "interpolation": "forbidden",
+            "corrected_imu": "reset three-sample coning/sculling history",
+            "recorded_inertial_increment": "preserve recorded intervals",
+        },
+        parameter_source_contract={
+            "recorded_configuration": "SSLOG header and SYSTEM_CONFIG",
+            "offline": "plugin defaults or explicit what-if values",
+        },
+        coordinate_frame_contract={
+            "quaternion_order": "WXYZ",
+            "quaternion_convention": "Hamilton body-to-ENU",
+            "navigation_frame": "ENU",
+        },
     )
 
     def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
@@ -156,13 +180,20 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
         if str(dataset.header.get("build_id", "")) != CURRENT_BUILD_ID:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("firmware_build_differs_from_reimplementation")
-        if (
-            dataset.semantic_context is not None
-            and dataset.semantic_context.FirmwareVersion_Get() == "0.0.10"
-        ):
+        firmware_version = (
+            dataset.semantic_context.FirmwareVersion_Get()
+            if dataset.semantic_context is not None
+            else ""
+        )
+        if firmware_version == "0.0.10":
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("fccg_0_0_10_host_golden_not_verified")
-        if dataset.diagnostics.record_crc_failures or dataset.diagnostics.sequence_gap_count:
+        elif not self.metadata.exact_validation_reference:
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("host_golden_not_verified")
+        if dataset.data_quality is not None and (
+            dataset.data_quality.status.value == "warnings"
+        ):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("source_log_has_integrity_or_sequence_gaps")
         return AlgorithmAvailability(
@@ -183,7 +214,9 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
         availability = self.availability(dataset, request.input_source)
         if not availability.available:
             raise ValueError("replay_unavailable:" + ",".join(availability.missing_inputs))
-        initial_record = dataset.Records_Get("INITIAL_STATE")[0]
+        initial_record = dataset.initial_state
+        if initial_record is None:
+            raise ValueError("replay_initial_state_missing")
         start_timestamp = dataset.start_timestamp_us or initial_record.timestamp_us
         initial_q = np.asarray(initial_record.payload["q_nb"], dtype=np.float32)
         config = Mechanization_ConfigurationGet(dataset)
@@ -301,15 +334,20 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF)
             else {}
         )
+        warnings = list(availability.warnings)
+        fidelity = availability.fidelity
+        if source_diagnostics.get("sample_gap_count", 0):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("input_sample_gaps_detected")
         task_context.Progress_Report(1.0, "replay.complete")
         return AlgorithmResult(
             algorithm_id=self.metadata.plugin_id,
             algorithm_version=self.metadata.version,
             input_source=request.input_source,
             parameters=parameters,
-            fidelity=availability.fidelity,
+            fidelity=fidelity,
             missing_inputs=availability.missing_inputs,
-            warnings=availability.warnings,
+            warnings=tuple(dict.fromkeys(warnings)),
             channels=channels,
             diagnostics={
                 "input_increment_count": len(increments),

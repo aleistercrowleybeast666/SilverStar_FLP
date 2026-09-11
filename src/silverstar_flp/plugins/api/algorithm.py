@@ -165,14 +165,27 @@ class AlgorithmMetadata:
     firmware_component_ids: tuple[str, ...] = ()
     recorded_output_roles: tuple[str, ...] = ()
     required_semantic_roles: tuple[str, ...] = ()
+    optional_semantic_roles: tuple[str, ...] = ()
+    cadence_contract: Mapping[str, Any] = field(default_factory=dict)
+    gap_tolerance_contract: Mapping[str, Any] = field(default_factory=dict)
+    parameter_source_contract: Mapping[str, Any] = field(default_factory=dict)
+    coordinate_frame_contract: Mapping[str, Any] = field(default_factory=dict)
+    exact_validation_reference: str = ""
     offline_default_parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
+        for field_name in (
+            "cadence_contract",
+            "gap_tolerance_contract",
+            "parameter_source_contract",
+            "coordinate_frame_contract",
             "offline_default_parameters",
-            MappingProxyType(dict(self.offline_default_parameters)),
-        )
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                MappingProxyType(dict(getattr(self, field_name))),
+            )
 
 
 @dataclass(frozen=True, slots=True)

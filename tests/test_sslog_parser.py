@@ -107,6 +107,8 @@ def test_truncated_tail_is_reported_and_previous_records_survive(tmp_path: Path)
     assert dataset.diagnostics.truncated_tail
     assert dataset.diagnostics.trailing_bytes == 7
     assert dataset.diagnostics.decoded_record_count == 1
+    assert len(dataset.diagnostics.damaged_spans) == 1
+    assert dataset.diagnostics.damaged_spans[0].raw_hex == b"FLG1\x00\x02\x0c".hex().upper()
 
 
 def test_sequence_gap_count_uses_logged_sequence_not_nominal_time(tmp_path: Path) -> None:

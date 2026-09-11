@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from numpy.typing import NDArray
 
-from silverstar_flp.core.diagnostics import ParserDiagnostics
+from silverstar_flp.core.diagnostics import DataQualitySummary, ParserDiagnostics
 
 if TYPE_CHECKING:
     from silverstar_flp.core.semantic_context import DatasetSemanticContext
@@ -92,6 +92,7 @@ class FlightDataset:
     series: Mapping[str, TimeSeries]
     metadata: Mapping[str, Any] = field(default_factory=dict)
     semantic_context: DatasetSemanticContext | None = None
+    data_quality: DataQualitySummary | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_path", Path(self.source_path))
@@ -103,6 +104,25 @@ class FlightDataset:
         )
         object.__setattr__(self, "series", MappingProxyType(dict(self.series)))
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        if self.data_quality is None:
+            record_counts = {
+                name: len(records)
+                for name, records in self.records.items()
+            }
+            logger_overflow_count = sum(
+                1
+                for record in self.records.get("EVENT", ())
+                if int(record.payload.get("event_id", 0)) == 0x06
+            )
+            object.__setattr__(
+                self,
+                "data_quality",
+                DataQualitySummary.FromDiagnostics(
+                    self.diagnostics,
+                    record_counts=record_counts,
+                    logger_overflow_count=logger_overflow_count,
+                ),
+            )
 
     def Records_Get(self, record_name: str) -> tuple[DecodedRecord, ...]:
         return self.records.get(record_name, ())
@@ -110,15 +130,73 @@ class FlightDataset:
     def Series_Get(self, channel_id: str) -> TimeSeries | None:
         return self.series.get(channel_id)
 
+    def RecordAtOrBefore_Get(
+        self,
+        record_name: str,
+        timestamp_us: int,
+    ) -> DecodedRecord | None:
+        eligible = tuple(
+            record
+            for record in self.Records_Get(record_name)
+            if record.timestamp_us <= timestamp_us
+        )
+        if not eligible:
+            return None
+        return max(
+            eligible,
+            key=lambda item: (
+                item.timestamp_us,
+                item.record_sequence,
+                item.file_offset,
+            ),
+        )
+
     @property
     def start_timestamp_us(self) -> int | None:
-        for record in self.Records_Get("EVENT"):
-            if int(record.payload.get("event_id", 0)) == 0x03:
-                return record.timestamp_us
+        mission_starts = tuple(
+            record
+            for record in self.Records_Get("EVENT")
+            if int(record.payload.get("event_id", 0)) == 0x03
+        )
+        if mission_starts:
+            return min(
+                mission_starts,
+                key=lambda item: (
+                    item.timestamp_us,
+                    item.record_sequence,
+                    item.file_offset,
+                ),
+            ).timestamp_us
         initial = self.Records_Get("INITIAL_STATE")
         if initial:
-            return initial[0].timestamp_us
+            return min(
+                initial,
+                key=lambda item: (
+                    item.timestamp_us,
+                    item.record_sequence,
+                    item.file_offset,
+                ),
+            ).timestamp_us
         return None
+
+    @property
+    def initial_state(self) -> DecodedRecord | None:
+        records = self.Records_Get("INITIAL_STATE")
+        if not records:
+            return None
+        boundary = self.start_timestamp_us
+        if boundary is not None:
+            selected = self.RecordAtOrBefore_Get("INITIAL_STATE", boundary)
+            if selected is not None:
+                return selected
+        return max(
+            records,
+            key=lambda item: (
+                item.timestamp_us,
+                item.record_sequence,
+                item.file_offset,
+            ),
+        )
 
     @property
     def mission_duration_s(self) -> float | None:

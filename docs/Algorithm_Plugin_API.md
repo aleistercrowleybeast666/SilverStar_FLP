@@ -1,7 +1,9 @@
 # Algorithm Plugin API
 
 An `AlgorithmPlugin` declares stable identity/version metadata, required and optional records and
-channels, a typed parameter schema, standard outputs, and diagnostic outputs. `availability()`
+channels/semantic roles, cadence and gap-tolerance contracts, parameter-source provenance,
+coordinate/frame convention, a typed parameter schema, standard outputs, and diagnostic outputs.
+`availability()`
 returns supported input sources, missing input codes, warnings, and `EXACT`, `APPROXIMATE`, or
 `UNAVAILABLE`. `run()` receives a `ReplayRequest` and returns an immutable `AlgorithmResult`.
 
@@ -43,6 +45,13 @@ The desktop Replay page always constructs `ReplayRequest(input_source="corrected
 must retain explicit availability checks and must not silently fall back. The internal API may
 continue to accept `recorded_inertial_increment` for CLI, validation, and golden-vector work.
 
+Required and optional inputs are not interchangeable. KF_6 prediction requires the adopted
+initial state, recorded system configuration, and one declared inertial source. GNSS and
+barometer measurements are event-driven optional roles; a configured GNSS stream with zero
+usable measurements remains a legal prediction-only/other-measurement flight. Cadence checks use
+recorded timestamps and stream descriptors. Input gaps are segmented and reported—never silently
+interpolated.
+
 Each user-editable parameter supplies stable `label_key`, `group_key`, and `tooltip_key` values,
 plus unit/range/step metadata. The GUI translates those keys, keeps the raw `parameter_id` in the
 tooltip, and builds the What-if group selector without parameter-specific branches.
@@ -51,8 +60,11 @@ fill missing firmware values from `ParameterSpec.default`. The What-if reset bas
 offline defaults overlaid with this audited subset. Warnings remain stable raw codes in algorithm
 results and are translated only at the GUI/export boundary.
 
-The built-in Pure INS and KF_6 implementations remain version `0.0.10` and report
-`APPROXIMATE` with the existing `SILV0008` warning; the package adaptation does not upgrade their
+`EXACT` requires both clean inputs over the claimed interval and a matching immutable
+firmware/host Golden validation reference. Exact decoder-package matching establishes schema and
+input provenance only. The built-in Pure INS and KF_6 implementations for firmware `0.0.10`
+therefore report `APPROXIMATE`: they retain the audited `SILV0008` host-implementation
+identity and emit explicit build/Golden warnings. Package adaptation does not upgrade their
 fidelity claim.
 
 ## Estimator visualization metadata
