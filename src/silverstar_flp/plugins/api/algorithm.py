@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -146,6 +149,46 @@ class ParameterSpec:
     group_key: str = ""
     tooltip_key: str = ""
     step: float | None = None
+    representation: str = "value"
+    precision: int = 9
+    order: int = 0
+    required: bool = True
+    greater_than: str = ""
+
+    def Value_Validate(self, value: Any) -> None:
+        valid_type = {
+            "float": isinstance(value, (int, float)) and not isinstance(value, bool),
+            "int": isinstance(value, int) and not isinstance(value, bool),
+            "bool": isinstance(value, bool),
+            "str": isinstance(value, str),
+        }.get(self.kind, False)
+        if not valid_type:
+            raise ValueError(f"parameter_type_invalid:{self.parameter_id}")
+        if self.kind in ("float", "int"):
+            if not math.isfinite(value):
+                raise ValueError(f"parameter_not_finite:{self.parameter_id}")
+            if (self.minimum is not None and value < self.minimum) or (
+                self.maximum is not None and value > self.maximum
+            ):
+                raise ValueError(f"parameter_out_of_range:{self.parameter_id}")
+        if self.choices and value not in self.choices:
+            raise ValueError(f"parameter_choice_invalid:{self.parameter_id}")
+
+    def ToDict(self) -> dict[str, Any]:
+        return {
+            "id": self.parameter_id,
+            "type": self.kind,
+            "default": self.default,
+            "unit": self.unit,
+            "representation": self.representation,
+            "min": self.minimum,
+            "max": self.maximum,
+            "required": self.required,
+            "precision": self.precision,
+            "order": self.order,
+            "group": self.group_key,
+            "greater_than": self.greater_than,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +216,30 @@ class AlgorithmMetadata:
     exact_validation_reference: str = ""
     offline_default_parameters: Mapping[str, Any] = field(default_factory=dict)
 
+    def ParameterSchemaIdentity_Get(self) -> str:
+        payload = [spec.ToDict() for spec in self.parameter_schema]
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, allow_nan=False, separators=(",", ":")).encode()
+        ).hexdigest()
+
+    def Parameters_Validate(self, values: Mapping[str, Any], *, complete: bool = True) -> None:
+        schema = {spec.parameter_id: spec for spec in self.parameter_schema}
+        if set(values) - set(schema):
+            raise ValueError("parameter_unknown:" + ",".join(sorted(set(values) - set(schema))))
+        for name, spec in schema.items():
+            if name in values:
+                spec.Value_Validate(values[name])
+                if spec.greater_than in values and values[name] <= values[spec.greater_than]:
+                    raise ValueError(f"parameter_order_invalid:{name}")
+            elif complete and spec.required:
+                raise ValueError(f"parameter_missing:{name}")
+
     def __post_init__(self) -> None:
+        ids = [spec.parameter_id for spec in self.parameter_schema]
+        if len(ids) != len(set(ids)):
+            raise ValueError("parameter_id_duplicate")
+        for spec in self.parameter_schema:
+            spec.Value_Validate(spec.default)
         for field_name in (
             "cadence_contract",
             "gap_tolerance_contract",
@@ -227,6 +293,7 @@ class ReplayRequest:
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "mode", ReplayMode(self.mode))
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
 
 
@@ -253,10 +320,70 @@ class AlgorithmPlugin(ABC):
     metadata: AlgorithmMetadata
 
     def recorded_parameters(self, dataset: FlightDataset) -> Mapping[str, Any]:
-        """Return the parameter values represented by this particular recorded log."""
+        if not self.FirmwareMember_Is(dataset) or dataset.semantic_context is None:
+            return MappingProxyType({})
+        sets = [
+            dataset.semantic_context.FirmwareParameters_Get(component)
+            for component in self.metadata.firmware_component_ids
+        ]
+        present = [item for item in sets if item is not None]
+        if len(present) > 1:
+            raise ValueError("firmware_parameter_set_ambiguous")
+        if not present:
+            return MappingProxyType({})
+        records = present[0]
+        specs = {spec.parameter_id: spec for spec in self.metadata.parameter_schema}
+        values = {}
+        for name, item in records.items():
+            if name not in specs:
+                raise ValueError(f"parameter_unknown:{name}")
+            spec = specs[name]
+            if item["unit"] != spec.unit or item["representation"] != spec.representation:
+                raise ValueError(f"parameter_contract_mismatch:{name}")
+            spec.Value_Validate(item["value"])
+            values[name] = item["value"]
+        return MappingProxyType(values)
 
-        del dataset
-        return MappingProxyType({})
+    def Parameters_Resolve(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
+        self.metadata.Parameters_Validate(request.parameters, complete=False)
+        if request.mode == ReplayMode.RECORDED_CONFIGURATION:
+            configuration = self.ConfigurationAvailability_Get(dataset)
+            if not configuration.recorded_available:
+                raise ValueError(
+                    "recorded_configuration_unavailable:"
+                    + ",".join(configuration.missing_recorded_parameters)
+                )
+            values = dict(configuration.recorded_parameters)
+            if request.parameters and dict(request.parameters) != values:
+                raise ValueError("recorded_configuration_override_forbidden")
+        elif request.mode == ReplayMode.WHAT_IF and self.FirmwareMember_Is(dataset):
+            configuration = self.ConfigurationAvailability_Get(dataset)
+            if not configuration.recorded_available:
+                raise ValueError("recorded_configuration_unavailable")
+            values = {**configuration.recorded_parameters, **request.parameters}
+        elif request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF):
+            values = {**self.OfflineParameters_Get(), **request.parameters}
+        else:
+            raise ValueError("replay_mode_invalid")
+        self.metadata.Parameters_Validate(values)
+        return values
+
+    def ParameterAudit_Get(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
+        firmware = request.mode == ReplayMode.RECORDED_CONFIGURATION or (
+            request.mode == ReplayMode.WHAT_IF and self.FirmwareMember_Is(dataset)
+        )
+        return {
+            "config_mode": request.mode.value,
+            "config_source": (
+                "Firmware build configuration from .ssdecoder"
+                if firmware
+                else "Algorithm Plugin actual defaults"
+            ),
+            "parameter_schema_identity": self.metadata.ParameterSchemaIdentity_Get(),
+            "parameter_metadata": {
+                p.parameter_id: p.ToDict() for p in self.metadata.parameter_schema
+            },
+        }
 
     def FirmwareMember_Is(self, dataset: FlightDataset) -> bool:
         semantic_context = dataset.semantic_context
@@ -289,20 +416,15 @@ class AlgorithmPlugin(ABC):
         required_parameter_ids = tuple(
             parameter.parameter_id
             for parameter in self.metadata.parameter_schema
+            if parameter.required
         )
         missing = tuple(
-            parameter_id
-            for parameter_id in required_parameter_ids
-            if parameter_id not in recorded
+            parameter_id for parameter_id in required_parameter_ids if parameter_id not in recorded
         )
         firmware_member = self.FirmwareMember_Is(dataset)
         recorded_output = self.RecordedOutput_IsAvailable(dataset)
         return AlgorithmConfigurationAvailability(
-            recorded_available=(
-                input_available
-                and firmware_member
-                and not missing
-            ),
+            recorded_available=(input_available and firmware_member and not missing),
             offline_available=input_available,
             firmware_member=firmware_member,
             recorded_output_available=recorded_output,

@@ -251,7 +251,7 @@ class ReplayPage(QWidget):
             if parameter.kind != "float":
                 continue
             editor = QDoubleSpinBox(self.parameters_group)
-            editor.setDecimals(6)
+            editor.setDecimals(parameter.precision)
             editor.setKeyboardTracking(False)
             editor.setRange(
                 parameter.minimum if parameter.minimum is not None else -1.0e12,
@@ -350,6 +350,7 @@ class ReplayPage(QWidget):
                     self._offline_parameter_values.get(parameter_id, editor.value()),
                 )
             )
+            editor.setProperty("actualValue", self._parameter_baseline_values.get(parameter_id))
             editor.blockSignals(False)
         self._ParametersDirty_Refresh()
 
@@ -377,6 +378,14 @@ class ReplayPage(QWidget):
             value=parameter.parameter_id,
         )
         text = f"{tooltip}\n{identifier}" if tooltip else identifier
+        text += "\n" + self._translator.Text_Get(
+            "replay.parameter_contract",
+            representation=parameter.representation,
+            minimum=parameter.minimum,
+            maximum=parameter.maximum,
+            unit=parameter.unit,
+        )
+
         self._parameter_labels[parameter.parameter_id].setToolTip(text)
         self._parameter_widgets[parameter.parameter_id].setToolTip(text)
 
@@ -391,10 +400,12 @@ class ReplayPage(QWidget):
         if mode == ReplayMode.RECORDED_CONFIGURATION:
             self._parameter_baseline_values = dict(self._recorded_parameter_values)
         elif mode == ReplayMode.WHAT_IF:
-            self._parameter_baseline_values = {
-                **self._offline_parameter_values,
-                **self._recorded_parameter_values,
-            }
+            firmware = self._dataset is not None and self._CurrentPlugin_Get().FirmwareMember_Is(
+                self._dataset
+            )
+            self._parameter_baseline_values = dict(
+                self._recorded_parameter_values if firmware else self._offline_parameter_values
+            )
         else:
             self._parameter_baseline_values = dict(self._offline_parameter_values)
         for parameter_id, editor in self._parameter_widgets.items():
@@ -405,11 +416,75 @@ class ReplayPage(QWidget):
                     float(self._parameter_specs[parameter_id].default),
                 )
             )
+            editor.setProperty("actualValue", self._parameter_baseline_values.get(parameter_id))
             editor.blockSignals(False)
-        self.parameters_group.setEnabled(what_if)
+        self.parameters_group.setEnabled(True)
+        for editor in self._parameter_widgets.values():
+            editor.setReadOnly(not what_if)
+        firmware = self._dataset is not None and self._CurrentPlugin_Get().FirmwareMember_Is(
+            self._dataset
+        )
+        self.parameter_reset_button.setText(
+            self._translator.Text_Get(
+                "action.reset_firmware_parameters"
+                if firmware
+                else "action.reset_offline_parameters"
+            )
+        )
+        self.parameter_reset_button.setToolTip(self.parameter_reset_button.text())
         self.parameter_reset_button.setEnabled(what_if and self._dataset is not None)
         self._ParametersDirty_Refresh()
         self._Availability_Refresh()
+
+    def _ActualValues_Get(self) -> dict[str, float]:
+        values = {}
+        for name, editor in self._parameter_widgets.items():
+            actual = editor.property("actualValue")
+            if actual is not None and editor.value() == round(actual, editor.decimals()):
+                values[name] = actual
+            else:
+                values[name] = editor.value()
+        return values
+
+    def Configuration_Get(self) -> dict:
+        plugin = self._CurrentPlugin_Get()
+        mode = ReplayMode(self.mode_combo.currentData())
+        values = (
+            self._ActualValues_Get()
+            if mode == ReplayMode.WHAT_IF
+            else dict(self._parameter_baseline_values)
+        )
+        request = ReplayRequest(mode=mode, parameters=values)
+        plugin.metadata.Parameters_Validate(values)
+        return {
+            "algorithm_id": plugin.metadata.plugin_id,
+            "algorithm_version": plugin.metadata.version,
+            "mode": mode.value,
+            "input_source": request.input_source,
+            "actual_values": values,
+            "parameter_schema_identity": plugin.metadata.ParameterSchemaIdentity_Get(),
+            "provenance": plugin.ParameterAudit_Get(self._dataset, request)["config_source"],
+        }
+
+    def Configuration_Set(self, configuration: dict) -> None:
+        from silverstar_flp.core.project import ReplayConfiguration_Validate
+
+        ReplayConfiguration_Validate(configuration)
+        plugin = self._registry.Algorithm_Get(configuration["algorithm_id"])
+        request = ReplayRequest(
+            mode=ReplayMode(configuration["mode"]),
+            input_source=configuration["input_source"],
+            parameters=configuration["actual_values"],
+        )
+        plugin.Parameters_Resolve(self._dataset, request)
+        self.algorithm_combo.setCurrentIndex(
+            self.algorithm_combo.findData(configuration["algorithm_id"])
+        )
+        self.mode_combo.setCurrentIndex(self.mode_combo.findData(request.mode))
+        for name, value in request.parameters.items():
+            self._parameter_widgets[name].setValue(value)
+            self._parameter_widgets[name].setProperty("actualValue", value)
+        self._ParametersDirty_Refresh()
 
     def _CurrentPlugin_Get(self):
         return self._registry.Algorithm_Get(str(self.algorithm_combo.currentData()))
@@ -462,9 +537,10 @@ class ReplayPage(QWidget):
         mode_available = (
             configuration.recorded_available
             if mode == ReplayMode.RECORDED_CONFIGURATION
+            or (mode == ReplayMode.WHAT_IF and configuration.firmware_member)
             else configuration.offline_available
         )
-        if mode == ReplayMode.RECORDED_CONFIGURATION and not mode_available:
+        if mode != ReplayMode.OFFLINE and not mode_available:
             missing = ", ".join(configuration.missing_recorded_parameters)
             self.availability_label.setText(
                 details
@@ -474,18 +550,17 @@ class ReplayPage(QWidget):
                     values=missing or self._translator.Text_Get("status.none"),
                 )
             )
+        if mode == ReplayMode.RECORDED_CONFIGURATION and mode_available:
+            details += " · " + self._translator.Text_Get("replay.firmware_parameter_provenance")
+            self.availability_label.setText(details)
         self.run_button.setEnabled(availability.available and mode_available)
 
     def _Replay_Request(self) -> None:
         mode = self.mode_combo.currentData()
         parameters = (
-            {name: editor.value() for name, editor in self._parameter_widgets.items()}
+            self._ActualValues_Get()
             if mode == ReplayMode.WHAT_IF
-            else (
-                dict(self._offline_parameter_values)
-                if mode == ReplayMode.OFFLINE
-                else {}
-            )
+            else (dict(self._offline_parameter_values) if mode == ReplayMode.OFFLINE else {})
         )
         request = ReplayRequest(
             mode=mode,
@@ -806,6 +881,9 @@ class ReplayPage(QWidget):
         self.mode_combo.blockSignals(False)
 
     def Language_Apply(self, translator: Translator) -> None:
+        edited = (
+            self._ActualValues_Get() if self.mode_combo.currentData() == ReplayMode.WHAT_IF else {}
+        )
         self._translator = translator
         self._ComboLabels_Refresh()
         self._AlgorithmLabels_Refresh()
@@ -813,29 +891,17 @@ class ReplayPage(QWidget):
         self.algorithm_label.setText(translator.Text_Get("label.algorithm"))
         self.mode_label.setText(translator.Text_Get("label.mode"))
         self.fidelity_label.setText(translator.Text_Get("label.fidelity"))
-        self.analysis_source_group.setTitle(
-            translator.Text_Get("replay.analysis_data_source")
-        )
+        self.analysis_source_group.setTitle(translator.Text_Get("replay.analysis_data_source"))
         self.parameters_group.setTitle(translator.Text_Get("replay.what_if_parameters"))
-        self.parameter_group_label.setText(
-            translator.Text_Get("replay.parameter_group")
-        )
-        self.parameter_reset_button.setText(
-            translator.Text_Get("action.reset_parameters")
-        )
+        self.parameter_group_label.setText(translator.Text_Get("replay.parameter_group"))
+        self.parameter_reset_button.setText(translator.Text_Get("action.reset_parameters"))
         self.parameter_reset_button.setToolTip(
             translator.Text_Get("action.reset_parameters_tooltip")
         )
-        self.parameter_modified_label.setText(
-            translator.Text_Get("replay.parameters_modified")
-        )
+        self.parameter_modified_label.setText(translator.Text_Get("replay.parameters_modified"))
         self.run_button.setText(translator.Text_Get("action.run_replay"))
-        self.result_information_group.setTitle(
-            translator.Text_Get("replay.result_information")
-        )
-        self.stored_results_group.setTitle(
-            translator.Text_Get("replay.stored_results")
-        )
+        self.result_information_group.setTitle(translator.Text_Get("replay.result_information"))
+        self.stored_results_group.setTitle(translator.Text_Get("replay.stored_results"))
         self.stored_results_table.setHorizontalHeaderLabels(
             [
                 translator.Text_Get("replay.result_id"),
@@ -866,6 +932,10 @@ class ReplayPage(QWidget):
         self._ParameterForm_Refresh()
         self._ParametersDirty_Refresh()
         self._Mode_Refresh()
+        for key, value in edited.items():
+            self._parameter_widgets[key].setValue(value)
+            self._parameter_widgets[key].setProperty("actualValue", value)
+        self._ParametersDirty_Refresh()
         self._Availability_Refresh()
         if self._last_entry is not None:
             self._ResultInformation_Set(self._last_entry)

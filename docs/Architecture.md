@@ -17,7 +17,7 @@ recorded data but never supplies executable algorithm behavior. Plotting, export
 persistence, Data Explorer, deploy replay, landing replay, and GUI code remain Core services.
 
 The production registry contains trusted containers and offline algorithms, not a fixed Record
-parser. `LogOpenCoordinator` creates `DecoderProfileParserPlugin` only after an exact package 1.1
+parser. `LogOpenCoordinator` creates `DecoderProfileParserPlugin` only after an exact package 1.2
 and Descriptor match. The historical fixed parser module remains for frozen test fixtures but is
 not reachable from GUI, CLI, project restore, or drag/drop.
 
@@ -33,7 +33,7 @@ AIR frames are deliberately outside the SSLOG container.
 ```text
 read-only SSLOG BIN
   -> trusted SSLOG0 container (CRC plus bounded/validated FLG1 recovery, RawRecordFrame)
-  -> mandatory bootstrap Descriptor + exact .ssdecoder 1.1 validation/cache
+  -> mandatory bootstrap Descriptor + exact .ssdecoder 1.2 validation/cache
   -> dynamic Record Catalog parser (raw Records and instance channels)
   -> semantic adapter + mandatory Calibration Result
   -> FlightDataset + DataQualitySummary + DatasetSemanticContext
@@ -148,7 +148,7 @@ the implementation ID nor fidelity is silently upgraded.
 
 ## Project and audit boundary
 
-`.ssflp` v2 contains exactly one `log_reference`, decoder source/cache references, complete
+`.ssflp` v3 contains exactly one `log_reference`, decoder source/cache references, complete
 package/generation/Catalog/Semantics hashes, container ID/version, exact match mode, replay
 settings, notes, and UI state. Old versions are rejected. Save uses a same-directory temporary
 file, flush/fsync, and atomic replacement. Restore verifies every stored identity before changing

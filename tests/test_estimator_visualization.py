@@ -526,6 +526,8 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
     dataset = Sslog0ParserPlugin().parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_no_gnss_updates.BIN")
     )
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+    dataset = SyntheticParameters_Attach(dataset, tmp_path / "parameters")
     exporter = FlightExporter()
     calls: dict[str, tuple[TimeSeries | None, str, tuple[tuple[float, str, str], ...]]] = {}
     original = exporter._StandardDiagnosticPlot_Write

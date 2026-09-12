@@ -26,6 +26,8 @@ def test_recomputed_and_what_if_results_coexist_and_resolve_independently(
     dataset = Sslog0ParserPlugin().parse(
         StationaryFlight_Build(tmp_path / "SYNTHETIC_replay_store.BIN")
     )
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+    dataset = SyntheticParameters_Attach(dataset, tmp_path / "parameters")
     plugin = PureInsAlgorithmPlugin()
     recomputed = plugin.run(
         dataset,
@@ -57,18 +59,14 @@ def test_recomputed_and_what_if_results_coexist_and_resolve_independently(
     active_position = resolver.Series_Get("navigation.position_enu")
     assert active_position is what_if.channels["navigation.position_enu"]
     recorded_position = resolver.RecordedSeries_Get("navigation.position_enu")
-    assert recorded_position is dataset.Series_Get(
-        "pure_ins.recorded.navigation.position_enu"
-    )
+    assert recorded_position is dataset.Series_Get("pure_ins.recorded.navigation.position_enu")
     explorer_names = resolver.ExplorerChannels_Get()
     assert any(
-        name.endswith("/ navigation.position_enu")
-        and "Pure INS / Recomputed #1" in name
+        name.endswith("/ navigation.position_enu") and "Pure INS / Recomputed #1" in name
         for name in explorer_names
     )
     assert any(
-        name.endswith("/ navigation.position_enu")
-        and "Pure INS / What-if #1" in name
+        name.endswith("/ navigation.position_enu") and "Pure INS / What-if #1" in name
         for name in explorer_names
     )
 
@@ -123,7 +121,12 @@ def test_only_complete_successful_replay_results_are_selectable(
     dataset = Sslog0ParserPlugin().parse(
         StationaryFlight_Build(tmp_path / "SYNTHETIC_source_readiness.BIN")
     )
-    result = PureInsAlgorithmPlugin().run(dataset, ReplayRequest())
+    result = PureInsAlgorithmPlugin().run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     store = ReplayResultStore()
     ready = store.Result_Add(result, algorithm_name="Pure INS")
     unavailable = store.Result_Add(

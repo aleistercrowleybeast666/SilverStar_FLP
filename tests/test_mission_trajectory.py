@@ -20,7 +20,7 @@ from silverstar_flp.core.trajectory import (
 )
 from silverstar_flp.plugins.algorithms.kf6.plugin import Kf6AlgorithmPlugin
 from silverstar_flp.plugins.algorithms.pure_ins.plugin import PureInsAlgorithmPlugin
-from silverstar_flp.plugins.api.algorithm import ReplayRequest
+from silverstar_flp.plugins.api.algorithm import ReplayMode, ReplayRequest
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from tests.sslog_synthetic import START_TIMESTAMP_US, AnalysisFlight_Build
 
@@ -46,7 +46,12 @@ def test_replay_stops_at_landing_and_preserves_post_landing_raw_data(
     raw_before = raw.values.copy()
     assert int(raw.timestamp_us[-1]) > landing
 
-    result = plugin_type().run(dataset, ReplayRequest())
+    result = plugin_type().run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     position = result.channels["navigation.position_enu"]
 
     assert int(position.timestamp_us[-1]) == START_TIMESTAMP_US + 120_000
@@ -80,8 +85,18 @@ def test_post_landing_inputs_do_not_change_pre_landing_replay(
         )
     )
 
-    reference_result = plugin_type().run(reference, ReplayRequest())
-    extended_result = plugin_type().run(extended, ReplayRequest())
+    reference_result = plugin_type().run(
+        reference,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
+    extended_result = plugin_type().run(
+        extended,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
 
     for channel_id in (
         "attitude.q_nb",
@@ -109,7 +124,12 @@ def test_replay_without_landing_runs_to_valid_input_end(
             update_count=10,
         )
     )
-    result = plugin_type().run(dataset, ReplayRequest())
+    result = plugin_type().run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     position = result.channels["navigation.position_enu"]
 
     assert int(position.timestamp_us[-1]) == START_TIMESTAMP_US + 200_000
@@ -139,7 +159,12 @@ def test_bounds_are_cached_once_and_are_source_specific(tmp_path: Path) -> None:
     assert resolver.TrajectoryBoundsCalculationCount_Get("recorded", solution="kf6") == 1
     assert resolver.TrajectoryBounds_Get("recorded", solution="pure_ins") is pure_bounds
 
-    replay = PureInsAlgorithmPlugin().run(dataset, ReplayRequest())
+    replay = PureInsAlgorithmPlugin().run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     entry = store.Result_Add(replay, algorithm_name="Pure INS")
     assert resolver.TrajectoryBoundsCalculationCount_Get(entry.source_id) == 0
     replay_bounds = resolver.TrajectoryBounds_Get(entry.source_id)

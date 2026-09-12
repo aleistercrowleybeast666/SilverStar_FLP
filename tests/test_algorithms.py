@@ -30,7 +30,9 @@ def test_pure_ins_stationary_replay_uses_software_quaternion_and_real_dt(
     stationary_dataset, source: str
 ) -> None:
     plugin = PureInsAlgorithmPlugin()
-    result = plugin.run(stationary_dataset, ReplayRequest(input_source=source))
+    result = plugin.run(
+        stationary_dataset, ReplayRequest(mode=ReplayMode.OFFLINE, input_source=source)
+    )
     assert result.fidelity.value == "APPROXIMATE"
     assert "host_golden_not_verified" in result.warnings
     assert result.diagnostics["software_quaternion_propagation"] is True
@@ -49,7 +51,9 @@ def test_pure_ins_stationary_replay_uses_software_quaternion_and_real_dt(
 def test_replay_defaults_to_corrected_imu_while_increment_support_remains_internal(
     stationary_dataset,
 ) -> None:
-    request = ReplayRequest()
+    request = ReplayRequest(
+        mode=ReplayMode.OFFLINE,
+    )
     assert request.input_source == "corrected_imu"
     for plugin in (PureInsAlgorithmPlugin(), Kf6AlgorithmPlugin()):
         availability = plugin.availability(stationary_dataset)
@@ -69,7 +73,7 @@ def test_pure_ins_never_silently_falls_back_to_other_source(tmp_path: Path) -> N
     assert availability.fidelity.value == "UNAVAILABLE"
     assert "IMU_CORRECTED" in availability.missing_inputs
     with pytest.raises(ValueError, match="replay_unavailable"):
-        plugin.run(dataset, ReplayRequest(input_source="corrected_imu"))
+        plugin.run(dataset, ReplayRequest(mode=ReplayMode.OFFLINE, input_source="corrected_imu"))
 
 
 def test_quaternion_error_is_sign_invariant_and_propagation_is_right_multiplied() -> None:
@@ -85,7 +89,7 @@ def test_kf6_stationary_replay_has_finite_positive_covariance(stationary_dataset
     plugin = Kf6AlgorithmPlugin()
     result = plugin.run(
         stationary_dataset,
-        ReplayRequest(input_source="recorded_inertial_increment"),
+        ReplayRequest(mode=ReplayMode.OFFLINE, input_source="recorded_inertial_increment"),
     )
     state = result.channels["kf6.state"].values
     diagonal = result.channels["kf6.covariance.diagonal"].values
@@ -137,7 +141,7 @@ def test_recorded_and_recomputed_comparison_uses_geodesic_attitude_error(
 ) -> None:
     result = PureInsAlgorithmPlugin().run(
         stationary_dataset,
-        ReplayRequest(input_source="recorded_inertial_increment"),
+        ReplayRequest(mode=ReplayMode.OFFLINE, input_source="recorded_inertial_increment"),
     )
     comparison = Series_Compare(
         stationary_dataset.Series_Get("pure_ins.recorded.attitude.q_nb"),

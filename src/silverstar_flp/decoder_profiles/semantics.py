@@ -294,11 +294,20 @@ class ProjectSemantics:
         manifest: Mapping[str, Any] | None = None,
     ) -> ProjectSemantics:
         schema_id = document.get("schema_id")
-        if schema_id != "silverstar.project-semantics/1.1":
+        if schema_id != "silverstar.project-semantics/1.2":
             raise DecoderProfileError(
                 "decoder_project_semantics_schema_id_unsupported",
                 str(schema_id),
             )
+        from silverstar_flp.decoder_profiles.algorithm_parameters import FirmwareParameters_Validate
+
+        FirmwareParameters_Validate(
+            document.get("firmware_algorithm_parameters"),
+            tuple(
+                item.component_id
+                for item in _FirmwareAlgorithms_Normalize(document.get("algorithms"))
+            ),
+        )
         raw_endpoints = document.get("capability_endpoints", [])
         if not isinstance(raw_endpoints, list) or not all(
             isinstance(item, Mapping) for item in raw_endpoints
@@ -399,12 +408,12 @@ class ProjectSemantics:
         declared_schema_version = document.get("schema_version")
         if declared_schema_version is not None:
             parsed_schema_version = _Integer_Parse(declared_schema_version)
-            if parsed_schema_version != 0x00010001:
+            if parsed_schema_version != 0x00010002:
                 raise DecoderProfileError(
                     "decoder_project_semantics_schema_unsupported",
                     str(parsed_schema_version),
                 )
-        schema_version = 0x00010001
+        schema_version = 0x00010002
         event_catalog = _MetadataCollection_Normalize(
             document.get("event_catalog"),
             "decoder_event_catalog_invalid",

@@ -43,7 +43,12 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     page.show()
     application.processEvents()
 
-    assert ReplayRequest().input_source == "corrected_imu"
+    assert (
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ).input_source
+        == "corrected_imu"
+    )
     assert not hasattr(page, "source_combo")
     assert page.analysis_source_combo.count() == 1
     assert page.analysis_source_combo.itemData(0) == ReplayResultStore.RECORDED_SOURCE_ID
@@ -64,21 +69,17 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     kf6_index = page.algorithm_combo.findData("silverstar.algorithm.kf6")
     assert kf6_index >= 0
     page.algorithm_combo.setCurrentIndex(kf6_index)
-    page.mode_combo.setCurrentIndex(
-        page.mode_combo.findData(ReplayMode.WHAT_IF)
-    )
+    page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.WHAT_IF))
     page.Language_Apply(Translator("zh_CN"))
     application.processEvents()
     assert page.parameters_group.title() == "假设参数"
     assert page.Fidelity_Text_Get(ReplayFidelity.EXACT) == "完整复现"
     assert page.Fidelity_Text_Get(ReplayFidelity.UNAVAILABLE) == "不可复算"
-    assert len(page._parameter_labels) == 15
+    assert len(page._parameter_labels) == 21
     assert page.parameter_group_combo.count() == 4
     assert page.parameter_group_combo.currentText() == "过程模型"
     assert page.parameters_form.rowCount() == 4
-    assert page._parameter_labels["process_accel_std_e"].text() == (
-        "过程加速度噪声标准差 E"
-    )
+    assert page._parameter_labels["process_accel_std_e"].text() == ("过程加速度标准差 E")
     for parameter_id, label in page._parameter_labels.items():
         assert label.text() != parameter_id
         assert parameter_id in label.toolTip()
@@ -102,11 +103,34 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
             nis_profile=recorded_nis,
         )
     )
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+
+    overrides = {
+        f"process_accel_std_{axis}": value
+        for axis, value in zip("enu", recorded_process, strict=True)
+    }
+    if "recorded_nis" in locals():
+        overrides.update(
+            dict(
+                zip(
+                    (
+                        "nis_1d_soft",
+                        "nis_1d_hard",
+                        "nis_2d_soft",
+                        "nis_2d_hard",
+                        "nis_3d_soft",
+                        "nis_3d_hard",
+                        "nis_max_r_scale",
+                    ),
+                    recorded_nis,
+                    strict=True,
+                )
+            )
+        )
+    dataset = SyntheticParameters_Attach(dataset, tmp_path / "params", {"kf6": overrides})
     page = ReplayPage(Translator("en_US"), builtin_registry())
     page.Dataset_Set(dataset, ReplayResultStore())
-    page.algorithm_combo.setCurrentIndex(
-        page.algorithm_combo.findData("silverstar.algorithm.kf6")
-    )
+    page.algorithm_combo.setCurrentIndex(page.algorithm_combo.findData("silverstar.algorithm.kf6"))
     page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.WHAT_IF))
     page.show()
     application.processEvents()
@@ -126,19 +150,13 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
             page._parameter_widgets[f"process_accel_std_{axis}"].value(),
             expected,
         )
-    assert "prediction-stage process noise Q" in page._parameter_labels[
-        "process_accel_std_e"
-    ].toolTip()
+    assert "prediction squares sigma" in page._parameter_labels["process_accel_std_e"].toolTip()
 
-    measurement_index = page.parameter_group_combo.findData(
-        "parameter_group.measurement_noise"
-    )
+    measurement_index = page.parameter_group_combo.findData("parameter_group.measurement_noise")
     page.parameter_group_combo.setCurrentIndex(measurement_index)
     application.processEvents()
-    assert page.parameters_form.rowCount() == 3
-    assert "Recorded GNSS/barometer uncertainty × R scale" in page._parameter_labels[
-        "gnss_position_r_scale"
-    ].toolTip()
+    assert page.parameters_form.rowCount() == 4
+    assert "Actual sigma floor" in page._parameter_labels["gnss_position_std_horizontal"].toolTip()
 
     page._parameter_widgets["process_accel_std_e"].setValue(8.25)
     page._parameter_widgets["nis_1d_soft"].setValue(4.25)
@@ -171,11 +189,16 @@ def test_what_if_group_switch_removes_residual_rows_and_preserves_values(
             process_accel_std_mps2=recorded_process,
         )
     )
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+
+    overrides = {
+        f"process_accel_std_{axis}": value
+        for axis, value in zip("enu", recorded_process, strict=True)
+    }
+    dataset = SyntheticParameters_Attach(dataset, tmp_path / "params", {"kf6": overrides})
     page = ReplayPage(Translator("en_US"), builtin_registry())
     page.Dataset_Set(dataset, ReplayResultStore())
-    page.algorithm_combo.setCurrentIndex(
-        page.algorithm_combo.findData("silverstar.algorithm.kf6")
-    )
+    page.algorithm_combo.setCurrentIndex(page.algorithm_combo.findData("silverstar.algorithm.kf6"))
     page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.WHAT_IF))
     page.show()
     application.processEvents()
@@ -212,20 +235,24 @@ def test_what_if_group_switch_removes_residual_rows_and_preserves_values(
             for row, parameter_id in enumerate(visible_ids):
                 label = page._parameter_labels[parameter_id]
                 editor = page._parameter_widgets[parameter_id]
-                assert page.parameters_form.itemAt(
-                    row,
-                    QFormLayout.ItemRole.LabelRole,
-                ).widget() is label
-                assert page.parameters_form.itemAt(
-                    row,
-                    QFormLayout.ItemRole.FieldRole,
-                ).widget() is editor
+                assert (
+                    page.parameters_form.itemAt(
+                        row,
+                        QFormLayout.ItemRole.LabelRole,
+                    ).widget()
+                    is label
+                )
+                assert (
+                    page.parameters_form.itemAt(
+                        row,
+                        QFormLayout.ItemRole.FieldRole,
+                    ).widget()
+                    is editor
+                )
                 assert label.isVisible()
                 assert editor.isVisible()
                 attached_widgets.extend((label, editor))
-            assert len(attached_widgets) == len(
-                {id(widget) for widget in attached_widgets}
-            )
+            assert len(attached_widgets) == len({id(widget) for widget in attached_widgets})
             hidden_ids = set(page._parameter_specs) - set(visible_ids)
             for parameter_id in hidden_ids:
                 label = page._parameter_labels[parameter_id]
@@ -256,7 +283,12 @@ def test_replay_is_the_only_global_source_selector_and_can_return_to_recorded(
     dataset = Sslog0ParserPlugin().parse(
         StationaryFlight_Build(tmp_path / "SYNTHETIC_replay_sources.BIN")
     )
-    result = PureInsAlgorithmPlugin().run(dataset, ReplayRequest())
+    result = PureInsAlgorithmPlugin().run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     warned_result = replace(
         result,
         warnings=("firmware_build_differs_from_reimplementation",),
@@ -281,10 +313,7 @@ def test_replay_is_the_only_global_source_selector_and_can_return_to_recorded(
     ready_index = page.analysis_source_combo.findData(ready.source_id)
     assert ready_index == 1
     assert page.analysis_source_combo.findData(unavailable.source_id) == -1
-    assert (
-        page.result_information_label.toolTip()
-        == "firmware_build_differs_from_reimplementation"
-    )
+    assert page.result_information_label.toolTip() == "firmware_build_differs_from_reimplementation"
     assert "differs from" in page.result_information_label.text()
 
     selected: list[str] = []

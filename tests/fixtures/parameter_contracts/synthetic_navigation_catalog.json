@@ -1,0 +1,797 @@
+{
+  "$schema": "sslog_record_catalog.schema.json",
+  "canonical_json": {
+    "encoding": "UTF-8",
+    "key_order": "lexicographic",
+    "line_ending": "LF",
+    "number_format": "shortest JSON decimal; integers remain integers",
+    "terminal_newline": true,
+    "whitespace": "none"
+  },
+  "capability_source_identity": {
+    "instance_id": {
+      "semantics": "zero-based instance within the record type's capability class; not a physical-device index",
+      "unit": "capability-class index"
+    },
+    "physical_device_id": {
+      "semantics": "groups capability descriptors supplied by the same physical module",
+      "unit": "project physical-device id"
+    },
+    "reserved": {
+      "semantics": "writer emits zero; reader assigns no meaning",
+      "unit": "none"
+    },
+    "source_descriptor_id": {
+      "semantics": "links this native capability record to DEVICE_DESCRIPTOR.descriptor_id",
+      "unit": "project descriptor id"
+    }
+  },
+  "catalog_schema_id": "silverstar.sslog.record-catalog/1.0",
+  "endianness": "little",
+  "field_contract": {
+    "defaults": {
+      "bitfield": null,
+      "count": 1,
+      "enum": null,
+      "offset": 0,
+      "quantity": "dimensionless",
+      "scale": 1,
+      "timestamp": false,
+      "unit": "1",
+      "validity": null
+    },
+    "semantic_rules": [
+      {
+        "quantity": "monotonic_time",
+        "suffix": "_timestamp_us",
+        "timestamp": true,
+        "unit": "us"
+      },
+      {
+        "quantity": "acceleration",
+        "suffix": "_mps2",
+        "unit": "m/s^2"
+      },
+      {
+        "quantity": "angular_rate",
+        "suffix": "_radps",
+        "unit": "rad/s"
+      },
+      {
+        "quantity": "velocity",
+        "suffix": "_mps",
+        "unit": "m/s"
+      },
+      {
+        "quantity": "velocity_variance",
+        "suffix": "_m2ps2",
+        "unit": "m^2/s^2"
+      },
+      {
+        "quantity": "variance_or_area",
+        "suffix": "_m2",
+        "unit": "m^2"
+      },
+      {
+        "quantity": "magnetic_flux_density",
+        "suffix": "_uT",
+        "unit": "uT"
+      },
+      {
+        "quantity": "pressure",
+        "suffix": "_pa",
+        "unit": "Pa"
+      },
+      {
+        "quantity": "length",
+        "suffix": "_m",
+        "unit": "m"
+      },
+      {
+        "quantity": "length",
+        "suffix": "_cm",
+        "unit": "cm"
+      },
+      {
+        "quantity": "length",
+        "suffix": "_mm",
+        "unit": "mm"
+      },
+      {
+        "quantity": "angle",
+        "suffix": "_deg",
+        "unit": "deg"
+      },
+      {
+        "quantity": "temperature",
+        "suffix": "_c",
+        "unit": "degC"
+      },
+      {
+        "bitfield": "record-specific mask",
+        "quantity": "bit_mask",
+        "suffix": "_mask"
+      },
+      {
+        "bitfield": "record-specific flags",
+        "quantity": "bit_mask",
+        "suffix": "_flags"
+      },
+      {
+        "quantity": "identifier",
+        "suffix": "_id"
+      },
+      {
+        "quantity": "count",
+        "suffix": "_count"
+      },
+      {
+        "name": "instance_id",
+        "offset": 0,
+        "quantity": "capability_instance",
+        "scale": 1
+      },
+      {
+        "name": "source_descriptor_id",
+        "offset": 0,
+        "quantity": "descriptor_reference",
+        "scale": 1
+      },
+      {
+        "enum": "FlightLogRecordType",
+        "name": "record_type",
+        "quantity": "enum"
+      },
+      {
+        "bitfield": "record-specific validity",
+        "name": "valid_mask",
+        "quantity": "validity_mask",
+        "validity": "fields selected by set bits"
+      }
+    ],
+    "type_sizes": {
+      "f32": 4,
+      "i16": 2,
+      "i32": 4,
+      "i64": 8,
+      "i8": 1,
+      "pad": 1,
+      "u16": 2,
+      "u32": 4,
+      "u64": 8,
+      "u8": 1
+    },
+    "wire_order": "fields array order"
+  },
+  "format": "SSLOG0",
+  "instance_routing_fields": [
+    "source_descriptor_id",
+    "instance_id"
+  ],
+  "max_payload_size": 256,
+  "record_crc": "CRC-32/ISO-HDLC",
+  "record_header_size": 24,
+  "record_modes": {
+    "ALGORITHM_DESCRIPTOR": "one-shot",
+    "ALIGNMENT_RESULT": "event",
+    "BARO_MEASUREMENT": "measurement",
+    "BARO_NATIVE": "source-driven",
+    "CALIBRATION_RESULT": "event",
+    "DECODER_PROFILE_DESCRIPTOR": "one-shot",
+    "DEVICE_DESCRIPTOR": "one-shot",
+    "ESTIMATOR": "source-driven",
+    "EVENT": "event",
+    "GNSS_MEASUREMENT": "measurement",
+    "GNSS_NATIVE": "source-driven",
+    "HEALTH": "periodic",
+    "HW_QUAT_NATIVE": "source-driven",
+    "IMU_CORRECTED": "source-driven",
+    "IMU_NATIVE": "source-driven",
+    "INERTIAL_INCREMENT": "source-driven",
+    "INITIAL_STATE": "one-shot",
+    "KF6_DIAGNOSTIC": "source-driven",
+    "KF6_FULL_P": "source-driven",
+    "LOG_STREAM_DESCRIPTOR": "one-shot",
+    "MAG_NATIVE": "source-driven",
+    "MISSION_CONFIG": "one-shot",
+    "POWER": "periodic",
+    "PURE_INS": "source-driven",
+    "RAW_SENSOR": "source-driven",
+    "SAMPLE": "source-driven",
+    "STATS": "periodic",
+    "SYSTEM_CONFIG": "one-shot",
+    "TELEMETRY_DIAG": "periodic"
+  },
+  "records": [
+    {
+      "c_type": "FlightLogEventRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "event"
+      },
+      "enum": "FLIGHT_LOG_RECORD_EVENT",
+      "fields": [
+        {
+          "name": "event_id",
+          "type": "u8"
+        },
+        {
+          "count": 3,
+          "type": "pad"
+        },
+        {
+          "name": "arg0",
+          "type": "u32"
+        },
+        {
+          "name": "arg1",
+          "type": "u32"
+        }
+      ],
+      "id": "0x02",
+      "member": "event",
+      "name": "EVENT",
+      "payload_size": 12,
+      "size_macro": "FLIGHT_LOG_EVENT_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogSystemConfigRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "one_shot"
+      },
+      "enum": "FLIGHT_LOG_RECORD_SYSTEM_CONFIG",
+      "fields": [
+        {
+          "count": 4,
+          "name": "version",
+          "type": "u8"
+        },
+        {
+          "name": "profile_id",
+          "type": "u32"
+        },
+        {
+          "name": "device_config_digest",
+          "type": "u32"
+        },
+        {
+          "name": "configured_imu_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "configured_gnss_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "configured_magnetometer_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "configured_barometer_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "configured_hardware_quaternion_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "mechanization_subsample_count",
+          "type": "u16"
+        },
+        {
+          "name": "expected_ins_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "mechanization_min_sample_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "mechanization_max_sample_rate_hz",
+          "type": "u16"
+        },
+        {
+          "name": "log_profile_id",
+          "type": "u16"
+        },
+        {
+          "name": "sync_period_us",
+          "type": "u32"
+        },
+        {
+          "name": "aggregation_buffer_size",
+          "type": "u16"
+        },
+        {
+          "name": "normal_queue_depth",
+          "type": "u8"
+        },
+        {
+          "name": "estimator_queue_depth",
+          "type": "u8"
+        },
+        {
+          "name": "device_descriptor_count",
+          "type": "u16"
+        },
+        {
+          "name": "algorithm_descriptor_count",
+          "type": "u16"
+        },
+        {
+          "name": "log_stream_descriptor_count",
+          "type": "u16"
+        },
+        {
+          "name": "reserved",
+          "type": "u16"
+        },
+        {
+          "count": 6,
+          "name": "p0_diagonal",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "process_accel_std_mps2",
+          "type": "f32"
+        },
+        {
+          "count": 5,
+          "name": "measurement_profile",
+          "type": "f32"
+        },
+        {
+          "count": 7,
+          "name": "nis_profile",
+          "type": "f32"
+        }
+      ],
+      "id": "0x05",
+      "member": "system_config",
+      "name": "SYSTEM_CONFIG",
+      "payload_size": 132,
+      "size_macro": "FLIGHT_LOG_SYSTEM_CONFIG_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogInitialStateRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "one_shot"
+      },
+      "enum": "FLIGHT_LOG_RECORD_INITIAL_STATE",
+      "fields": [
+        {
+          "name": "alignment_algorithm",
+          "type": "u8"
+        },
+        {
+          "name": "hardware_mode",
+          "type": "u8"
+        },
+        {
+          "name": "mode_verified",
+          "type": "u8"
+        },
+        {
+          "name": "origin_valid_flags",
+          "type": "u8"
+        },
+        {
+          "name": "alignment_sample_count",
+          "type": "u16"
+        },
+        {
+          "name": "gnss_sample_count",
+          "type": "u16"
+        },
+        {
+          "name": "barometer_sample_count",
+          "type": "u16"
+        },
+        {
+          "name": "reserved",
+          "type": "u16"
+        },
+        {
+          "count": 4,
+          "name": "q_nb",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "acceleration_mean_b_mps2",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "gyro_mean_b_radps",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "magnetic_field_mean_b_uT",
+          "type": "f32"
+        },
+        {
+          "name": "gnss_origin_latitude_e7",
+          "type": "i32"
+        },
+        {
+          "name": "gnss_origin_longitude_e7",
+          "type": "i32"
+        },
+        {
+          "name": "gnss_origin_height_mm",
+          "type": "i32"
+        },
+        {
+          "count": 3,
+          "name": "gnss_origin_position_std_m",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "initial_velocity_enu_mps",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "initial_velocity_std_mps",
+          "type": "f32"
+        },
+        {
+          "name": "barometer_origin_altitude_m",
+          "type": "f32"
+        },
+        {
+          "name": "barometer_origin_std_m",
+          "type": "f32"
+        },
+        {
+          "count": 6,
+          "name": "p0_diagonal",
+          "type": "f32"
+        }
+      ],
+      "id": "0x0D",
+      "member": "initial_state",
+      "name": "INITIAL_STATE",
+      "payload_size": 144,
+      "size_macro": "FLIGHT_LOG_INITIAL_STATE_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogBaroNativeRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "decimation"
+      },
+      "enum": "FLIGHT_LOG_RECORD_BARO_NATIVE",
+      "fields": [
+        {
+          "name": "source_descriptor_id",
+          "type": "u16"
+        },
+        {
+          "name": "instance_id",
+          "type": "u8"
+        },
+        {
+          "name": "reserved",
+          "type": "u8"
+        },
+        {
+          "name": "sample_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "receive_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "sequence",
+          "type": "u32"
+        },
+        {
+          "name": "pressure_raw_pa",
+          "type": "i32"
+        },
+        {
+          "name": "altitude_raw_cm",
+          "type": "i32"
+        },
+        {
+          "name": "pressure_pa",
+          "type": "f32"
+        },
+        {
+          "name": "altitude_m",
+          "type": "f32"
+        },
+        {
+          "name": "altitude_variance_m2",
+          "type": "f32"
+        },
+        {
+          "name": "valid_mask",
+          "type": "u32"
+        }
+      ],
+      "id": "0x10",
+      "member": "baro_native",
+      "name": "BARO_NATIVE",
+      "payload_size": 48,
+      "size_macro": "FLIGHT_LOG_BARO_NATIVE_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogBaroMeasurementRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "every"
+      },
+      "enum": "FLIGHT_LOG_RECORD_BARO_MEASUREMENT",
+      "fields": [
+        {
+          "name": "sample_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "receive_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "sequence",
+          "type": "u32"
+        },
+        {
+          "name": "relative_altitude_m",
+          "type": "f32"
+        },
+        {
+          "name": "variance_m2",
+          "type": "f32"
+        },
+        {
+          "name": "valid_mask",
+          "type": "u32"
+        }
+      ],
+      "id": "0x15",
+      "member": "baro_measurement",
+      "name": "BARO_MEASUREMENT",
+      "payload_size": 32,
+      "size_macro": "FLIGHT_LOG_BARO_MEASUREMENT_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogImuCorrectedRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "decimation"
+      },
+      "enum": "FLIGHT_LOG_RECORD_IMU_CORRECTED",
+      "fields": [
+        {
+          "name": "sample_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "receive_timestamp_us",
+          "type": "u64"
+        },
+        {
+          "name": "sequence",
+          "type": "u32"
+        },
+        {
+          "name": "source_id",
+          "type": "u16"
+        },
+        {
+          "name": "virtual_imu_id",
+          "type": "u16"
+        },
+        {
+          "name": "valid_mask",
+          "type": "u32"
+        },
+        {
+          "count": 3,
+          "name": "accel_b_mps2",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "gyro_b_radps",
+          "type": "f32"
+        },
+        {
+          "name": "temperature_c",
+          "type": "f32"
+        },
+        {
+          "name": "calibration_mode",
+          "type": "u8"
+        },
+        {
+          "name": "correction_valid",
+          "type": "u8"
+        },
+        {
+          "name": "reserved",
+          "type": "u16"
+        }
+      ],
+      "id": "0x16",
+      "member": "imu_corrected",
+      "name": "IMU_CORRECTED",
+      "payload_size": 60,
+      "size_macro": "FLIGHT_LOG_IMU_CORRECTED_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogCalibrationResultRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "event"
+      },
+      "enum": "FLIGHT_LOG_RECORD_CALIBRATION_RESULT",
+      "fields": [
+        {
+          "name": "source_id",
+          "type": "u16"
+        },
+        {
+          "name": "virtual_imu_id",
+          "type": "u16"
+        },
+        {
+          "name": "mode",
+          "type": "u8"
+        },
+        {
+          "name": "state",
+          "type": "u8"
+        },
+        {
+          "name": "ready",
+          "type": "u8"
+        },
+        {
+          "name": "completed_face_mask",
+          "type": "u8"
+        },
+        {
+          "name": "samples",
+          "type": "u32"
+        },
+        {
+          "name": "reject_count",
+          "type": "u32"
+        },
+        {
+          "name": "retry_count",
+          "type": "u32"
+        },
+        {
+          "name": "start_sequence",
+          "type": "u32"
+        },
+        {
+          "count": 3,
+          "name": "accel_bias_mps2",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "accel_scale",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "gyro_bias_radps",
+          "type": "f32"
+        },
+        {
+          "count": 3,
+          "name": "gyro_scale",
+          "type": "f32"
+        }
+      ],
+      "id": "0x17",
+      "member": "calibration_result",
+      "name": "CALIBRATION_RESULT",
+      "payload_size": 72,
+      "size_macro": "FLIGHT_LOG_CALIBRATION_RESULT_PAYLOAD_SIZE",
+      "version": 0
+    },
+    {
+      "c_type": "FlightLogDecoderProfileDescriptorRecord",
+      "default_stream": {
+        "decimation": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "one_shot"
+      },
+      "enum": "FLIGHT_LOG_RECORD_DECODER_PROFILE_DESCRIPTOR",
+      "fields": [
+        {
+          "name": "package_schema_major",
+          "type": "u16"
+        },
+        {
+          "name": "package_schema_minor",
+          "type": "u16"
+        },
+        {
+          "name": "container_format_major",
+          "type": "u16"
+        },
+        {
+          "name": "container_format_minor",
+          "type": "u16"
+        },
+        {
+          "count": 16,
+          "name": "record_catalog_hash_128",
+          "type": "u8"
+        },
+        {
+          "count": 16,
+          "name": "project_semantics_hash_128",
+          "type": "u8"
+        },
+        {
+          "count": 16,
+          "name": "generation_profile_hash_128",
+          "type": "u8"
+        },
+        {
+          "count": 8,
+          "name": "reserved",
+          "type": "u8"
+        }
+      ],
+      "id": "0x1D",
+      "member": "decoder_profile_descriptor",
+      "name": "DECODER_PROFILE_DESCRIPTOR",
+      "payload_size": 64,
+      "size_macro": "FLIGHT_LOG_DECODER_PROFILE_DESCRIPTOR_PAYLOAD_SIZE",
+      "version": 0
+    }
+  ],
+  "sensor_source_change_event": {
+    "arg0": "bits7:0 device_class, 15:8 old_instance, 23:16 new_instance, 31:24 reason",
+    "arg1": "bits15:0 old_descriptor_id, 31:16 new_descriptor_id",
+    "event_id": "FLIGHT_LOG_EVENT_SENSOR_SOURCE_CHANGE",
+    "reasons": {
+      "1": "initial_selection",
+      "2": "failover",
+      "3": "recovery",
+      "4": "configuration",
+      "5": "prestart_primary_unavailable",
+      "6": "gnss_liveness_timeout",
+      "7": "telemetry_consecutive_tx_timeout",
+      "8": "telemetry_init_failure"
+    }
+  }
+}

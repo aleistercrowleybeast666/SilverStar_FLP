@@ -60,7 +60,9 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
     )
     result = PureInsAlgorithmPlugin().run(
         dataset,
-        ReplayRequest(),
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
     )
     store = ReplayResultStore()
     entry = store.Result_Add(result, algorithm_name="Pure INS")
@@ -99,14 +101,11 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
         (velocity_legend.pos().x(), velocity_legend.pos().y()),
         (30.0, 30.0),
     )
-    velocity_names = {
-        item.name() for item in page.velocity_plot.listDataItems() if item.name()
-    }
+    velocity_names = {item.name() for item in page.velocity_plot.listDataItems() if item.name()}
     assert any("Recorded Pure INS" in name for name in velocity_names)
     assert any("Recorded KF_6" in name for name in velocity_names)
     velocity_colors = [
-        item.opts["pen"].color().name()
-        for item in page.velocity_plot.listDataItems()
+        item.opts["pen"].color().name() for item in page.velocity_plot.listDataItems()
     ]
     assert len(velocity_colors) == len(set(velocity_colors))
     assert np.allclose(
@@ -215,7 +214,12 @@ def test_recorded_recomputed_and_what_if_share_landing_marker_lifecycle(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_marker_sources.BIN")
     )
     plugin = PureInsAlgorithmPlugin()
-    recomputed = plugin.run(dataset, ReplayRequest())
+    recomputed = plugin.run(
+        dataset,
+        ReplayRequest(
+            mode=ReplayMode.OFFLINE,
+        ),
+    )
     what_if = plugin.run(
         dataset,
         ReplayRequest(
@@ -324,6 +328,8 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     dataset = Sslog0ParserPlugin().parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_state_page.BIN")
     )
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+    dataset = SyntheticParameters_Attach(dataset, tmp_path / "parameters")
     resolver = ChannelResolver(dataset, ReplayResultStore())
     page = StateEstimationPage(Translator("en_US"))
     page.Dataset_Set(dataset, resolver)

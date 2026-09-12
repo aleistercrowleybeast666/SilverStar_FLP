@@ -141,6 +141,15 @@ class DatasetSemanticContext:
         object.__setattr__(self, "stable_aliases", _Immutable_Get(self.stable_aliases))
         object.__setattr__(self, "raw_metadata", _Immutable_Get(self.raw_metadata))
 
+    def FirmwareParameters_Get(self, component_id: str) -> Mapping[str, Any] | None:
+        for group in self.raw_metadata.get("firmware_algorithm_parameters", ()):
+            if group["component"] == component_id:
+                return MappingProxyType({p["id"]: p for p in group["parameters"]})
+        return None
+
+    def FirmwareParameterSets_Get(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self.raw_metadata.get("firmware_algorithm_parameters", ()))
+
     def StableChannelId_Get(self, role_id: str) -> str | None:
         return self.stable_aliases.get(role_id)
 
@@ -239,6 +248,7 @@ class DatasetSemanticContext:
         return {
             "package_identity": self.package_identity.ToDict(),
             "firmware_algorithm_ids": list(self.firmware_algorithm_ids),
+            "algorithm_parameters": _JsonCompatible_Get(self.FirmwareParameterSets_Get()),
             "protocols": _JsonCompatible_Get(self.protocols),
             "hardware": _JsonCompatible_Get(self.hardware),
             "modes": _JsonCompatible_Get(self.modes),
@@ -253,9 +263,7 @@ class DatasetSemanticContext:
             "logging_streams": _JsonCompatible_Get(self.logging_streams),
             "components": _JsonCompatible_Get(self.components),
             "component_locks": _JsonCompatible_Get(self.component_locks),
-            "raw_channel_id_templates": _JsonCompatible_Get(
-                self.raw_channel_id_templates
-            ),
+            "raw_channel_id_templates": _JsonCompatible_Get(self.raw_channel_id_templates),
             "stable_aliases": dict(self.stable_aliases),
             "calibration": self.calibration.ToDict(),
         }

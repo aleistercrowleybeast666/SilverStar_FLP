@@ -1,0 +1,470 @@
+{
+  "schema_id": "silverstar.algorithm-parameters/1.0",
+  "parameters": [
+    {
+      "id": "gravity_mps2",
+      "type": "float",
+      "default": 9.78,
+      "unit": "m/s^2",
+      "representation": "value",
+      "min": 1.0,
+      "max": 20.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 0,
+      "generated_symbol": "SYSTEM_KF_GRAVITY_MPS2",
+      "display_names": {
+        "en_US": "Gravity",
+        "zh_CN": "重力加速度"
+      },
+      "description": {
+        "en_US": "Navigation gravity subtraction only; calibration, alignment and sensor conversion retain their separate platform gravity.",
+        "zh_CN": "仅用于导航重力扣除；校准、对准和传感器换算保留独立的平台重力配置。"
+      }
+    },
+    {
+      "id": "p0_position_e",
+      "type": "float",
+      "default": 4.0,
+      "unit": "m^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 1,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_POSITION_E_VARIANCE_M2",
+      "display_names": {
+        "en_US": "P0 position E",
+        "zh_CN": "P0 位置 E"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "p0_position_n",
+      "type": "float",
+      "default": 4.0,
+      "unit": "m^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 2,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_POSITION_N_VARIANCE_M2",
+      "display_names": {
+        "en_US": "P0 position N",
+        "zh_CN": "P0 位置 N"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "p0_position_u",
+      "type": "float",
+      "default": 9.0,
+      "unit": "m^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 3,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_POSITION_U_VARIANCE_M2",
+      "display_names": {
+        "en_US": "P0 position U",
+        "zh_CN": "P0 位置 U"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "p0_velocity_e",
+      "type": "float",
+      "default": 0.25,
+      "unit": "m^2/s^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 4,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_VELOCITY_E_VARIANCE_M2PS2",
+      "display_names": {
+        "en_US": "P0 velocity E",
+        "zh_CN": "P0 速度 E"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "p0_velocity_n",
+      "type": "float",
+      "default": 0.25,
+      "unit": "m^2/s^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 5,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_VELOCITY_N_VARIANCE_M2PS2",
+      "display_names": {
+        "en_US": "P0 velocity N",
+        "zh_CN": "P0 速度 N"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "p0_velocity_u",
+      "type": "float",
+      "default": 0.25,
+      "unit": "m^2/s^2",
+      "representation": "covariance_diagonal",
+      "min": 0.001,
+      "max": 1000000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 6,
+      "generated_symbol": "SYSTEM_ESTIMATOR_P0_VELOCITY_U_VARIANCE_M2PS2",
+      "display_names": {
+        "en_US": "P0 velocity U",
+        "zh_CN": "P0 速度 U"
+      },
+      "description": {
+        "en_US": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+        "zh_CN": "初始协方差对角下限；GNSS 不确定性可能增大 P0。此值不再平方。"
+      }
+    },
+    {
+      "id": "process_accel_std_e",
+      "type": "float",
+      "default": 1.5,
+      "unit": "m/s^2",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 100.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 7,
+      "generated_symbol": "SYSTEM_ESTIMATOR_PROCESS_ACCEL_E_STD_MPS2_OVERRIDE",
+      "display_names": {
+        "en_US": "Process acceleration sigma E",
+        "zh_CN": "过程加速度标准差 E"
+      },
+      "description": {
+        "en_US": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+        "zh_CN": "逐轴加速度标准差；预测过程按原公式平方并乘以原有时间系数生成 Q。"
+      }
+    },
+    {
+      "id": "process_accel_std_n",
+      "type": "float",
+      "default": 1.5,
+      "unit": "m/s^2",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 100.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 8,
+      "generated_symbol": "SYSTEM_ESTIMATOR_PROCESS_ACCEL_N_STD_MPS2_OVERRIDE",
+      "display_names": {
+        "en_US": "Process acceleration sigma N",
+        "zh_CN": "过程加速度标准差 N"
+      },
+      "description": {
+        "en_US": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+        "zh_CN": "逐轴加速度标准差；预测过程按原公式平方并乘以原有时间系数生成 Q。"
+      }
+    },
+    {
+      "id": "process_accel_std_u",
+      "type": "float",
+      "default": 2.0,
+      "unit": "m/s^2",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 100.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 9,
+      "generated_symbol": "SYSTEM_ESTIMATOR_PROCESS_ACCEL_U_STD_MPS2_OVERRIDE",
+      "display_names": {
+        "en_US": "Process acceleration sigma U",
+        "zh_CN": "过程加速度标准差 U"
+      },
+      "description": {
+        "en_US": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+        "zh_CN": "逐轴加速度标准差；预测过程按原公式平方并乘以原有时间系数生成 Q。"
+      }
+    },
+    {
+      "id": "gnss_position_std_horizontal",
+      "type": "float",
+      "default": 1.5,
+      "unit": "m",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 1000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 10,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_HORIZONTAL_STD_FLOOR_M_OVERRIDE",
+      "display_names": {
+        "en_US": "GNSS horizontal position sigma floor",
+        "zh_CN": "GNSS 水平位置标准差下限"
+      },
+      "description": {
+        "en_US": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+        "zh_CN": "实际标准差下限，非固定 R。原规则：sigma=max(接收机 sigma×1.25, 下限)，R=sigma²。水平 E/N 共用下限；速度 E/N/U 共用下限。"
+      }
+    },
+    {
+      "id": "gnss_position_std_vertical",
+      "type": "float",
+      "default": 2.5,
+      "unit": "m",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 1000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 11,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_VERTICAL_STD_FLOOR_M_OVERRIDE",
+      "display_names": {
+        "en_US": "GNSS vertical position sigma floor",
+        "zh_CN": "GNSS 垂直位置标准差下限"
+      },
+      "description": {
+        "en_US": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+        "zh_CN": "实际标准差下限，非固定 R。原规则：sigma=max(接收机 sigma×1.25, 下限)，R=sigma²。水平 E/N 共用下限；速度 E/N/U 共用下限。"
+      }
+    },
+    {
+      "id": "gnss_velocity_std",
+      "type": "float",
+      "default": 0.15,
+      "unit": "m/s",
+      "representation": "sigma",
+      "min": 0.001,
+      "max": 1000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 12,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_VELOCITY_STD_FLOOR_MPS_OVERRIDE",
+      "display_names": {
+        "en_US": "GNSS velocity sigma floor (E/N/U)",
+        "zh_CN": "GNSS 速度标准差下限（E/N/U）"
+      },
+      "description": {
+        "en_US": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+        "zh_CN": "实际标准差下限，非固定 R。原规则：sigma=max(接收机 sigma×1.25, 下限)，R=sigma²。水平 E/N 共用下限；速度 E/N/U 共用下限。"
+      }
+    },
+    {
+      "id": "baro_std_m",
+      "type": "float",
+      "default": 5.0,
+      "unit": "m",
+      "representation": "sigma",
+      "min": 1.5,
+      "max": 1000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "basic",
+      "order": 13,
+      "generated_symbol": "SYSTEM_ESTIMATOR_BAROMETER_ALTITUDE_STD_M_OVERRIDE",
+      "display_names": {
+        "en_US": "Barometer altitude sigma",
+        "zh_CN": "气压高度标准差"
+      },
+      "description": {
+        "en_US": "Altitude sigma, squared once by the existing measurement update; existing minimum is 1.5 m.",
+        "zh_CN": "高度标准差，由原测量更新平方一次；原有最小值为 1.5 m。"
+      }
+    },
+    {
+      "id": "nis_1d_soft",
+      "type": "float",
+      "default": 6.635,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 14,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_1D_SOFT_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 1D soft",
+        "zh_CN": "NIS 1 维 软门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      }
+    },
+    {
+      "id": "nis_1d_hard",
+      "type": "float",
+      "default": 10.828,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 15,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_1D_HARD_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 1D hard",
+        "zh_CN": "NIS 1 维 硬门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      },
+      "greater_than": "nis_1d_soft"
+    },
+    {
+      "id": "nis_2d_soft",
+      "type": "float",
+      "default": 9.21,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 16,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_2D_SOFT_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 2D soft",
+        "zh_CN": "NIS 2 维 软门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      }
+    },
+    {
+      "id": "nis_2d_hard",
+      "type": "float",
+      "default": 13.816,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 17,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_2D_HARD_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 2D hard",
+        "zh_CN": "NIS 2 维 硬门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      },
+      "greater_than": "nis_2d_soft"
+    },
+    {
+      "id": "nis_3d_soft",
+      "type": "float",
+      "default": 11.345,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 18,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_3D_SOFT_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 3D soft",
+        "zh_CN": "NIS 3 维 软门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      }
+    },
+    {
+      "id": "nis_3d_hard",
+      "type": "float",
+      "default": 16.266,
+      "unit": "1",
+      "representation": "value",
+      "min": 0.001,
+      "max": 10000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 19,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_3D_HARD_THRESHOLD",
+      "display_names": {
+        "en_US": "NIS 3D hard",
+        "zh_CN": "NIS 3 维 硬门限"
+      },
+      "description": {
+        "en_US": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+        "zh_CN": "无量纲实际 NIS 门限。float32 舍入后硬门限必须大于软门限。"
+      },
+      "greater_than": "nis_3d_soft"
+    },
+    {
+      "id": "nis_max_r_scale",
+      "type": "float",
+      "default": 10.0,
+      "unit": "1",
+      "representation": "value",
+      "min": 1.0,
+      "max": 1000.0,
+      "precision": 6,
+      "step": 0.01,
+      "group": "advanced",
+      "order": 20,
+      "generated_symbol": "SYSTEM_ESTIMATOR_NIS_MAX_R_SCALE",
+      "display_names": {
+        "en_US": "NIS maximum R inflation",
+        "zh_CN": "NIS 最大 R 膨胀因子"
+      },
+      "description": {
+        "en_US": "Actual dimensionless cap already used by soft gating; not a multiplier of a hidden default.",
+        "zh_CN": "软门限已有的实际无量纲上限，不是隐藏默认值的倍率。"
+      }
+    }
+  ]
+}

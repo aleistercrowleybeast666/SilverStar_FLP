@@ -61,7 +61,7 @@ routes fail rather than using field offsets or name similarity.
 The context is the query boundary between package metadata and upper consumers. It holds:
 
 - full package/generation/Catalog/Semantics identity and project/firmware commit;
-- firmware algorithm component IDs;
+- firmware algorithm component IDs and separate immutable resolved parameter sets;
 - logging/telemetry/maintenance protocol metadata (optional slots may be `null`);
 - hardware, physical devices, capability endpoints/routes, canonical routes, and Record Views;
 - configured modes/strategies, event catalog, streams, components, and component locks;
@@ -107,3 +107,10 @@ immutable plugin metadata and are not inserted into `recorded_parameters`.
 See [Display_DataQuality.md](Display_DataQuality.md) for semantic column rules and the independent
 record-gap/queue/channel-continuity model. Column metadata changes labels only; raw/stable aliases
 remain the same immutable objects. Unknown array columns use bracketed indices.
+
+`FirmwareParameters_Get(component_id)` and `FirmwareParameterSets_Get()` expose immutable package
+actual values independently of membership. Replay results contain actual parameter snapshots,
+schema identity, per-parameter units/representation, config source, plugin version and fidelity.
+Project v3 persists these references and values; [Project_Format.md](Project_Format.md) describes
+strict restore rules. Export puts firmware sets under `firmware.algorithm_parameters` and each
+run's values under `replay_results[].actual_parameters`.

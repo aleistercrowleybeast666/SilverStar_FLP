@@ -1,3 +1,0 @@
-﻿# channel=initial_state.navigation.velocity_enu,unit=m/s,quantity=velocity,source=INITIAL_STATE,synthetic=False
-timestamp_us,time_from_start_s,E,N,U,valid
-1000000,0.000000000,0.0,0.0,0.0,1

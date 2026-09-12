@@ -56,7 +56,7 @@ def _Series_Create(
 class PureInsAlgorithmPlugin(AlgorithmPlugin):
     metadata = AlgorithmMetadata(
         plugin_id="silverstar.algorithm.pure_ins",
-        version="0.1.0-firmware-SILV0008",
+        version="0.2.0-firmware-SILV0008",
         display_name="Pure INS",
         description="Full WXYZ/Hamilton/ENU software attitude and inertial mechanization",
         required_records=("INITIAL_STATE",),
@@ -71,11 +71,13 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
                 1.0,
                 20.0,
                 "m/s^2",
-                "parameter.gravity",
+                representation="value",
+                precision=6,
+                order=0,
+                step=0.01,
                 label_key="parameter.gravity_mps2",
                 group_key="parameter_group.process_model",
                 tooltip_key="parameter.tooltip.gravity_mps2",
-                step=0.01,
             ),
         ),
         standard_outputs=(
@@ -90,9 +92,7 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             "mechanization.delta_velocity_b",
             "mechanization.dt",
         ),
-        firmware_component_ids=(
-            "silverstar.algorithm.ins.coning2_sculling2",
-        ),
+        firmware_component_ids=("silverstar.algorithm.ins.coning2_sculling2",),
         recorded_output_roles=(
             "pure_ins.recorded.attitude.q_nb",
             "pure_ins.recorded.navigation.velocity_enu",
@@ -118,7 +118,7 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             "recorded_inertial_increment": "preserve recorded intervals",
         },
         parameter_source_contract={
-            "recorded_configuration": "SSLOG header and SYSTEM_CONFIG",
+            "recorded_configuration": "Firmware build configuration from .ssdecoder",
             "offline": "plugin defaults or explicit what-if values",
         },
         coordinate_frame_contract={
@@ -127,11 +127,6 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             "navigation_frame": "ENU",
         },
     )
-
-    def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
-        if "gravity_mps2" not in dataset.header:
-            return {}
-        return {"gravity_mps2": float(dataset.header["gravity_mps2"])}
 
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
@@ -250,17 +245,12 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             mission_bounds = MissionReplayBounds_Get(
                 dataset,
                 source_end_timestamp_us=(
-                    increments[-1].interval_end_timestamp_us
-                    if increments
-                    else start_timestamp
+                    increments[-1].interval_end_timestamp_us if increments else start_timestamp
                 ),
             )
         task_context.Cancel_RaiseIfRequested()
-        gravity = float(dataset.header.get("gravity_mps2", 9.78))
-        if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF) and (
-            "gravity_mps2" in request.parameters
-        ):
-            gravity = float(request.parameters["gravity_mps2"])
+        parameters = self.Parameters_Resolve(dataset, request)
+        gravity = parameters["gravity_mps2"]
         outputs = Mechanization_Run(
             increments,
             initial_q_nb=initial_q,
@@ -328,12 +318,6 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
                 quantity="time",
             ),
         }
-        parameters = {"gravity_mps2": gravity}
-        parameters.update(
-            dict(request.parameters)
-            if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF)
-            else {}
-        )
         warnings = list(availability.warnings)
         fidelity = availability.fidelity
         if source_diagnostics.get("sample_gap_count", 0):
@@ -350,6 +334,7 @@ class PureInsAlgorithmPlugin(AlgorithmPlugin):
             warnings=tuple(dict.fromkeys(warnings)),
             channels=channels,
             diagnostics={
+                **self.ParameterAudit_Get(dataset, request),
                 "input_increment_count": len(increments),
                 "output_count": len(outputs),
                 "start_timestamp_us": start_timestamp,

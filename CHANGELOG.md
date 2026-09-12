@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Migrated to exact package/Project Semantics 1.2, independent Catalog 1.0 and Project v3.
+- Replaced four relative-default KF6 controls with FCCG actual parameter metadata; recorded
+  configuration comes only from firmware resolved values. Added distinct What-if reset origins,
+  exact unedited value preservation, draft save/restore and actual export provenance.
+- Added strict parameter contract checks, frozen default equivalence and matching dynamic
+  synthetic replay tests. Core INS/KF6 equations and measurement timing remain unchanged.
+- Retired 46 historical test-run directories (2,397 mistakenly tracked generated files) at the
+  user's explicit request; ordinary cleanup keeps conservative input/link protections.
+
 - Unified semantic array columns with explicit Catalog metadata priority and bracketed unknown
   indices, preserving raw/stable zero-copy aliases and audited position-first KF6 order.
 - Unified GUI/PNG/GIF event phase geometry with shared visual event points and channel-cadence

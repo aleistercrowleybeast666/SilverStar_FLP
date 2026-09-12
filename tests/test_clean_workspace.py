@@ -109,3 +109,37 @@ def test_gitignore_does_not_hide_sources_or_fixtures(tmp_path):
         "unknown.json",
     ):
         assert subprocess.run(["git", "-C", str(root), "check-ignore", "-q", path]).returncode == 1
+
+
+def test_explicit_retirement_removes_tracked_test_outputs_only(tmp_path):
+    from tools.clean_workspace import WorkspaceClean_RetireTests
+    root = _Repository_Create(tmp_path)
+    generated = _File_Write(root, ".codex_pytest_old/test_case/SYNTHETIC_run.BIN")
+    source = _File_Write(root, "tests/fixtures/reference.BIN")
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    assert generated not in WorkspaceClean_Plan(root)
+    result, count = WorkspaceClean_RetireTests(root, (".codex_pytest_old",))
+    assert result == WorkspaceCleanResult.APPLIED and count == 3
+    assert source.exists() and not generated.exists()
+    result, _ = WorkspaceClean_RetireTests(root, ("tests",))
+    assert result == WorkspaceCleanResult.REFUSED and source.exists()
+
+
+def test_retirement_refuses_junction_before_removing_any_run_file(tmp_path):
+    from tools.clean_workspace import WorkspaceClean_RetireTests
+    root = _Repository_Create(tmp_path)
+    generated = _File_Write(root, ".codex_pytest_old/test_case/generated.png")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = _File_Write(outside, "actual.BIN")
+    link = generated.parent / "linked"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        if os.name != "nt":
+            pytest.skip("symlink not available")
+        import _winapi
+        _winapi.CreateJunction(str(outside), str(link))
+    result, count = WorkspaceClean_RetireTests(root, (".codex_pytest_old",))
+    assert result == WorkspaceCleanResult.REFUSED and count == 0
+    assert generated.exists() and sentinel.exists()

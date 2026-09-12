@@ -988,7 +988,10 @@ class FlightExporter:
                     "mode": entry.mode.value,
                     "provenance": entry.result.provenance,
                     "input_source": entry.input_source,
-                    "parameters": dict(entry.parameters),
+                    "actual_parameters": dict(entry.parameters),
+                    "parameter_schema_identity": entry.diagnostics.get("parameter_schema_identity"),
+                    "parameter_metadata": entry.diagnostics.get("parameter_metadata", {}),
+                    "config_source": entry.diagnostics.get("config_source"),
                     "fidelity": entry.fidelity.value,
                     "warnings": list(entry.warnings),
                     "firmware_member": firmware_member,
@@ -1083,6 +1086,7 @@ class FlightExporter:
                     "version": semantic_payload["package_identity"]["firmware_version"],
                     "commit": semantic_payload["package_identity"]["firmware_commit"],
                     "algorithm_components": semantic_payload["firmware_algorithm_ids"],
+                    "algorithm_parameters": semantic_payload["algorithm_parameters"],
                 }
                 if semantic_payload is not None
                 else None

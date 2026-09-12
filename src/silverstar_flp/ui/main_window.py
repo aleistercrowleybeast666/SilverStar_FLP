@@ -476,11 +476,29 @@ class MainWindow(QMainWindow):
         result: LogOpenResult,
         project: ProjectDocument,
     ) -> None:
+        try:
+            for configuration in project.replay_configurations.values():
+                plugin = self._registry.Algorithm_Get(configuration["algorithm_id"])
+                request = ReplayRequest(mode=configuration["mode"],
+                                        input_source=configuration["input_source"],
+                                        parameters=configuration["actual_values"])
+                plugin.Parameters_Resolve(result.dataset, request)
+                provenance = plugin.ParameterAudit_Get(result.dataset, request)["config_source"]
+                if configuration["provenance"] != provenance:
+                    raise ValueError("project_parameter_provenance_invalid")
+        except (KeyError, ValueError) as exc:
+            self._Error_Show(str(exc))
+            return
         project.LogReference_Set(result.dataset.source_path)
         project.decoder_profile = self._DecoderProfile_Build(result)
         self._project = project
         self._log_open_result = result
         self._Dataset_Set(result.dataset)
+        if "draft" in project.replay_configurations:
+            try:
+                self.replay_page.Configuration_Set(project.replay_configurations["draft"])
+            except ValueError as exc:
+                self._Error_Show(str(exc))
 
     def _Dataset_Set(self, dataset: FlightDataset) -> None:
         self._dataset = dataset
@@ -707,16 +725,17 @@ class MainWindow(QMainWindow):
 
     def _Project_Write(self, path: Path) -> None:
         try:
-            self._project.replay_configurations = {
-                entry.result_id: {
+            self._project.replay_configurations["draft"] = self.replay_page.Configuration_Get()
+            for entry in self._replay_store.Entries_Get():
+                self._project.replay_configurations[entry.result_id] = {
                     "algorithm_id": entry.algorithm_id,
+                    "algorithm_version": entry.algorithm_version,
                     "mode": entry.mode.value,
                     "input_source": entry.input_source,
-                    "parameters": dict(entry.parameters),
-                    "fidelity": entry.fidelity.value,
+                    "actual_values": dict(entry.parameters),
+                    "parameter_schema_identity": entry.diagnostics["parameter_schema_identity"],
+                    "provenance": entry.diagnostics["config_source"],
                 }
-                for entry in self._replay_store.Entries_Get()
-            }
             Project_Save(self._project, path)
             self.status_label.setText(self._translator.Text_Get("status.project_saved", path=path))
         except Exception as exc:

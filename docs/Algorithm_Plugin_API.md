@@ -17,7 +17,7 @@ and implementation completeness, never whether a curve merely looks close.
 
 ## Firmware, recorded data, and offline execution are independent
 
-`project_semantics.json.algorithms` is normalized from the current 1.1 `list[str]` into immutable
+`project_semantics.json.algorithms` is normalized from the current 1.2 `list[str]` into immutable
 firmware component references. It answers only whether an algorithm component was built into the
 flight-controller project. It is never an allowlist for desktop plugins.
 
@@ -26,7 +26,7 @@ flight-controller project. It is never an allowlist for desktop plugins.
 - `firmware_component_ids` / `firmware_member`: the package says the component was onboard;
 - `recorded_output_roles` / `recorded_output_available`: this log actually contains a recorded
   output that the plugin knows how to present;
-- `recorded_parameters` / `recorded_available`: the log contains every required configuration
+- `recorded_parameters` / `recorded_available`: the package contains every required firmware configuration
   value, the component was onboard, and the replay inputs are available;
 - `offline_default_parameters` / `offline_available`: the installed desktop plugin can run from
   the available semantic inputs, regardless of firmware membership.
@@ -36,10 +36,17 @@ future ESKF plugin stays visible and can run offline when its component ID is ab
 firmware list. Conversely, a firmware component without a compatible visualization plugin remains
 visible as package metadata and its raw records remain available in Data Explorer.
 
-`ReplayMode.RECORDED_CONFIGURATION` is enabled only for a complete logged parameter set.
-`ReplayMode.OFFLINE` uses the plugin's explicit offline defaults. `ReplayMode.WHAT_IF` starts with
-offline defaults and overlays only parameter values that were genuinely recorded; a partial
-recorded set is never advertised as a complete Recorded configuration.
+`ReplayMode.RECORDED_CONFIGURATION` requires complete firmware actual values from
+`project_semantics.json.firmware_algorithm_parameters`. `ReplayMode.OFFLINE` uses actual plugin
+defaults. Onboard What-if copies Recorded Configuration exactly and can restore firmware values;
+absent algorithms start from their plugin defaults and can restore algorithm defaults. Missing
+firmware parameters never fall back. Matching uses IDs, units and representation, never labels.
+
+`ParameterSpec` declares id, type, actual default, unit, representation, min/max, precision,
+step, order/group, required status and optional greater-than constraints. Schema identity is a
+SHA-256 of the declared metadata. `Parameters_Resolve` rejects unknown, missing, wrong-type,
+non-finite and out-of-range values. A true mathematical NIS soft-weighting limit remains a
+unitless actual parameter; it is unrelated to removed relative-default controls.
 
 The desktop Replay page always constructs `ReplayRequest(input_source="corrected_imu")`. Plugins
 must retain explicit availability checks and must not silently fall back. The internal API may
@@ -55,9 +62,10 @@ interpolated.
 Each user-editable parameter supplies stable `label_key`, `group_key`, and `tooltip_key` values,
 plus unit/range/step metadata. The GUI translates those keys, keeps the raw `parameter_id` in the
 tooltip, and builds the What-if group selector without parameter-specific branches.
-`recorded_parameters(dataset)` returns only values represented by that particular log. It must not
+`recorded_parameters(dataset)` returns only firmware actual values in the matched package. It must not
 fill missing firmware values from `ParameterSpec.default`. The What-if reset baseline uses explicit
-offline defaults overlaid with this audited subset. Warnings remain stable raw codes in algorithm
+complete firmware actual values for onboard algorithms, or plugin actual defaults for absent
+algorithms. Warnings remain stable raw codes in algorithm
 results and are translated only at the GUI/export boundary.
 
 `EXACT` requires both clean inputs over the claimed interval and a matching immutable

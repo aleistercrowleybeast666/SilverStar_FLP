@@ -1,3 +1,0 @@
-﻿# channel=alignment.result.q_nb,unit=1,quantity=quaternion,source=ALIGNMENT_RESULT,synthetic=False
-timestamp_us,time_from_start_s,W,X,Y,Z,valid
-940000,-0.060000000,1.0,0.0,0.0,0.0,1

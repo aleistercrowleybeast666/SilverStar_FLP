@@ -203,8 +203,8 @@ def _SemanticsDocument_Build() -> dict[str, Any]:
         for index, descriptor in enumerate(device_descriptors)
     ]
     return {
-        "schema_id": "silverstar.project-semantics/1.1",
-        "schema_version": 0x00010001,
+        "schema_id": "silverstar.project-semantics/1.2",
+        "schema_version": 0x00010002,
         "project": "SYNTHETIC_DUAL_IMU",
         "firmware_version": "0.0.test",
         "device_descriptors": device_descriptors,
@@ -258,9 +258,8 @@ def _SemanticsDocument_Build() -> dict[str, Any]:
             }
         },
         "algorithms": ["silverstar.algorithm.estimator.kf6"],
-        "logging_streams": [
-            {"record": "FLIGHT_LOG_RECORD_IMU_NATIVE", "enabled": True}
-        ],
+        "firmware_algorithm_parameters": [],
+        "logging_streams": [{"record": "FLIGHT_LOG_RECORD_IMU_NATIVE", "enabled": True}],
         "protocols": {
             "logging": {"profile": "flight_log.0_0"},
             "maintenance": None,
@@ -283,7 +282,7 @@ def _PackageFiles_Build(
     semantics_bytes = _JsonBytes(semantics_document or _SemanticsDocument_Build())
     catalog_hash = hashlib.sha256(catalog_bytes).hexdigest()
     semantics_hash = hashlib.sha256(semantics_bytes).hexdigest()
-    schema_id = "silverstar.ssdecoder.package-schema/1.1"
+    schema_id = "silverstar.ssdecoder.package-schema/1.2"
     container_id = "silverstar.sslog.container/0.0"
     generation_hash = hashlib.sha256(
         schema_id.encode("utf-8")
@@ -306,7 +305,7 @@ def _PackageFiles_Build(
         "package_schema": {
             "id": schema_id,
             "major": 1,
-            "minor": 1,
+            "minor": 2,
         },
         "display_name": "Synthetic dual IMU decoder",
         "project_name": "SYNTHETIC_DUAL_IMU",
@@ -385,7 +384,7 @@ def _ImuPayload_Build(
 
 def _DescriptorPayload_Build(hashes: dict[str, str]) -> bytes:
     return (
-        struct.pack("<4H", 1, 1, 0, 0)
+        struct.pack("<4H", 1, 2, 0, 0)
         + bytes.fromhex(hashes["catalog"][:32])
         + bytes.fromhex(hashes["semantics"][:32])
         + bytes.fromhex(hashes["generation"][:32])
@@ -496,7 +495,7 @@ def test_firmware_container_id_alias_keeps_builtin_id_and_hash_contract(
 ) -> None:
     files, hashes = _PackageFiles_Build()
     manifest = json.loads(files["manifest.json"].decode("utf-8"))
-    schema_id = "silverstar.ssdecoder.package-schema/1.1"
+    schema_id = "silverstar.ssdecoder.package-schema/1.2"
     declared_container_id = "silverstar.sslog.container/0.0"
     generation_hash = hashlib.sha256(
         schema_id.encode("utf-8")
@@ -523,10 +522,7 @@ def test_firmware_container_id_alias_keeps_builtin_id_and_hash_contract(
     )
 
     assert package.declared_container_plugin_id == declared_container_id
-    assert (
-        package.required_container_plugin_id
-        == "silverstar.flight_log.container.0_0"
-    )
+    assert package.required_container_plugin_id == "silverstar.flight_log.container.0_0"
     assert package.generation_profile_sha256 == generation_hash
 
 
@@ -671,9 +667,7 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     assert context is not None
     assert result.match_mode == "exact_generation_profile"
     assert context.Project_Get() == "SYNTHETIC_DUAL_IMU"
-    assert context.FirmwareAlgorithms_Get() == (
-        "silverstar.algorithm.estimator.kf6",
-    )
+    assert context.FirmwareAlgorithms_Get() == ("silverstar.algorithm.estimator.kf6",)
     assert context.calibration.mode_name == "NONE"
     assert context.calibration.ready
     assert context.calibration.identity_model
@@ -697,7 +691,7 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     assert not configuration.recorded_output_available
     assert not configuration.recorded_available
     assert configuration.offline_available
-    assert "p0_scale" in configuration.missing_recorded_parameters
+    assert "p0_position_e" in configuration.missing_recorded_parameters
     export_directory = tmp_path / "audit-export"
     export_manifest = FlightExporter().export(
         result.dataset,
@@ -716,14 +710,10 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     manifest_path = export_manifest.ManifestPath_Get()
     assert manifest_path is not None
     audit = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert audit["source_log"]["sha256"] == hashlib.sha256(
-        log_path.read_bytes()
-    ).hexdigest()
+    assert audit["source_log"]["sha256"] == hashlib.sha256(log_path.read_bytes()).hexdigest()
     assert audit["decoder_profile"]["package_sha256"] == result.package.package_sha256
     assert audit["decoder_profile"]["match_mode"] == "exact_generation_profile"
-    assert audit["firmware"]["algorithm_components"] == [
-        "silverstar.algorithm.estimator.kf6"
-    ]
+    assert audit["firmware"]["algorithm_components"] == ["silverstar.algorithm.estimator.kf6"]
     assert audit["calibration"]["identity_model"] is True
     assert audit["stable_aliases"]["imu.native.accel_b"] == raw_channel_id
 

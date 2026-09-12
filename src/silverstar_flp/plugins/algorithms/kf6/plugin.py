@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from bisect import bisect_left
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -117,7 +118,7 @@ def _Result_Aggregate(first: Kf6UpdateResult, second: Kf6UpdateResult) -> int:
 class Kf6AlgorithmPlugin(AlgorithmPlugin):
     metadata = AlgorithmMetadata(
         plugin_id="silverstar.algorithm.kf6",
-        version="0.1.0-firmware-SILV0008",
+        version="0.2.0-firmware-SILV0008",
         display_name="KF_6",
         description="Firmware-order 6-state [pE,pN,pU,vE,vN,vU] navigation filter",
         required_records=("INITIAL_STATE", "SYSTEM_CONFIG"),
@@ -132,109 +133,322 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         optional_channels=("kf6.recorded.navigation.position_enu",),
         parameter_schema=(
             ParameterSpec(
-                "gravity_mps2", "float", 9.78, 1.0, 20.0, "m/s^2",
+                "gravity_mps2",
+                "float",
+                9.78,
+                1.0,
+                20.0,
+                "m/s^2",
+                representation="value",
+                precision=6,
+                order=0,
+                step=0.01,
                 label_key="parameter.gravity_mps2",
                 group_key="parameter_group.process_model",
                 tooltip_key="parameter.tooltip.gravity_mps2",
-                step=0.01,
             ),
             ParameterSpec(
-                "process_accel_std_e", "float", 1.5, 0.001, 100.0, "m/s^2",
+                "p0_position_e",
+                "float",
+                4.0,
+                0.001,
+                1000000.0,
+                "m^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=1,
+                step=0.01,
+                label_key="parameter.p0_position_e",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_position_e",
+            ),
+            ParameterSpec(
+                "p0_position_n",
+                "float",
+                4.0,
+                0.001,
+                1000000.0,
+                "m^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=2,
+                step=0.01,
+                label_key="parameter.p0_position_n",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_position_n",
+            ),
+            ParameterSpec(
+                "p0_position_u",
+                "float",
+                9.0,
+                0.001,
+                1000000.0,
+                "m^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=3,
+                step=0.01,
+                label_key="parameter.p0_position_u",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_position_u",
+            ),
+            ParameterSpec(
+                "p0_velocity_e",
+                "float",
+                0.25,
+                0.001,
+                1000000.0,
+                "m^2/s^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=4,
+                step=0.01,
+                label_key="parameter.p0_velocity_e",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_velocity_e",
+            ),
+            ParameterSpec(
+                "p0_velocity_n",
+                "float",
+                0.25,
+                0.001,
+                1000000.0,
+                "m^2/s^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=5,
+                step=0.01,
+                label_key="parameter.p0_velocity_n",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_velocity_n",
+            ),
+            ParameterSpec(
+                "p0_velocity_u",
+                "float",
+                0.25,
+                0.001,
+                1000000.0,
+                "m^2/s^2",
+                representation="covariance_diagonal",
+                precision=6,
+                order=6,
+                step=0.01,
+                label_key="parameter.p0_velocity_u",
+                group_key="parameter_group.initial_covariance",
+                tooltip_key="parameter.tooltip.p0_velocity_u",
+            ),
+            ParameterSpec(
+                "process_accel_std_e",
+                "float",
+                1.5,
+                0.001,
+                100.0,
+                "m/s^2",
+                representation="sigma",
+                precision=6,
+                order=7,
+                step=0.01,
                 label_key="parameter.process_accel_std_e",
                 group_key="parameter_group.process_model",
-                tooltip_key="parameter.tooltip.process_accel_std",
-                step=0.1,
+                tooltip_key="parameter.tooltip.process_accel_std_e",
             ),
             ParameterSpec(
-                "process_accel_std_n", "float", 1.5, 0.001, 100.0, "m/s^2",
+                "process_accel_std_n",
+                "float",
+                1.5,
+                0.001,
+                100.0,
+                "m/s^2",
+                representation="sigma",
+                precision=6,
+                order=8,
+                step=0.01,
                 label_key="parameter.process_accel_std_n",
                 group_key="parameter_group.process_model",
-                tooltip_key="parameter.tooltip.process_accel_std",
-                step=0.1,
+                tooltip_key="parameter.tooltip.process_accel_std_n",
             ),
             ParameterSpec(
-                "process_accel_std_u", "float", 2.0, 0.001, 100.0, "m/s^2",
+                "process_accel_std_u",
+                "float",
+                2.0,
+                0.001,
+                100.0,
+                "m/s^2",
+                representation="sigma",
+                precision=6,
+                order=9,
+                step=0.01,
                 label_key="parameter.process_accel_std_u",
                 group_key="parameter_group.process_model",
-                tooltip_key="parameter.tooltip.process_accel_std",
-                step=0.1,
+                tooltip_key="parameter.tooltip.process_accel_std_u",
             ),
             ParameterSpec(
-                "p0_scale", "float", 1.0, 0.001, 1000.0, "1",
-                label_key="parameter.p0_scale",
-                group_key="parameter_group.initial_covariance",
-                tooltip_key="parameter.tooltip.p0_scale",
-                step=0.1,
-            ),
-            ParameterSpec(
-                "gnss_position_r_scale", "float", 1.0, 0.001, 1000.0, "1",
-                label_key="parameter.gnss_position_r_scale",
+                "gnss_position_std_horizontal",
+                "float",
+                1.5,
+                0.001,
+                1000.0,
+                "m",
+                representation="sigma",
+                precision=6,
+                order=10,
+                step=0.01,
+                label_key="parameter.gnss_position_std_horizontal",
                 group_key="parameter_group.measurement_noise",
-                tooltip_key="parameter.tooltip.measurement_r_scale",
-                step=0.1,
+                tooltip_key="parameter.tooltip.gnss_position_std_horizontal",
             ),
             ParameterSpec(
-                "gnss_velocity_r_scale", "float", 1.0, 0.001, 1000.0, "1",
-                label_key="parameter.gnss_velocity_r_scale",
+                "gnss_position_std_vertical",
+                "float",
+                2.5,
+                0.001,
+                1000.0,
+                "m",
+                representation="sigma",
+                precision=6,
+                order=11,
+                step=0.01,
+                label_key="parameter.gnss_position_std_vertical",
                 group_key="parameter_group.measurement_noise",
-                tooltip_key="parameter.tooltip.measurement_r_scale",
-                step=0.1,
+                tooltip_key="parameter.tooltip.gnss_position_std_vertical",
             ),
             ParameterSpec(
-                "baro_r_scale", "float", 1.0, 0.001, 1000.0, "1",
-                label_key="parameter.baro_r_scale",
+                "gnss_velocity_std",
+                "float",
+                0.15,
+                0.001,
+                1000.0,
+                "m/s",
+                representation="sigma",
+                precision=6,
+                order=12,
+                step=0.01,
+                label_key="parameter.gnss_velocity_std",
                 group_key="parameter_group.measurement_noise",
-                tooltip_key="parameter.tooltip.measurement_r_scale",
-                step=0.1,
+                tooltip_key="parameter.tooltip.gnss_velocity_std",
             ),
             ParameterSpec(
-                "nis_1d_soft", "float", 6.635, 0.001, 10000.0, "1",
+                "baro_std_m",
+                "float",
+                5.0,
+                1.5,
+                1000.0,
+                "m",
+                representation="sigma",
+                precision=6,
+                order=13,
+                step=0.01,
+                label_key="parameter.baro_std_m",
+                group_key="parameter_group.measurement_noise",
+                tooltip_key="parameter.tooltip.baro_std_m",
+            ),
+            ParameterSpec(
+                "nis_1d_soft",
+                "float",
+                6.635,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=14,
+                step=0.01,
                 label_key="parameter.nis_1d_soft",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_1d_soft",
             ),
             ParameterSpec(
-                "nis_1d_hard", "float", 10.828, 0.001, 10000.0, "1",
+                "nis_1d_hard",
+                "float",
+                10.828,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=15,
+                step=0.01,
                 label_key="parameter.nis_1d_hard",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_1d_hard",
+                greater_than="nis_1d_soft",
             ),
             ParameterSpec(
-                "nis_2d_soft", "float", 9.210, 0.001, 10000.0, "1",
+                "nis_2d_soft",
+                "float",
+                9.21,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=16,
+                step=0.01,
                 label_key="parameter.nis_2d_soft",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_2d_soft",
             ),
             ParameterSpec(
-                "nis_2d_hard", "float", 13.816, 0.001, 10000.0, "1",
+                "nis_2d_hard",
+                "float",
+                13.816,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=17,
+                step=0.01,
                 label_key="parameter.nis_2d_hard",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_2d_hard",
+                greater_than="nis_2d_soft",
             ),
             ParameterSpec(
-                "nis_3d_soft", "float", 11.345, 0.001, 10000.0, "1",
+                "nis_3d_soft",
+                "float",
+                11.345,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=18,
+                step=0.01,
                 label_key="parameter.nis_3d_soft",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_3d_soft",
             ),
             ParameterSpec(
-                "nis_3d_hard", "float", 16.266, 0.001, 10000.0, "1",
+                "nis_3d_hard",
+                "float",
+                16.266,
+                0.001,
+                10000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=19,
+                step=0.01,
                 label_key="parameter.nis_3d_hard",
                 group_key="parameter_group.consistency_gating",
-                tooltip_key="parameter.tooltip.nis_threshold",
-                step=0.1,
+                tooltip_key="parameter.tooltip.nis_3d_hard",
+                greater_than="nis_3d_soft",
             ),
             ParameterSpec(
-                "nis_max_r_scale", "float", 10.0, 1.0, 1000.0, "1",
+                "nis_max_r_scale",
+                "float",
+                10.0,
+                1.0,
+                1000.0,
+                "1",
+                representation="value",
+                precision=6,
+                order=20,
+                step=0.01,
                 label_key="parameter.nis_max_r_scale",
                 group_key="parameter_group.consistency_gating",
                 tooltip_key="parameter.tooltip.nis_max_r_scale",
-                step=0.5,
             ),
         ),
         standard_outputs=(
@@ -287,7 +501,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "measurements": "missing optional measurements do not block prediction",
         },
         parameter_source_contract={
-            "recorded_configuration": "SSLOG header, SYSTEM_CONFIG, and INITIAL_STATE",
+            "recorded_configuration": "Firmware build configuration from .ssdecoder",
             "offline": "plugin defaults or explicit what-if values",
         },
         coordinate_frame_contract={
@@ -399,29 +613,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             ),
         ),
     )
-
-    def recorded_parameters(self, dataset: FlightDataset) -> dict[str, float]:
-        records = dataset.Records_Get("SYSTEM_CONFIG")
-        if not records or "gravity_mps2" not in dataset.header:
-            return {}
-        config = records[0].payload
-        process = tuple(config.get("process_accel_std_mps2", ()))
-        nis = tuple(config.get("nis_profile", ()))
-        if len(process) != 3 or len(nis) != 7:
-            return {}
-        return {
-            "gravity_mps2": float(dataset.header["gravity_mps2"]),
-            "process_accel_std_e": float(process[0]),
-            "process_accel_std_n": float(process[1]),
-            "process_accel_std_u": float(process[2]),
-            "nis_1d_soft": float(nis[0]),
-            "nis_1d_hard": float(nis[1]),
-            "nis_2d_soft": float(nis[2]),
-            "nis_2d_hard": float(nis[3]),
-            "nis_3d_soft": float(nis[4]),
-            "nis_3d_hard": float(nis[5]),
-            "nis_max_r_scale": float(nis[6]),
-        }
 
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
@@ -546,8 +737,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 ),
                 dtype=np.float32,
             ),
-            p0_diagonal=np.asarray(initial.payload["p0_diagonal"], dtype=np.float32)
-            * np.float32(parameters["p0_scale"]),
+            p0_diagonal=self._P0_Resolve(dataset, parameters),
             initial_velocity_enu_mps=np.asarray(
                 initial.payload["initial_velocity_enu_mps"], dtype=np.float32
             ),
@@ -571,6 +761,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         )
         q_nb = Quaternion_Normalize(np.asarray(initial.payload["q_nb"], dtype=np.float32))
         schedule, schedule_inferred = self._MeasurementSchedule_Build(dataset, increments)
+        schedule = self._MeasurementParameters_Apply(dataset, schedule, parameters)
         task_context.Progress_Report(0.08, "replay.inputs")
         snapshots = self._Replay_Run(
             filter_instance,
@@ -606,6 +797,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             warnings=tuple(dict.fromkeys(warnings)),
             channels=channels,
             diagnostics={
+                **self.ParameterAudit_Get(dataset, request),
                 "state_order": ("pE", "pN", "pU", "vE", "vN", "vU"),
                 "input_increment_count": len(increments),
                 "measurement_count": len(schedule),
@@ -632,66 +824,146 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             ),
         )
 
-    @staticmethod
-    def _Parameters_Resolve(dataset: FlightDataset, request: ReplayRequest) -> dict[str, float]:
-        initial = dataset.initial_state
-        boundary = dataset.start_timestamp_us or (
-            initial.timestamp_us
-            if initial is not None
-            else 0
-        )
-        record = dataset.RecordAtOrBefore_Get("SYSTEM_CONFIG", boundary)
-        if record is None:
-            raise ValueError("replay_system_config_missing")
-        config = record.payload
-        process = tuple(float(value) for value in config["process_accel_std_mps2"])
-        nis = tuple(float(value) for value in config["nis_profile"])
-        parameters = {
-            "gravity_mps2": float(dataset.header["gravity_mps2"]),
-            "process_accel_std_e": process[0],
-            "process_accel_std_n": process[1],
-            "process_accel_std_u": process[2],
-            "p0_scale": 1.0,
-            "gnss_position_r_scale": 1.0,
-            "gnss_velocity_r_scale": 1.0,
-            "baro_r_scale": 1.0,
-            "nis_1d_soft": nis[0],
-            "nis_1d_hard": nis[1],
-            "nis_2d_soft": nis[2],
-            "nis_2d_hard": nis[3],
-            "nis_3d_soft": nis[4],
-            "nis_3d_hard": nis[5],
-            "nis_max_r_scale": nis[6],
-        }
-        if request.mode in (ReplayMode.OFFLINE, ReplayMode.WHAT_IF):
-            for key, value in request.parameters.items():
-                if key in parameters:
-                    parameters[key] = float(value)
-        positive = (
-            "gravity_mps2",
-            "process_accel_std_e",
-            "process_accel_std_n",
-            "process_accel_std_u",
-            "p0_scale",
-            "gnss_position_r_scale",
-            "gnss_velocity_r_scale",
-            "baro_r_scale",
-            "nis_1d_soft",
-            "nis_1d_hard",
-            "nis_2d_soft",
-            "nis_2d_hard",
-            "nis_3d_soft",
-            "nis_3d_hard",
-            "nis_max_r_scale",
-        )
-        if any(not np.isfinite(parameters[key]) or parameters[key] <= 0.0 for key in positive):
-            raise ValueError("what_if_parameter_invalid")
+    def _Parameters_Resolve(
+        self, dataset: FlightDataset, request: ReplayRequest
+    ) -> dict[str, float]:
+        parameters = self.Parameters_Resolve(dataset, request)
         for dimension in ("1d", "2d", "3d"):
             if parameters[f"nis_{dimension}_hard"] <= parameters[f"nis_{dimension}_soft"]:
                 raise ValueError("nis_threshold_order_invalid")
-        if parameters["nis_max_r_scale"] < 1.0:
-            raise ValueError("nis_max_r_scale_invalid")
         return parameters
+
+    def _P0_Resolve(self, dataset: FlightDataset, parameters: Mapping[str, float]) -> np.ndarray:
+        recorded = self.recorded_parameters(dataset)
+        baseline = recorded or self.OfflineParameters_Get()
+        initial = np.asarray(dataset.initial_state.payload["p0_diagonal"], dtype=np.float32)
+        names = tuple(f"p0_{group}_{axis}" for group in ("position", "velocity") for axis in "enu")
+        result = initial.copy()
+        for index, name in enumerate(names):
+            before, after = np.float32(baseline[name]), np.float32(parameters[name])
+            if before == after:
+                continue
+            if not int(dataset.initial_state.payload.get("origin_valid_flags", 0)) & 1:
+                result[index] = after
+            else:
+                if after < before and initial[index] <= before:
+                    raise ValueError(f"parameter_dynamic_uncertainty_missing:{name}")
+                result[index] = max(initial[index], after)
+        return result
+
+    def _MeasurementParameters_Apply(
+        self,
+        dataset: FlightDataset,
+        schedule: tuple[_ScheduledMeasurement, ...],
+        parameters: Mapping[str, float],
+    ) -> tuple[_ScheduledMeasurement, ...]:
+        baseline = self.recorded_parameters(dataset) or self.OfflineParameters_Get()
+        changed = {
+            name
+            for name in parameters
+            if np.float32(parameters[name]) != np.float32(baseline[name])
+        }
+        position_names = {"gnss_position_std_horizontal", "gnss_position_std_vertical"}
+        gnss_names = position_names | {"gnss_velocity_std"}
+        if not changed & (gnss_names | {"baro_std_m"}):
+            return schedule
+        initial = dataset.initial_state.payload
+        if changed & gnss_names and int(initial.get("origin_valid_flags", 0)) & 1:
+            # Frozen GNSS initialization has already used the selected floors. The
+            # logged aggregate is insufficient to repeat its pre-START averaging.
+            raise ValueError("parameter_dynamic_uncertainty_missing:GNSS_initialization")
+        native_records = {}
+        for kind in ("GNSS_NATIVE", "BARO_NATIVE"):
+            context = dataset.semantic_context
+            capability = "barometer.altitude" if kind == "BARO_NATIVE" else "gnss.position"
+            if kind == "GNSS_NATIVE" and not changed & position_names:
+                capability = "gnss.velocity"
+            route = context.CanonicalRoute_Get("canonical:" + capability) if context else None
+            endpoints = route.get("endpoint_descriptor_ids", ()) if route else ()
+            if len(endpoints) != 1:
+                continue
+            endpoint = context.CapabilityEndpoint_Get(endpoints[0])
+            for record in dataset.Records_Get(kind):
+                if record.payload.get("source_descriptor_id") != endpoints[0]:
+                    continue
+                if endpoint and record.payload.get("instance_id") != endpoint.get("instance_id"):
+                    continue
+                key = (
+                    kind,
+                    record.payload.get("sample_timestamp_us"),
+                    record.payload.get("sequence"),
+                )
+                native_records.setdefault(key, []).append(record)
+        result = []
+        for item in schedule:
+            record = item.record
+            is_gnss = record.record_name == "GNSS_MEASUREMENT"
+            relevant = gnss_names if is_gnss else {"baro_std_m"}
+            if not changed & relevant:
+                result.append(item)
+                continue
+            kind = "GNSS_NATIVE" if is_gnss else "BARO_NATIVE"
+            key = (kind, record.payload.get("sample_timestamp_us"), record.payload.get("sequence"))
+            matches = native_records.get(key, ())
+            if len(matches) != 1:
+                raise ValueError(f"parameter_dynamic_uncertainty_missing:{kind}")
+            native = matches[0].payload
+            payload = dict(record.payload)
+            try:
+                if is_gnss:
+                    if changed & position_names:
+                        origin = np.asarray(initial["gnss_origin_position_std_m"], dtype=np.float32)
+                        sigma = np.asarray(
+                            (
+                                native["horizontal_accuracy_m"],
+                                native["horizontal_accuracy_m"],
+                                native["vertical_accuracy_m"],
+                            ),
+                            dtype=np.float32,
+                        )
+                        floors = np.asarray(
+                            (
+                                parameters["gnss_position_std_horizontal"],
+                                parameters["gnss_position_std_horizontal"],
+                                parameters["gnss_position_std_vertical"],
+                            ),
+                            dtype=np.float32,
+                        )
+                        sigma = np.maximum(sigma * np.float32(1.25), floors)
+                        payload["position_variance_m2"] = tuple(sigma * sigma + origin * origin)
+                    if "gnss_velocity_std" in changed:
+                        sigma = np.sqrt(
+                            np.maximum(
+                                np.asarray(native["velocity_variance_m2ps2"], dtype=np.float32), 0
+                            )
+                        )
+                        sigma = np.maximum(
+                            sigma * np.float32(1.25), np.float32(parameters["gnss_velocity_std"])
+                        )
+                        payload["velocity_variance_m2ps2"] = tuple(sigma * sigma)
+                else:
+                    sigma = np.float32(parameters["baro_std_m"])
+                    origin = np.float32(initial["barometer_origin_std_m"])
+                    payload["variance_m2"] = float(
+                        max(np.float32(native["altitude_variance_m2"]), sigma * sigma)
+                        + origin * origin
+                    )
+                numeric = (
+                    (payload["position_variance_m2"], payload["velocity_variance_m2ps2"])
+                    if is_gnss
+                    else (payload["variance_m2"],)
+                )
+                if any(
+                    not np.isfinite(value).all() or np.any(np.asarray(value) < 0)
+                    for value in numeric
+                ):
+                    raise ValueError("invalid uncertainty")
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"parameter_dynamic_uncertainty_missing:{kind}") from exc
+            # Only the R inputs change: sample/application time, order, measurements,
+            # validity and source identity are preserved in immutable copies.
+            result.append(replace(item, record=replace(record, payload=payload)))
+        return tuple(result)
 
     @staticmethod
     def _MeasurementSchedule_Build(
@@ -789,8 +1061,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     result = self._Gnss_Apply(
                         filter_instance,
                         measurement.record,
-                        parameters["gnss_position_r_scale"],
-                        parameters["gnss_velocity_r_scale"],
                     )
                     position_result, velocity_result, mask, scales = result
                     attempt_mask |= mask
@@ -799,7 +1069,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     result, scale, mask = self._Baro_Apply(
                         filter_instance,
                         measurement.record,
-                        parameters["baro_r_scale"],
                     )
                     baro_result = result
                     r_scale[2] = scale
@@ -827,9 +1096,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     velocity_measurement_variance=(
                         filter_instance.last_velocity_effective_variance.copy()
                     ),
-                    baro_measurement_variance=float(
-                        filter_instance.last_baro_effective_variance
-                    ),
+                    baro_measurement_variance=float(filter_instance.last_baro_effective_variance),
                 )
             )
             if increment_index % 256 == 0:
@@ -843,8 +1110,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
     def _Gnss_Apply(
         filter_instance: Kf6Filter,
         record: DecodedRecord,
-        position_r_scale: float,
-        velocity_r_scale: float,
     ) -> tuple[int, int, int, np.ndarray]:
         payload = record.payload
         mask = int(record.valid_flags) & 0x03
@@ -880,7 +1145,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         position_scale_applied = np.float32(1.0)
         velocity_scale_applied = np.float32(1.0)
         if mask & 0x01:
-            base = position_variance * np.float32(position_r_scale)
+            base = position_variance
             separated = filter_instance.Kf6_UpdateGnssPosition(position, base)
             position_result = _Result_Aggregate(
                 separated.horizontal_result, separated.vertical_result
@@ -899,7 +1164,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             )
             position_scale_applied = np.max(ratios)
         if mask & 0x02 and (velocity_mask & 0x03) == 0x03:
-            base = velocity_variance * np.float32(velocity_r_scale)
+            base = velocity_variance
             separated = filter_instance.Kf6_UpdateGnssVelocity(
                 velocity, base, vertical_valid=bool(velocity_mask & 0x04)
             )
@@ -930,12 +1195,10 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         )
 
     @staticmethod
-    def _Baro_Apply(
-        filter_instance: Kf6Filter, record: DecodedRecord, r_scale: float
-    ) -> tuple[int, float, int]:
+    def _Baro_Apply(filter_instance: Kf6Filter, record: DecodedRecord) -> tuple[int, float, int]:
         if (int(record.valid_flags) & 0x04) == 0 or not int(record.payload.get("valid_mask", 0)):
             return int(Kf6UpdateResult.REJECTED_INVALID), 1.0, 0
-        base_variance = float(record.payload["variance_m2"]) * r_scale
+        base_variance = float(record.payload["variance_m2"])
         result = filter_instance.Kf6_UpdateBaro(
             float(record.payload["relative_altitude_m"]), base_variance
         )

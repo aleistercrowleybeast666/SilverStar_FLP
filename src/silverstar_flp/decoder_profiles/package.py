@@ -122,10 +122,7 @@ class DecoderProfilePackage:
             archive_bytes = source_path.read_bytes()
             with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
                 members = _ArchiveMembers_Validate(archive, package_limits)
-                files = {
-                    name: archive.read(info)
-                    for name, info in members.items()
-                }
+                files = {name: archive.read(info) for name, info in members.items()}
         except DecoderProfileError:
             raise
         except (OSError, RuntimeError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
@@ -187,6 +184,11 @@ class DecoderProfilePackage:
             source_bytes=files[semantics_name],
             manifest=manifest,
         )
+        from silverstar_flp.decoder_profiles.algorithm_parameters import (
+            FirmwareParameters_CheckPlugins,
+        )
+
+        FirmwareParameters_CheckPlugins(semantics_document["firmware_algorithm_parameters"])
         semantics = semantics.Catalog_Bind(catalog)
         _CatalogSemantics_Validate(catalog, semantics)
         if not 1 <= catalog.schema_version <= 1:
@@ -194,7 +196,7 @@ class DecoderProfilePackage:
                 "decoder_record_catalog_schema_unsupported",
                 str(catalog.schema_version),
             )
-        if semantics.schema_version != (1 << 16) | 1:
+        if semantics.schema_version != (1 << 16) | 2:
             raise DecoderProfileError(
                 "decoder_project_semantics_schema_unsupported",
                 str(semantics.schema_version),
@@ -207,9 +209,7 @@ class DecoderProfilePackage:
         ) = _ContainerRequirement_Parse(
             manifest,
         )
-        container_plugin_id = ContainerPluginId_Normalize(
-            declared_container_plugin_id
-        )
+        container_plugin_id = ContainerPluginId_Normalize(declared_container_plugin_id)
         package_schema_major, package_schema_minor = _PackageSchema_Get(manifest)
         package_sha256 = hashlib.sha256(archive_bytes).hexdigest()
         catalog_hash_128 = catalog.sha256[:32]
@@ -264,12 +264,8 @@ class DecoderProfilePackage:
             declared_generation_hash_128 is not None
             and declared_generation_hash_128 != generation_sha256[:32]
         ):
-            raise DecoderProfileError(
-                "decoder_generation_profile_hash_mismatch"
-            )
-        generation_hash_128 = (
-            declared_generation_hash_128 or generation_sha256[:32]
-        )
+            raise DecoderProfileError("decoder_generation_profile_hash_mismatch")
+        generation_hash_128 = declared_generation_hash_128 or generation_sha256[:32]
 
         result = cls(
             source_path=source_path,
@@ -299,9 +295,9 @@ class DecoderProfilePackage:
             ),
         )
         if container_plugins is not None:
-            plugin = container_plugins.get(
-                declared_container_plugin_id
-            ) or container_plugins.get(container_plugin_id)
+            plugin = container_plugins.get(declared_container_plugin_id) or container_plugins.get(
+                container_plugin_id
+            )
             if plugin is None:
                 raise DecoderProfileError(
                     "decoder_container_plugin_missing",
@@ -486,7 +482,7 @@ def _Manifest_Validate(
     if manifest.get("format") != "SilverStar.ssdecoder":
         raise DecoderProfileError("decoder_package_format_invalid")
     major, minor = _PackageSchema_Get(manifest)
-    if major != 1 or minor != 1:
+    if major != 1 or minor != 2:
         raise DecoderProfileError(
             "decoder_package_format_version_unsupported",
             f"{major}.{minor}",
@@ -494,7 +490,7 @@ def _Manifest_Validate(
     package_schema = manifest.get("package_schema")
     if isinstance(package_schema, Mapping):
         schema_id = package_schema.get("id")
-        if schema_id != "silverstar.ssdecoder.package-schema/1.1":
+        if schema_id != "silverstar.ssdecoder.package-schema/1.2":
             raise DecoderProfileError("decoder_package_schema_invalid")
     else:
         raise DecoderProfileError("decoder_package_schema_invalid")

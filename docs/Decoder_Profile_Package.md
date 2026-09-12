@@ -1,4 +1,4 @@
-# Decoder Profile Package 1.1
+# Decoder Profile Package 1.2
 
 ## Authority and exact layout
 
@@ -7,7 +7,7 @@ firmware project. The package is the sole authority for Record layouts, device/c
 metadata, stable semantic routes, configured modes, protocols, and the firmware component list.
 It never supplies executable parser or algorithm code.
 
-FLP accepts only package schema `silverstar.ssdecoder.package-schema/1.1`. The ZIP must contain
+FLP accepts only package schema `silverstar.ssdecoder.package-schema/1.2`. The ZIP must contain
 exactly these five members:
 
 ```text
@@ -48,7 +48,7 @@ supports finite little-endian scalar types, fixed arrays, and fixed padding. Lay
 payload size; there is no expression evaluation, import, callback, or code hook. A CRC-valid
 unknown type/version retains its `raw_payload` and source metadata as a partial record.
 
-`project_semantics.json` must identify `silverstar.project-semantics/1.1` with numeric schema
+`project_semantics.json` must identify `silverstar.project-semantics/1.2` with numeric schema
 version `0x00010001`. It may bind Catalog fields through explicit Record semantics or FCCG
 `record_views`, `raw_channel_id_templates`, capability endpoints, physical devices, canonical
 routes, logging streams, events, modes, strategies, and protocols. Firmware algorithms may be a
@@ -82,7 +82,7 @@ override, Descriptor-less logs, and built-in parser fallback are not evidence of
 drag/drop, CLI, and `.ssflp` restore. It performs one atomic sequence:
 
 1. validate exactly one read-only log and one package source (manual, cache, or bounded search);
-2. load and fully validate package 1.1 and `flight_log.0_0` protocol metadata;
+2. load and fully validate package 1.2 and `flight_log.0_0` protocol metadata;
 3. read the Descriptor and require an exact package match;
 4. import the already-validated package into the content-addressed cache and reload it;
 5. construct `DecoderProfileParserPlugin` dynamically from the trusted container plus package;
@@ -123,12 +123,13 @@ FLP keeps three independent concepts:
 - algorithm outputs actually recorded in this log;
 - offline Algorithm Plugins installed in FLP.
 
-Recorded Configuration is offered only when every declared parameter value was actually logged.
+Recorded Configuration is offered only when every required firmware actual value is present
+in the exact package. Header/SYSTEM_CONFIG values and plugin defaults never fill missing fields.
 Offline defaults and What-if values never fabricate a recorded configuration. Pure INS and KF_6
 for firmware 0.0.10 remain `APPROXIMATE` until the real-log host golden gate proves equivalence;
 the existing `SILV0008` implementation identity is not renamed.
 
-`.ssflp` version 2 stores one `log_reference`, one decoder source/cache reference, full package,
+`.ssflp` version 3 stores one `log_reference`, one decoder source/cache reference, full package,
 generation, Catalog, and Semantics identities, exact match mode, container ID/version, replay
 settings, notes, and UI state. Older project versions are rejected. Saves are atomic and never
 embed or rewrite the log/package.
@@ -147,3 +148,16 @@ Synthetic fixtures validate protocol mechanics and rejection behavior, including
 Descriptor and Calibration Result. They do not satisfy a real-log validation gate. A real package
 may be validated independently, but claims about decoded values or replay equivalence require its
 matching immutable log and expected/golden artifacts.
+
+## Firmware resolved parameters (1.2 only)
+
+The final FCCG wire property is `firmware_algorithm_parameters` (the FCCG project editor calls
+its value map `algorithm_parameters`). Each list entry has `component`, `schema_id`
+(`silverstar.algorithm-parameters/1.0`), `manifest_sha256`, and `parameters`. Each parameter has
+`id`, resolved binary32 `value`, `unit`, `representation`, `storage_type`, and `description`.
+The data-only loader validates this before cache insertion. Known algorithm IDs, units,
+representations and ranges are checked against trusted builtins; unknown firmware component IDs
+never instantiate code. Duplicate owners/IDs, nonmembers, invalid types/finite values and contract
+mismatches fail. Missing required values make Recorded Configuration unavailable.
+Record Catalog remains independently versioned at 1.0. Package/Semantics 1.1 are rejected;
+no legacy fallback or multiplier migration exists. See [Project_Format.md](Project_Format.md).

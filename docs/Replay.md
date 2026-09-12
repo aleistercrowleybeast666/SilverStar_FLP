@@ -28,12 +28,13 @@ inputs are present, even when the opened `.ssdecoder` says that ESKF was not onb
 
 Replay exposes three configuration modes:
 
-1. **Recorded configuration** requires firmware membership, available inputs, and every parameter
-   required by that plugin to be present in the log. Defaults never complete a partial recording.
-2. **Offline configuration** uses the plugin's explicit offline defaults and depends only on input
-   availability, not on firmware membership or recorded output.
-3. **What-if** starts from offline defaults and overlays the subset of parameters genuinely found
-   in the log. User edits are then stored with the run as a distinct provenance snapshot.
+1. **Recorded configuration** requires onboard membership, usable inputs and every required
+   actual value in the exact `.ssdecoder` 1.2 package. Provenance is
+   `Firmware build configuration from .ssdecoder`. No header or plugin-default substitution.
+2. **Offline configuration** uses explicit actual plugin defaults.
+3. **What-if** copies complete firmware values for onboard algorithms, or actual plugin defaults
+   for absent algorithms. Restore firmware configuration and Restore algorithm defaults are
+   distinct actions. UI display precision never rounds an unedited firmware value in a request.
 
 Recorded algorithm output is a fourth, separate fact: it may be displayed as a comparison target,
 but it neither proves that recorded configuration is complete nor becomes a replay input.
@@ -44,13 +45,24 @@ parameter What-if studies, algorithm regression, diagnosing real-time task/times
 and comparing firmware algorithm versions. Availability is strict: missing required records or
 channels produces `UNAVAILABLE` with explicit missing-input codes rather than a partial result.
 
-What-if controls are generated from `ParameterSpec.group_key`. KF6 exposes Process Model, Initial
-Covariance, Measurement Noise, and Consistency Gating groups, showing only the selected group's
-editors. Modified values display a visible state. Reset restores the audited What-if baseline:
-explicit offline defaults overlaid by the partial or complete values returned by
-`recorded_parameters(dataset)`. Process-acceleration and measurement-R
-tooltips distinguish process noise Q from IMU white noise and distinguish dynamic recorded sensor
-uncertainty × R scale from a fixed sensor accuracy.
+What-if controls are generated from `ParameterSpec.group_key`: Process Model, Initial
+Covariance, Measurement Noise and Consistency Gating. Each editor shows the actual value/unit,
+and its tooltip includes representation/range. P0 uses six covariance-diagonal floors;
+process/GNSS/barometer noise uses sigma exactly as FCCG declares. Q squares sigma in the existing
+filter; P0 diagonal values are not squared. The old `p0_scale`, `gnss_position_r_scale`,
+`gnss_velocity_r_scale` and `baro_r_scale` fields are removed with no migration.
+
+Recorded P0 and measurement R already include dynamic uncertainty. Default replay preserves these
+resolved logged values. Changed P0 floors retain evidenced dynamic contributions. Barometer
+What-if requires the uniquely matched native sample and the recorded origin sigma; it applies
+`max(native variance, sigma²) + origin sigma²`. GNSS What-if keeps the existing 1.25 accuracy
+coefficient and source/update timestamps; it requires uniquely matched native uncertainty. Frozen
+GNSS initialization and lowered P0 floors can be non-invertible from the recorded aggregate.
+Those cases explicitly fail with `parameter_dynamic_uncertainty_missing`; no invented covariance
+or silently unapplied edit is reported as a successful replay. Calibration/alignment remain frozen.
+
+See [Actual_Parameters_Validation.md](Actual_Parameters_Validation.md) for the parameter inventory,
+actual package checks, default equivalence, dynamic metrics and outstanding real-flight phase gate.
 
 Pure INS and KF_6 remain `APPROXIMATE` for firmware `0.0.10`. Their audited host
 implementation retains the `SILV0008` identity and emits explicit build/Golden warnings.

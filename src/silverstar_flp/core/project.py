@@ -10,7 +10,7 @@ from typing import Any
 from silverstar_flp.decoder_profiles.discovery import DecoderProfileCacheReference
 
 PROJECT_FORMAT = "SilverStar_FLP_Project"
-PROJECT_VERSION = 2
+PROJECT_VERSION = 3
 
 
 def _Reference_Encode(source_path: Path, project_path: Path | None) -> str:
@@ -168,9 +168,49 @@ class ProjectDocument:
         return self.decoder_profile.SourcePath_Resolve(self.project_path)
 
 
+def ReplayConfiguration_Validate(configuration: Any) -> None:
+    from silverstar_flp.plugins.api.algorithm import ReplayMode
+    from silverstar_flp.plugins.registry import builtin_registry
+
+    fields = {
+        "algorithm_id",
+        "algorithm_version",
+        "mode",
+        "input_source",
+        "actual_values",
+        "parameter_schema_identity",
+        "provenance",
+    }
+    if not isinstance(configuration, dict) or set(configuration) != fields:
+        raise ValueError("project_replay_configuration_invalid")
+    try:
+        plugin = builtin_registry().Algorithm_Get(configuration["algorithm_id"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError("project_algorithm_unknown") from exc
+    if (
+        configuration["algorithm_version"] != plugin.metadata.version
+        or configuration["parameter_schema_identity"]
+        != plugin.metadata.ParameterSchemaIdentity_Get()
+    ):
+        raise ValueError("project_parameter_schema_mismatch")
+    ReplayMode(configuration["mode"])
+    if configuration["input_source"] not in ("corrected_imu", "recorded_inertial_increment"):
+        raise ValueError("project_replay_input_invalid")
+    if configuration["provenance"] not in (
+        "Firmware build configuration from .ssdecoder",
+        "Algorithm Plugin actual defaults",
+    ):
+        raise ValueError("project_parameter_provenance_invalid")
+    if not isinstance(configuration["actual_values"], dict):
+        raise ValueError("project_actual_values_invalid")
+    plugin.metadata.Parameters_Validate(configuration["actual_values"])
+
+
 def Project_Save(document: ProjectDocument, path: Path) -> None:
     if document.decoder_profile is None:
         raise ValueError("project_decoder_profile_missing")
+    for configuration in document.replay_configurations.values():
+        ReplayConfiguration_Validate(configuration)
     project_path = Path(path).resolve()
     project_path.parent.mkdir(parents=True, exist_ok=True)
     resolved_log_path = document.LogPath_Resolve()
@@ -191,12 +231,10 @@ def Project_Save(document: ProjectDocument, path: Path) -> None:
         "notes": document.notes,
         "ui_state": document.ui_state,
     }
-    temporary_path = project_path.parent / (
-        f".{project_path.name}.{uuid.uuid4().hex[:8]}.tmp"
-    )
+    temporary_path = project_path.parent / (f".{project_path.name}.{uuid.uuid4().hex[:8]}.tmp")
     try:
         with temporary_path.open("w", encoding="utf-8", newline="\n") as target:
-            json.dump(payload, target, ensure_ascii=False, indent=2)
+            json.dump(payload, target, ensure_ascii=False, indent=2, allow_nan=False)
             target.write("\n")
             target.flush()
             os.fsync(target.fileno())
@@ -250,11 +288,11 @@ def Project_Load(path: Path) -> ProjectDocument:
     ui_state = payload.get("ui_state", {})
     if not isinstance(replay, dict) or not isinstance(ui_state, dict):
         raise ValueError("project_state_invalid")
+    for configuration in replay.values():
+        ReplayConfiguration_Validate(configuration)
     return ProjectDocument(
         log_reference=log_reference,
-        decoder_profile=ProjectDecoderProfile.FromDict(
-            payload.get("decoder_profile")
-        ),
+        decoder_profile=ProjectDecoderProfile.FromDict(payload.get("decoder_profile")),
         replay_configurations=dict(replay),
         notes=str(payload.get("notes", "")),
         ui_state=dict(ui_state),

@@ -28,3 +28,13 @@ decoder, project, or source archive is removed.
 New acceptance runs use `.acceptance/<run-name>` or pytest `tmp_path`; long-term fixtures belong
 in `tests/fixtures` and must be reviewed and explicitly added. See
 [Display_DataQuality.md](Display_DataQuality.md) for the display/quality contract.
+
+## Explicit historical test retirement
+
+At the user's 2026-09-12 request, 46 obsolete `.codex_pytest_*` / `.codex_container_stage_*`
+directories were audited as generated, unreferenced test runs and retired, including 2,397
+mistakenly tracked synthetic files (86,042,656 bytes). Git records these deletions for review.
+`WorkspaceClean_RetireTests(root, exact_names)` is an explicit retirement API: it checks the real
+repository root, permits only those historical run-name prefixes, preflights every descendant,
+refuses links/junctions and removes individual files followed by empty directories. It does not
+change the ordinary dry-run/apply policy or permit fixture/source directory deletion.

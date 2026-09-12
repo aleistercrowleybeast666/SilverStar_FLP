@@ -14,11 +14,11 @@
 - Follow UI / ZH / EN standard plot set, segmented trajectory, combined <=60-frame GIF
 - partial-failure export manifest
 - trusted `LogContainerPlugin` API with the built-in SSLOG0 0.0 container
-- exact-only `.ssdecoder` 1.1 import, dynamic Record Catalog decoding, Project Semantics,
+- exact-only `.ssdecoder` 1.2 import, dynamic Record Catalog decoding, Project Semantics,
   multi-instance raw channels plus stable aliases, mandatory calibration validation, Descriptor
   matching, bounded discovery, and content-addressed cache
 - one atomic single-log coordinator shared by GUI import/folder search/drag-drop, CLI, and `.ssflp`
-  v2 restore; no production fixed-parser or Descriptor-less fallback
+  v3 restore; no production fixed-parser or Descriptor-less fallback
 - semantic Overview/Replay/State/Data Explorer pages and audit export manifest with full decoder,
   firmware, calibration, alias, and replay provenance
 - current SSLOG0 compatibility: ready NONE identity with nonzero sequence, GNSS online/no-fix and
@@ -49,3 +49,13 @@ No ESKF implementation is part of Phase 1.
 - Explicit startup record drops, missing-ID counts, and independent queue counters.
 - Conservative cleanup CLI and regression tests for Git/protected-file/reparse-point boundaries.
 - Separate hash-locked current SS0000 display/compatibility acceptance (not a numerical Golden).
+
+## Actual parameter migration and KF6 phase gate
+
+- Package and Semantics 1.2 only, Project v3, actual values and distinct firmware/offline reset.
+- Default INS/KF6 dynamic synthetic results match frozen pre-migration Python outputs exactly.
+- Real-flight KF6 phase status remains unverified until a matching actual 1.2 log is provided.
+- First replay using firmware actual configuration; do not tune Q/R to fit Recorded KF6.
+- If lead remains, inspect measurement timestamp, prediction/update order, baro arrival/index,
+  P0, first update timing and dt handling in a separately authorized timing task.
+- See [validation evidence](docs/Actual_Parameters_Validation.md).

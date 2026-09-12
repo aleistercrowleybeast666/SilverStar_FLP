@@ -7,7 +7,7 @@ Preserve these boundaries:
 
 - `src/silverstar_flp/app/version.py` is the only application identity/version authority.
 - Recorded datasets and source logs are immutable.
-- Production log opening must go through `LogOpenCoordinator`: one log, exact `.ssdecoder` 1.1,
+- Production log opening must go through `LogOpenCoordinator`: one log, exact `.ssdecoder` 1.2,
   mandatory Descriptor, validation before cache, dynamic parser, semantic adapter, and mandatory
   Calibration Result. Do not add package 1.0, unsigned, Descriptor-less, filename, manual-override,
   or fixed-parser fallbacks.
@@ -18,7 +18,7 @@ Preserve these boundaries:
   offsets or silently select an ambiguous device.
 - Keep firmware membership, recorded output presence, complete recorded configuration, and
   offline plugin availability independent. Offline defaults must never be reported as recorded.
-- `.ssflp` is an atomic single-log v2 reference format with full decoder/cache/container identity;
+- `.ssflp` is an atomic single-log v3 reference format with full decoder/cache/container identity;
   old project versions and identity mismatches are rejected.
 - Only Replay may change the global Analysis Data Source.
 - Recorded Pure INS and KF_6 layers must not be collapsed into one generic Recorded curve.
@@ -40,3 +40,11 @@ Preserve these boundaries:
   only positively evidenced gaps may be classified as pre-START.
 - Use `tools/clean_workspace.py` for bounded cleanup; never remove tracked files, fixtures, raw
   logs/decoder/project inputs, or symlink/junction targets. See `docs/Workspace_Cleanup.md`.
+
+- Replay parameters are actual values. Use `.ssdecoder` 1.2
+  `firmware_algorithm_parameters`; never use header/default values to fill Recorded Configuration.
+- Match FCCG parameter IDs, units and representation. Preserve sigma squaring, dynamic uncertainty,
+  and existing timing; reject unrecoverable uncertainty edits rather than guessing.
+- Explicit user-authorized retirement of verified historical test runs may use
+  `WorkspaceClean_RetireTests`, including mistakenly tracked synthetic outputs. Ordinary cleanup
+  remains conservative; never remove actual source inputs or follow links/junctions.

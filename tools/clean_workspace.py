@@ -167,6 +167,49 @@ def WorkspaceClean_Apply(
     )
 
 
+def WorkspaceClean_RetireTests(
+    root: Path, names: tuple[str, ...]
+) -> tuple[WorkspaceCleanResult, int]:
+    """Explicitly retire user-authorized historical test runs, including tracked outputs.
+
+    Unlike ordinary cleanup, this is a source-tree change reviewable in git diff.
+    Never follows links; a linked descendant refuses the entire run directory.
+    """
+    root = _Root_Validate(root)
+    removed = 0
+    for name in names:
+        if Path(name).name != name or not name.startswith(
+            (".codex_pytest_", ".codex_container_stage_")
+        ):
+            return WorkspaceCleanResult.REFUSED, removed
+        target = root / name
+        if _Linked_Check(target) or target.resolve().parent != root:
+            return WorkspaceCleanResult.REFUSED, removed
+        paths = []
+        for directory, directories, files in os.walk(target, followlinks=False):
+            for child in (*directories, *files):
+                path = Path(directory) / child
+                if _Linked_Check(path):
+                    return WorkspaceCleanResult.REFUSED, removed
+                path.resolve(strict=True).relative_to(target.resolve(strict=True))
+                paths.append(path)
+        for path in sorted(paths, key=lambda item: -len(item.parts)):
+            # Recheck ancestors at the point of deletion; no recursive removal.
+            for ancestor in (path, *path.parents):
+                if ancestor == root:
+                    break
+                if _Linked_Check(ancestor):
+                    return WorkspaceCleanResult.REFUSED, removed
+            if path.is_dir():
+                path.rmdir()
+            else:
+                path.unlink()
+            removed += 1
+        target.rmdir()
+        removed += 1
+    return WorkspaceCleanResult.APPLIED, removed
+
+
 def WorkspaceClean_Main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()

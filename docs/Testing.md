@@ -16,15 +16,15 @@ request, complete Replay fidelity/warning/parameter translations, strict source 
 return to Recorded, Replay-only source authority, and read-only Flight/State source displays.
 
 Decoder-profile fixtures are created only under pytest temporary directories. They cover the
-trusted container API, strict FCCG package/project-semantics schema 1.1, checksums, ZIP Slip,
+trusted container API, strict FCCG package/project-semantics schema 1.2, checksums, ZIP Slip,
 case-insensitive duplicates, symbolic links, executable entries, tampering, JSON and payload-size
 contracts, every primitive scalar type, arrays, padding, scaling, enum and bitfield display.
-Schema 1.0 and unsigned layouts are explicit rejection cases. Integration fixtures verify all
+Schema 1.0/1.1 and unsigned layouts are explicit rejection cases. Integration fixtures verify all
 three exact Descriptor hashes, raw unknown-Record retention, partial status,
 IMU 0/1 channel separation, one canonical IMU channel, same-physical-device capability linkage,
 bounded task-directory/parent discovery, validation-before-cache behavior, mandatory identity
 NONE calibration, immutable zero-copy aliases, independent firmware/recorded/offline algorithm
-status, package-aware CLI inspection, `.ssflp` v2, audit-manifest provenance, explicit
+status, package-aware CLI inspection, `.ssflp` v3, audit-manifest provenance, explicit
 `.ssplugin` trust, host factory allowlisting, and built-in container protection.
 
 Current compatibility fixtures additionally cover `NONE + READY` with zero bias/unit scale and a
@@ -65,8 +65,8 @@ combined GIF frame count, and partial-failure manifests.
 Estimator tests declare a test-only ESKF-like plugin with five state groups and GNSS, barometer,
 and magnetometer measurement groups. They verify that the State Estimation controls, plots, and
 generic update table are created solely from metadata and that the page source contains no
-KF6-specific channel IDs. What-if tests use non-default recorded SYSTEM_CONFIG values, modify
-parameters, and verify that Reset restores those recorded values. Replay regression also compares
+KF6-specific channel IDs. What-if tests load non-default firmware actual values from 1.2 packages, modify parameters,
+and verify that Reset restores the matching firmware or offline baseline. Replay regression also compares
 the deterministic KF6 result hash before and after the GUI/metadata refactor.
 
 Run:
@@ -128,3 +128,16 @@ For a reproducible smoke build, launch PyInstaller in a child shell whose PATH c
 project venv Scripts, the venv base Python directory, Windows System32, and Windows directory.
 Use a fresh work directory so stale dependency analysis cannot preserve the foreign DLL. The
 normal application source and formal spec remain unchanged.
+
+## Actual parameter migration checks
+
+Run `test_actual_parameters.py`, `test_decoder_profiles.py`, `test_replay_page.py`, and the full
+suite. Parameter fixtures contain audited FCCG schema snapshots and two compact pre-migration
+Python output baselines. The dynamic 10-second synthetic pair has a matching 1.2 Descriptor,
+mandatory calibration, 100 Hz IMU and 20 Hz barometer; default replay has 500 outputs per algorithm.
+These fixtures prove regression equivalence, not onboard numerical accuracy.
+
+Historical hash-locked 1.1 manual gates above are retained as historical references; their packages
+are intentionally rejected by the new production loader. Do not update their hashes to make an
+unrelated package appear matched. A new matching real 1.2 flight/host gate is outstanding. See
+[Actual_Parameters_Validation.md](Actual_Parameters_Validation.md).

@@ -7,7 +7,7 @@ flight, and exports timestamp-faithful data products.
 
 Version: **v0.0.2**
 
-> Raw `.BIN`/`.sslog` logs and `.ssdecoder` packages are opened read-only. A `.ssflp` v2 project
+> Raw `.BIN`/`.sslog` logs and `.ssdecoder` packages are opened read-only. A `.ssflp` v3 project
 > stores one log reference, exact decoder/cache identity, replay settings, notes, and UI state; it
 > never embeds or rewrites either source.
 
@@ -53,7 +53,7 @@ Import and export use focused option dialogs. The five analysis pages are:
    GNSS online/fix/usability state, translated event timeline, and explicit Data Quality status.
 2. Replay — every installed offline algorithm, independently labeled for firmware membership,
    recorded output, and offline-plugin availability. Recorded Configuration is enabled only when
-   every parameter was logged; Offline defaults and What-if remain distinct. Every run is
+   every required firmware actual parameter is present in the exact package; Offline defaults and What-if remain distinct. Every run is
    retained. A dedicated **Analysis Data Source** selector begins with Recorded data and exposes
    only complete, successful runs.
 3. Flight — START-cropped ENU velocity/position, corrected IMU, authoritative software attitude,
@@ -70,9 +70,9 @@ Import and export use focused option dialogs. The five analysis pages are:
    decoded record with file offsets, parser diagnostics/damaged spans, and uniquely named replays.
 
 The Replay page groups What-if parameters into Process Model, Initial Covariance, Measurement
-Noise, and Consistency Gating. What-if starts from offline defaults overlaid only with parameter
-values genuinely present in the log; this never makes an incomplete Recorded Configuration
-available. The form scrolls when taller than the available window.
+Noise, and Consistency Gating. For onboard algorithms, What-if copies the complete firmware actual configuration;
+for algorithms absent from firmware it uses plugin actual defaults. Incomplete firmware
+configurations cannot be completed with offline defaults. The form scrolls when taller than the available window.
 Every combo box uses a conventional downward popup with at most ten visible rows; longer lists
 scroll inside the popup. Flight and State Estimation each provide a page-level **Reset Charts**
 button that restores every 2D chart on the page after manual zooming or panning.
@@ -94,7 +94,7 @@ The firmware/FCCG schema ID `silverstar.sslog.container/0.0` is accepted only as
 for this same built-in wire contract; it does not register or execute a second plugin.
 
 Production opening is exact and configuration-driven. `LogOpenCoordinator` validates one package
-schema 1.1, requires a matching 64-byte log Descriptor, imports the verified package into the
+schema 1.2, requires a matching 64-byte log Descriptor, imports the verified package into the
 content-addressed cache, creates `DecoderProfileParserPlugin` dynamically, parses the Catalog,
 then applies Project Semantics and calibration before publishing a dataset. GUI manual import,
 bounded folder search, drag/drop, CLI, and project restore use this same atomic path. There is no
@@ -194,7 +194,7 @@ including nonzero start sequence and configured-SixFace independence, zero-copy 
 aliases, online/no-fix GNSS with zero measurements, multiple Alignment/INITIAL_STATE authority,
 candidate-validated bounded recovery, per-channel timestamp sorting, CLI integration,
 audit-manifest provenance, cache reuse, bounded parent discovery, and trusted `.ssplugin` factory
-allowlisting. Package 1.0 and unsigned layouts are explicit rejection cases.
+allowlisting. Package 1.0/1.1 and unsigned layouts are explicit rejection cases.
 
 No real flight log is included. Phase 2 requires frozen real logs and host-C golden vectors from
 the matching flight-controller build; this is tracked in [TARGETS.md](TARGETS.md).
@@ -216,7 +216,7 @@ control.
 Users manage two log-decoding layers:
 
 - trusted Log Container Plugin code for one incompatible container generation;
-- one exact data-only `.ssdecoder` 1.1 per generated project.
+- one exact data-only `.ssdecoder` 1.2 per generated project.
 
 Internally, Algorithm Plugins remain the separate replay/estimation extension point. A
 `.ssdecoder` may describe recorded algorithm streams, but field layout alone cannot implement or
