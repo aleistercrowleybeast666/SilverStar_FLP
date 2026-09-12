@@ -61,3 +61,7 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   a per-gap table. Flight separately reports position timestamp gaps and the drawing threshold.
   Event-marker interpolation is permitted only across valid normal-cadence samples; the nearest
   scheduling fallback applies only outside channel coverage, never inside a data hole.
+
+## Shell menus and plugin visibility
+
+The header order is product, version, credit, current project, stretch, language, theme. Top-level menus are File, Plugins, Help. Plugins contains Manage, Install, Refresh; Help contains About. Plugin Manager is registry-driven and uses shared theme/i18n.

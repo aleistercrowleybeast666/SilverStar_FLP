@@ -63,3 +63,7 @@ No ESKF implementation is part of Phase 1.
 - If lead remains, inspect measurement timestamp, prediction/update order, baro arrival/index,
   P0, first update timing and dt handling in a separately authorized timing task.
 - See [validation evidence](docs/Actual_Parameters_Validation.md).
+
+## GUI shell consistency
+
+- File/Plugins/Help menus, project-before-stretch header order, registry-driven Plugin Manager, explicit-trust container install, discovery-only Refresh, and About.

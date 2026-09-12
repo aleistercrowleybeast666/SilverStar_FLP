@@ -149,3 +149,7 @@ File-menu shortcuts, destination-first New Project cancellation/overwrite behavi
 relative references, and project/log-relative export defaults. `.ssproject` has no import or drop
 semantics. Export tests intentionally contain no fixed `D:\\SilverStar_FLP_Data` default and no
 source-code-package product.
+
+## GUI shell closeout
+
+GUI coverage asserts product/version/credit/project/stretch/language/theme order, File/Plugins/Help and plugin-action order, About content, Pure INS/KF_6/SSLOG0 registry rows, unsupported Algorithm-package refusal, discovery refresh identity preservation, and both export default rules with no fixed D-drive root.

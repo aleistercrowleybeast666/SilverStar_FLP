@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, Qt, QThreadPool, QTimer, QUrl
+from PySide6.QtCore import QSettings, QStandardPaths, Qt, QThreadPool, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -41,6 +41,7 @@ from silverstar_flp.core.project import (
     ProjectDecoderProfile,
     ProjectDocument,
 )
+from silverstar_flp.decoder_profiles.errors import DecoderProfileError
 from silverstar_flp.export.service import ExportManifest, FlightExporter
 from silverstar_flp.log_open import (
     LogOpenCoordinator,
@@ -49,6 +50,7 @@ from silverstar_flp.log_open import (
     LogOpenSourceMode,
 )
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
+from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
 from silverstar_flp.plugins.registry import PluginRegistry
 from silverstar_flp.ui.pages import (
     DataExplorerPage,
@@ -59,6 +61,7 @@ from silverstar_flp.ui.pages import (
     ReplayPage,
     StateEstimationPage,
 )
+from silverstar_flp.ui.plugin_manager import AboutDialog, PluginManagerDialog
 from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
@@ -82,9 +85,19 @@ class MainWindow(QMainWindow):
         initial_path: Path | None = None,
         initial_decoder_path: Path | None = None,
         initial_auto_find: bool = False,
+        plugin_manager: TrustedContainerPluginManager | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry
+        self._plugin_manager = plugin_manager or TrustedContainerPluginManager(
+            Path(
+                QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.AppLocalDataLocation
+                )
+            )
+            / "plugins"
+        )
+        self._plugin_discovery = self._plugin_manager.Discover()
         self._log_open_coordinator = LogOpenCoordinator(registry)
         self._translator = Translator(language)
         self._theme = theme
@@ -160,9 +173,9 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.title_label)
         header_layout.addWidget(self.version_label)
         header_layout.addWidget(self.credit_label)
-        header_layout.addStretch(1)
         header_layout.addWidget(self.project_caption_label)
         header_layout.addWidget(self.project_name_label)
+        header_layout.addStretch(1)
         header_layout.addWidget(self.language_label)
         header_layout.addWidget(self.language_combo)
         header_layout.addWidget(self.theme_label)
@@ -237,11 +250,16 @@ class MainWindow(QMainWindow):
         self.export_dialog = ExportDialog(self._translator, self)
         self.export_dialog.exportRequested.connect(self._Export_Start)
         self.export_dialog.manifestOpenRequested.connect(self._ExportManifest_Open)
+        self.plugin_manager_dialog = PluginManagerDialog(self._translator, self)
+        self.about_dialog = AboutDialog(self._translator, self)
+        self._Plugins_Refresh(show_message=False)
         self.navigation_list.setCurrentRow(0)
 
     def _Menu_Build(self) -> None:
         self.menuBar().setObjectName("mainMenuBar")
         self.file_menu = self.menuBar().addMenu("")
+        self.plugins_menu = self.menuBar().addMenu("")
+        self.help_menu = self.menuBar().addMenu("")
         self.new_project_action = QAction(self)
         self.new_project_action.setShortcut("Ctrl+N")
         self.new_project_action.triggered.connect(self._Project_New)
@@ -262,6 +280,16 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(self._ExportDialog_Show)
         self.exit_action = QAction(self)
         self.exit_action.triggered.connect(self.close)
+        self.manage_plugins_action = QAction(self)
+        self.manage_plugins_action.triggered.connect(self._PluginManager_Show)
+        self.install_plugin_action = QAction(self)
+        self.install_plugin_action.triggered.connect(self._Plugin_InstallDialog_Show)
+        self.refresh_plugins_action = QAction(self)
+        self.refresh_plugins_action.triggered.connect(
+            lambda _checked=False: self._Plugins_Refresh()
+        )
+        self.about_action = QAction(self)
+        self.about_action.triggered.connect(self._About_Show)
         self.file_menu.addAction(self.new_project_action)
         self.file_menu.addAction(self.open_project_action)
         self.file_menu.addAction(self.save_project_action)
@@ -271,6 +299,63 @@ class MainWindow(QMainWindow):
         self.file_menu.addAction(self.export_action)
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.exit_action)
+        self.plugins_menu.addAction(self.manage_plugins_action)
+        self.plugins_menu.addAction(self.install_plugin_action)
+        self.plugins_menu.addAction(self.refresh_plugins_action)
+        self.help_menu.addAction(self.about_action)
+
+    def _PluginManager_Show(self) -> None:
+        self.plugin_manager_dialog.Registry_Set(self._registry, self._plugin_discovery)
+        self.plugin_manager_dialog.open()
+
+    def _About_Show(self) -> None:
+        self.about_dialog.open()
+
+    def _Plugin_InstallDialog_Show(self) -> None:
+        source_name, _ = QFileDialog.getOpenFileName(
+            self,
+            self._translator.Text_Get("dialog.plugin_install.title"),
+            "",
+            self._translator.Text_Get("dialog.plugin_install.filter"),
+        )
+        if not source_name:
+            return
+        answer = QMessageBox.warning(
+            self,
+            self._translator.Text_Get("dialog.plugin_trust.title"),
+            self._translator.Text_Get("dialog.plugin_trust.message").format(path=source_name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.Plugin_Install(Path(source_name), explicitly_trusted=True)
+        except DecoderProfileError as exc:
+            QMessageBox.critical(
+                self,
+                self._translator.Text_Get("error.title"),
+                self._translator.Text_Get("plugin.install.rejected").format(reason=str(exc)),
+            )
+            return
+        QMessageBox.information(
+            self,
+            self._translator.Text_Get("dialog.plugin_install.title"),
+            self._translator.Text_Get("plugin.install.success_restart"),
+        )
+
+    def Plugin_Install(self, path: Path, *, explicitly_trusted: bool) -> None:
+        """Install only a validated container package; never execute package Python."""
+        self._plugin_manager.Package_Install(path, explicitly_trusted=explicitly_trusted)
+        self._Plugins_Refresh(show_message=False)
+
+    def _Plugins_Refresh(self, *, show_message: bool = True) -> None:
+        """Rediscover inert packages without mutating the active runtime registry."""
+        self._plugin_discovery = self._plugin_manager.Discover()
+        if hasattr(self, "plugin_manager_dialog"):
+            self.plugin_manager_dialog.Registry_Set(self._registry, self._plugin_discovery)
+        if show_message:
+            self.status_label.setText(self._translator.Text_Get("plugin.refresh.complete"))
 
     def _Page_Select(self, index: int) -> None:
         if 0 <= index < self.pages.count():
@@ -367,9 +452,7 @@ class MainWindow(QMainWindow):
             source_mode=source_mode,
         )
         self.status_label.setText(self._translator.Text_Get("status.loading"))
-        worker = FunctionWorker(
-            lambda context: self._log_open_coordinator.Open(request, context)
-        )
+        worker = FunctionWorker(lambda context: self._log_open_coordinator.Open(request, context))
         self._Task_Start(
             worker,
             lambda result: self._LogOpenResult_Set(
@@ -443,9 +526,7 @@ class MainWindow(QMainWindow):
             self._Error_Show(str(exc))
             return
         self.status_label.setText(self._translator.Text_Get("status.loading"))
-        worker = FunctionWorker(
-            lambda context: self._ProjectLogOpen_Run(project, request, context)
-        )
+        worker = FunctionWorker(lambda context: self._ProjectLogOpen_Run(project, request, context))
         self._Task_Start(
             worker,
             lambda result: self._LogOpenResult_Set(result, project, mark_dirty=False),
@@ -475,9 +556,7 @@ class MainWindow(QMainWindow):
         result: LogOpenResult,
     ) -> ProjectDecoderProfile:
         package = result.package
-        container = self._registry.LogContainer_Get(
-            package.required_container_plugin_id
-        )
+        container = self._registry.LogContainer_Get(package.required_container_plugin_id)
         return ProjectDecoderProfile(
             source_reference=str(result.source_package_path.resolve()),
             cache_reference=result.cache_reference,
@@ -502,9 +581,11 @@ class MainWindow(QMainWindow):
         try:
             for configuration in project.replay_configurations.values():
                 plugin = self._registry.Algorithm_Get(configuration["algorithm_id"])
-                request = ReplayRequest(mode=configuration["mode"],
-                                        input_source=configuration["input_source"],
-                                        parameters=configuration["actual_values"])
+                request = ReplayRequest(
+                    mode=configuration["mode"],
+                    input_source=configuration["input_source"],
+                    parameters=configuration["actual_values"],
+                )
                 plugin.Parameters_Resolve(result.dataset, request)
                 provenance = plugin.ParameterAudit_Get(result.dataset, request)["config_source"]
                 if configuration["provenance"] != provenance:
@@ -558,27 +639,18 @@ class MainWindow(QMainWindow):
 
     def _DatasetStatus_TextGet(self, dataset: FlightDataset) -> str:
         warning = bool(
-            dataset.data_quality is not None
-            and dataset.data_quality.status.value == "warnings"
+            dataset.data_quality is not None and dataset.data_quality.status.value == "warnings"
         )
         semantic_context = dataset.semantic_context
         if semantic_context is None:
             return self._translator.Text_Get(
-                (
-                    "status.loaded_file_warnings"
-                    if warning
-                    else "status.loaded_file"
-                ),
+                ("status.loaded_file_warnings" if warning else "status.loaded_file"),
                 name=dataset.source_path.name,
                 count=dataset.diagnostics.decoded_record_count,
             )
         identity = semantic_context.PackageIdentity_Get()
         return self._translator.Text_Get(
-            (
-                "status.loaded_exact_warnings"
-                if warning
-                else "status.loaded_exact"
-            ),
+            ("status.loaded_exact_warnings" if warning else "status.loaded_exact"),
             name=dataset.source_path.name,
             project=semantic_context.Project_Get(),
             firmware=semantic_context.FirmwareVersion_Get(),
@@ -591,9 +663,7 @@ class MainWindow(QMainWindow):
         self.overview_page.Dataset_Set(self._dataset)
         self.replay_page.Dataset_Set(self._dataset, self._replay_store)
         self.flight_page.Dataset_Set(self._dataset, self._channel_resolver)
-        self.state_estimation_page.Dataset_Set(
-            self._dataset, self._channel_resolver
-        )
+        self.state_estimation_page.Dataset_Set(self._dataset, self._channel_resolver)
         self.explorer_page.Dataset_Set(self._dataset, self._replay_store)
 
     def _Replay_Start(self, algorithm_id: str, request: ReplayRequest) -> None:
@@ -915,15 +985,22 @@ class MainWindow(QMainWindow):
         self.theme_label.setText(self._translator.Text_Get("label.theme"))
         self.cancel_button.setText(self._translator.Text_Get("action.cancel"))
         self.file_menu.setTitle(self._translator.Text_Get("menu.file"))
+        self.plugins_menu.setTitle(self._translator.Text_Get("menu.plugins"))
+        self.help_menu.setTitle(self._translator.Text_Get("menu.help"))
         self.new_project_action.setText(self._translator.Text_Get("action.new_project"))
         self.import_action.setText(self._translator.Text_Get("action.import"))
         self.export_action.setText(self._translator.Text_Get("action.export"))
         self.open_project_action.setText(self._translator.Text_Get("action.open_project"))
         self.save_project_action.setText(self._translator.Text_Get("action.save_project"))
-        self.save_project_as_action.setText(
-            self._translator.Text_Get("action.save_project_as")
-        )
+        self.save_project_as_action.setText(self._translator.Text_Get("action.save_project_as"))
         self.exit_action.setText(self._translator.Text_Get("action.exit"))
+        self.manage_plugins_action.setText(self._translator.Text_Get("action.manage_plugins"))
+        self.install_plugin_action.setText(self._translator.Text_Get("action.install_plugin"))
+        self.refresh_plugins_action.setText(self._translator.Text_Get("action.refresh_plugins"))
+        self.about_action.setText(self._translator.Text_Get("action.about"))
+        self.plugin_manager_dialog.Language_Apply(self._translator)
+        self.plugin_manager_dialog.Registry_Set(self._registry, self._plugin_discovery)
+        self.about_dialog.Language_Apply(self._translator)
         for index in range(self.navigation_list.count()):
             item = self.navigation_list.item(index)
             page_code = str(item.data(Qt.ItemDataRole.UserRole))
@@ -935,9 +1012,7 @@ class MainWindow(QMainWindow):
         if self._dataset is None:
             self.status_label.setText(self._translator.Text_Get("status.ready"))
         else:
-            self.status_label.setText(
-                self._DatasetStatus_TextGet(self._dataset)
-            )
+            self.status_label.setText(self._DatasetStatus_TextGet(self._dataset))
         self.setWindowTitle(PRODUCT_NAME)
 
     def Theme_Apply(self, theme: str) -> None:
@@ -963,15 +1038,9 @@ class MainWindow(QMainWindow):
         if not urls or any(not url.isLocalFile() for url in urls):
             return None
         paths = tuple(Path(url.toLocalFile()) for url in urls)
-        project_paths = tuple(
-            path for path in paths if path.suffix.casefold() == ".ssflp"
-        )
-        log_paths = tuple(
-            path for path in paths if path.suffix.casefold() in (".bin", ".sslog")
-        )
-        decoder_paths = tuple(
-            path for path in paths if path.suffix.casefold() == ".ssdecoder"
-        )
+        project_paths = tuple(path for path in paths if path.suffix.casefold() == ".ssflp")
+        log_paths = tuple(path for path in paths if path.suffix.casefold() in (".bin", ".sslog"))
+        decoder_paths = tuple(path for path in paths if path.suffix.casefold() == ".ssdecoder")
         if len(project_paths) == 1 and len(paths) == 1:
             return paths
         if (
@@ -992,9 +1061,7 @@ class MainWindow(QMainWindow):
             self._Error_Show("drop_selection_invalid")
             event.ignore()
             return
-        project_paths = tuple(
-            path for path in paths if path.suffix.casefold() == ".ssflp"
-        )
+        project_paths = tuple(path for path in paths if path.suffix.casefold() == ".ssflp")
         if project_paths:
             if not self._ProjectChanges_Confirm():
                 event.ignore()
@@ -1002,9 +1069,7 @@ class MainWindow(QMainWindow):
             self._Project_Open(project_paths[0])
             event.acceptProposedAction()
             return
-        log_path = next(
-            path for path in paths if path.suffix.casefold() in (".bin", ".sslog")
-        )
+        log_path = next(path for path in paths if path.suffix.casefold() in (".bin", ".sslog"))
         decoder_path = next(
             (path for path in paths if path.suffix.casefold() == ".ssdecoder"),
             None,

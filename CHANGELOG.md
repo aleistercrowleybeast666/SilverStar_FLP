@@ -104,3 +104,8 @@
   metadata, calibration, aliases, and replay provenance.
 - Added synthetic dual-IMU, same-physical-device multi-capability, strict rejection, coordinator,
   calibration, CLI, project v2, immutable-alias, and audit-manifest regression coverage.
+
+### GUI shell consistency closeout
+
+- Added FCCG-aligned File/Plugins/Help menus, project-before-stretch header ordering, bilingual registry-driven Plugin Manager and About dialog.
+- Install/Refresh use only explicit-trust `.ssplugin` container discovery; unsupported algorithms are rejected and activation requires restart plus a host-allowlisted factory.

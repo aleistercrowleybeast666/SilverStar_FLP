@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
+import zipfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PySide6.QtCore import QEventLoop, QPoint, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QPushButton, QToolBar
 
@@ -12,12 +15,14 @@ from silverstar_flp.app.application import _RuntimeDiagnostics_Log
 from silverstar_flp.app.version import PRODUCT_NAME, __version__
 from silverstar_flp.core.project import ProjectDecoderProfile
 from silverstar_flp.decoder_profiles.discovery import DecoderProfileCacheReference
+from silverstar_flp.decoder_profiles.errors import DecoderProfileError
 from silverstar_flp.export.service import (
     ExportFailure,
     ExportLanguage,
     ExportManifest,
     ExportTheme,
 )
+from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
@@ -103,10 +108,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert window.overview_page.alignment_group.property("statusLevel") == "success"
     assert window.overview_page.quality_card.property("statusLevel") == "success"
     assert window.explorer_page.channel_list.count() == len(dataset.series)
-    assert (
-        window.explorer_page.diagnostics_table.rowCount()
-        == len(dataset.diagnostics.diagnostics)
-    )
+    assert window.explorer_page.diagnostics_table.rowCount() == len(dataset.diagnostics.diagnostics)
     record_headers = [
         window.explorer_page.record_table.horizontalHeaderItem(column).text()
         for column in range(window.explorer_page.record_table.columnCount())
@@ -119,6 +121,26 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert not hasattr(window, "export_button")
     assert not hasattr(window, "import_button")
     assert window.findChildren(QToolBar) == []
+    assert [action.menu() for action in window.menuBar().actions()] == [
+        window.file_menu,
+        window.plugins_menu,
+        window.help_menu,
+    ]
+    header_layout = window.title_label.parentWidget().layout()
+    assert [
+        header_layout.indexOf(widget)
+        for widget in (
+            window.title_label,
+            window.version_label,
+            window.credit_label,
+            window.project_caption_label,
+            window.project_name_label,
+            window.language_label,
+            window.language_combo,
+            window.theme_label,
+            window.theme_combo,
+        )
+    ] == [0, 1, 2, 3, 4, 6, 7, 8, 9]
     assert [action for action in window.file_menu.actions() if not action.isSeparator()] == [
         window.new_project_action,
         window.open_project_action,
@@ -135,6 +157,31 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     }
     assert shortcuts == {"Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+E"}
     assert len(shortcuts) == 5
+    assert window.plugins_menu.actions() == [
+        window.manage_plugins_action,
+        window.install_plugin_action,
+        window.refresh_plugins_action,
+    ]
+    assert window.help_menu.actions() == [window.about_action]
+    window._PluginManager_Show()
+    application.processEvents()
+    plugin_cells = {
+        window.plugin_manager_dialog.table.item(row, column).text()
+        for row in range(window.plugin_manager_dialog.table.rowCount())
+        for column in range(window.plugin_manager_dialog.table.columnCount())
+    }
+    assert any("Pure INS" in cell for cell in plugin_cells)
+    assert any("KF_6" in cell for cell in plugin_cells)
+    assert any("SSLOG0" in cell for cell in plugin_cells)
+    window.plugin_manager_dialog.reject()
+    window._About_Show()
+    application.processEvents()
+    assert window.about_dialog.isVisible()
+    assert window.about_dialog.product_label.text() == "SilverStar_FLP"
+    assert window.about_dialog.version_label.text() == "版本 0.0.2"
+    assert window.about_dialog.description_label.text() == "SilverStar Flight Log Parser"
+    assert window.about_dialog.credit_label.text() == "辰星引力 / CXYL"
+    window.about_dialog.reject()
     saved_as_path = tmp_path / "SYNTHETIC_gui_project_copy.ssflp"
     monkeypatch.setattr(
         QFileDialog,
@@ -204,6 +251,11 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert window.save_project_as_action.text() == "Save Project As…"
     assert window.title_label.text() == "SilverStar Flight Log Parser"
     assert window.credit_label.text() == "By CXYL"
+    assert [menu.title() for menu in (window.file_menu, window.plugins_menu, window.help_menu)] == [
+        "File",
+        "Plugins",
+        "Help",
+    ]
     assert window.replay_page.parameters_group.title() == "What-if parameters"
     assert window.windowTitle() == PRODUCT_NAME
     if window.flight_page.trajectory_view is not None:
@@ -262,9 +314,11 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     window._project.project_path = tmp_path / "Named Flight.ssflp"
     window._ExportDialog_Show()
     application.processEvents()
-    assert Path(window.export_dialog.folder_edit.text()) == (
-        tmp_path / "Result"
-    )
+    assert Path(window.export_dialog.folder_edit.text()) == (tmp_path / "Result")
+
+    source_text = Path("src/silverstar_flp/ui/main_window.py").read_text(encoding="utf-8")
+    assert "_DEFAULT_EXPORT_ROOT" not in source_text
+    assert "SilverStar_FLP_Data" not in source_text
 
     manifest_directory = tmp_path / "manifest_export"
     manifest_directory.mkdir()
@@ -299,6 +353,45 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     assert Path(opened_urls[0].toLocalFile()) == manifest_path.resolve()
     window.Language_Apply("en_US")
     assert window.export_dialog.manifest_button.text() == "Open Export Manifest"
+    window.close()
+
+
+def test_plugin_install_rejects_unsupported_algorithm_and_refresh_preserves_runtime(
+    tmp_path: Path,
+) -> None:
+    _application = QApplication.instance() or QApplication([])
+    manager = TrustedContainerPluginManager(tmp_path / "installed")
+    window = MainWindow(builtin_registry(), plugin_manager=manager)
+    dataset = Sslog0ParserPlugin().parse(
+        AnalysisFlight_Build(tmp_path / "SYNTHETIC_plugin_refresh.BIN")
+    )
+    window._Dataset_Set(dataset)
+    algorithms_before = window._registry.algorithms
+    containers_before = window._registry.log_containers
+
+    unsupported = tmp_path / "algorithm.ssplugin"
+    with zipfile.ZipFile(unsupported, "w") as archive:
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "format": "SilverStar.ssplugin",
+                    "plugin_type": "algorithm",
+                    "plugin_id": "example.algorithm.unsafe",
+                    "version": "1.0.0",
+                    "api_version": 1,
+                    "entry_point": "unsafe.algorithm:factory",
+                }
+            ),
+        )
+    with pytest.raises(DecoderProfileError, match="container_plugin_type_invalid"):
+        window.Plugin_Install(unsupported, explicitly_trusted=True)
+
+    window._Plugins_Refresh(show_message=False)
+    assert window._registry.algorithms == algorithms_before
+    assert window._registry.log_containers == containers_before
+    assert window._dataset is dataset
+    assert manager.Discover().manifests == ()
     window.close()
 
 
@@ -409,9 +502,7 @@ def test_export_dialog_runs_gif_and_manifest_through_real_qthreadpool_worker(
     assert worker is not None
     errors: list[tuple[str, str]] = []
     worker.signals.error.connect(
-        lambda message, traceback_text: errors.append(
-            (message, traceback_text)
-        )
+        lambda message, traceback_text: errors.append((message, traceback_text))
     )
     loop = QEventLoop()
     worker.signals.finished.connect(loop.quit)
