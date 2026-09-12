@@ -174,18 +174,17 @@ Recommended structure:
 ```
 
 Optional:
-- A compact dark-blue toolbar may be placed under the menu/header for frequent file/export actions.
 - Do not overload the brand header with many task buttons.
 
 For applications with an engineering document/project format, the recommended visible order is:
 
 ```text
-File menu: Import, Export, Save Project, Save Project As, Open Project
-Toolbar:   Import, Export, Save Project, Open Project
+File menu: New Project, Open Project, Save Project, Save Project As,
+           Import Log / Decoder, Export, Exit
 ```
 
-Keep the five File-menu actions contiguous. In particular, do not insert a separator between
-`Save Project As` and `Open Project`.
+Use separators after Save Project As and Export. Avoid a duplicate toolbar when all required
+project actions are available from this menu with conventional shortcuts.
 
 In Simplified Chinese CXYL engineering applications, translate the document concept `Project`
 as `工程`, for example
@@ -1139,10 +1138,9 @@ When any product fails, also attempt a dependency-free localized `Export_Failure
 `Export_Failures_EN.txt`. This fallback uses only standard text file I/O so a Manifest failure
 cannot erase the diagnostic reason.
 
-For SilverStar_FLP, the default output directory is
-`D:\SilverStar_FLP_Data\<project-name>_Data`. If no saved/open project exists, replace the project
-name with the original source-log filename stem. Changing the field affects only the current
-export request.
+For SilverStar_FLP, the default output directory is `<project-directory>/Result`. If no
+saved/open project exists, use `<source-log-directory>/<source-log-stem>_Data`. Changing the field
+affects only the current export request; never impose a fixed drive root.
 
 Recommended export language:
 

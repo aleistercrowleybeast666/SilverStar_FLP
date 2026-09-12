@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Finalized the FCCG-style project shell: added the compact current-project header, New/Open/Save/
+  Save As/Import/Export/Exit menu and shortcuts, removed the duplicate toolbar, and added minimal
+  dirty-state Save/Discard/Cancel handling.
+- New Project now reserves a user-selected `.ssflp` destination but writes it only after exact
+  log/decoder validation. Export defaults to the adjacent `Result` folder for projects or the
+  log-adjacent `<stem>_Data` folder for temporary sessions; the fixed D-drive default is removed.
+- Kept Project v3 and relative source references. `.ssproject` remains an unparsed sidecar and no
+  source-code-package export was added.
+
 - Migrated to exact package/Project Semantics 1.2, independent Catalog 1.0 and Project v3.
 - Replaced four relative-default KF6 controls with FCCG actual parameter metadata; recorded
   configuration comes only from firmware resolved values. Added distinct What-if reset origins,

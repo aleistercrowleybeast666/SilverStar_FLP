@@ -33,8 +33,10 @@ installation you can also start it without manually activating the environment.
 python main.py
 ```
 
-Choose **Import** and either select exactly one flight log plus its `.ssdecoder`, or run the
-bounded task-folder search and select one exact pair. You can drag one log with an optional
+Choose **New Project** to select the new `.ssflp` location first, then select exactly one flight
+log plus its `.ssdecoder` (or run the bounded task-folder search). The project file is written
+only after exact-pair validation succeeds. Choose **Import Log / Decoder** for a temporary
+session that does not require an immediate project save. You can drag one log with an optional
 package onto the window; a log by itself invokes the same bounded exact search. Command-line GUI
 startup accepts the explicit pair:
 
@@ -43,9 +45,10 @@ python main.py D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder
 ```
 
 The dark-blue brand header shows the localized application name, `v0.0.2`, developer credit,
-language, and theme. The File menu provides Import, Export, Save Project, Save Project As, and
-Open Project as one contiguous action group; the compact toolbar provides Import, Export, Save
-Project, and Open Project.
+compact current-project name (with the absolute `.ssflp` path in its tooltip), language, and
+theme. The File menu provides New Project (`Ctrl+N`), Open Project (`Ctrl+O`), Save Project
+(`Ctrl+S`), Save Project As (`Ctrl+Shift+S`), Import Log / Decoder, Export (`Ctrl+E`), and Exit.
+There is no duplicate toolbar.
 Import and export use focused option dialogs. The five analysis pages are:
 
 1. Overview — mission/file and exact decoder identity, flight metrics, deploy altitude/reason,
@@ -82,6 +85,13 @@ to **Follow UI**, with explicit Simplified Chinese and English choices. Standard
 the deploy-segmented mission-relative ENU trajectory, and the combined attitude/trajectory GIF use
 matching `_ZH` or `_EN` filenames and localized titles, axes, and legends. The GUI and export
 share the same rocket attitude model, START-relative origin, and deploy/landing/current markers.
+With a saved/open project, export defaults to `<project-directory>/Result`; a temporary log
+defaults to `<log-directory>/<log-stem>_Data`. The destination remains editable, no fixed drive is
+used, and FLP does not offer a source-code-package export.
+
+An FCCG `SilverStar.ssproject` may sit beside a log, decoder, and `.ssflp`, but FLP neither parses
+it nor treats it as authoritative. The only decoding authority remains the exact match between
+the BIN/SSLOG Descriptor and `.ssdecoder` 1.2.
 
 ## What the parser supports
 

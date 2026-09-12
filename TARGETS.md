@@ -25,6 +25,10 @@
   configured zero samples, multi-result Alignment/INITIAL_STATE authority, candidate-validated
   bounded corruption recovery, explicit Data Quality, and diagnostic/audit GUI degradation
 
+- FCCG-style project shell: current-project header, toolbar-free File menu, destination-first New
+  Project, dirty prompts, relative `.ssflp` references, and project/log-relative export defaults;
+  `.ssproject` remains an inert sidecar and Project stays v3
+
 ## Phase 2
 
 - validate against real flight logs (including SS0007.BIN when supplied) and frozen firmware C

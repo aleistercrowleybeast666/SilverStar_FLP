@@ -20,6 +20,9 @@ Preserve these boundaries:
   offline plugin availability independent. Offline defaults must never be reported as recorded.
 - `.ssflp` is an atomic single-log v3 reference format with full decoder/cache/container identity;
   old project versions and identity mismatches are rejected.
+- FLP New Project chooses the `.ssflp` destination before exact-pair import; `.ssproject` files are
+  inert sidecars and never enter the decoder authority chain. Project exports default to the
+  adjacent `Result` directory, while temporary-log exports default beside the log.
 - Only Replay may change the global Analysis Data Source.
 - Recorded Pure INS and KF_6 layers must not be collapsed into one generic Recorded curve.
 - GUI and export must share quaternion convention, mission-relative trajectory semantics, event

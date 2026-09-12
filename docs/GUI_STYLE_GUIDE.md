@@ -9,12 +9,14 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
 
 - OS title is always `SilverStar_FLP`; the loaded filename appears only in status/details. On
   supported Windows versions, the native caption uses the current theme's brand blue.
-- The header shows a localized descriptive name, `v0.0.2`, and localized developer credit.
+- The header shows a localized descriptive name, `v0.0.2`, localized developer credit, and a
+  compact current-project name whose tooltip contains the full absolute `.ssflp` path.
   Language/theme fields and popups are deep blue with white text and accent-blue hover rows.
-- File actions are ordered Import, Export, Save Project, Save Project As, Open Project in the
-  menu; the toolbar omits Save As. Import and export remain modal option dialogs.
-- Export defaults to `D:\SilverStar_FLP_Data\<project-name>_Data`; without a saved/open project,
-  use `D:\SilverStar_FLP_Data\<source-log-stem>_Data`. The destination remains editable. After an
+- The File menu is New Project, Open Project, Save Project, Save Project As, Import Log / Decoder,
+  Export, and Exit, with separators between the three groups. There is no duplicate toolbar.
+  Import and export remain modal option dialogs.
+- Export defaults to `<project-directory>/Result` for a saved/open project; without one, use
+  `<source-log-directory>/<source-log-stem>_Data`. The destination remains editable. After an
   export completes, the dialog exposes the generated localized export manifest directly. Failed
   items are listed by localized name with toggleable exception details; any failure also triggers
   a best-effort standard-I/O `Export_Failures_ZH|EN.txt`.
@@ -27,7 +29,7 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   plots. Estimator state/measurement plots come from `EstimatorVisualizationSpec`; configured
   groups without valid updates receive explanatory plots, while explicitly unconfigured groups
   are recorded as skipped.
-- Header, sidebar, menu, toolbar, and unselected tabs are deep blue. Selected navigation uses the
+- Header, sidebar, menu, and unselected tabs are deep blue. Selected navigation uses the
   same accent blue as Header combo hover with white text. All tabs retain their global style.
 - A combo popup opens downward, shows at most ten rows, and scrolls internally beyond ten.
 - Every page containing 2D plots provides one Reset Charts action for all plots on that page.
