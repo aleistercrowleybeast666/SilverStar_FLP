@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from silverstar_flp.core.project import (
     Project_Save,
     ProjectDecoderProfile,
     ProjectDocument,
+    _Reference_Encode,
 )
 from silverstar_flp.core.trajectory import TrajectoryPhaseSegments_Build, TrajectoryPhaseValues_Get
 from silverstar_flp.core.visual_semantics import (
@@ -97,6 +99,46 @@ def test_project_save_as_keeps_log_reference_resolvable(tmp_path: Path) -> None:
     saved_as = Project_Load(saved_as_path)
     assert saved_as.LogPath_Resolve() == log_path.resolve()
     assert Project_Load(original_path).LogPath_Resolve() == log_path.resolve()
+
+
+def test_project_references_prefer_relative_paths_for_siblings_and_children(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "Flight.ssflp"
+    (tmp_path / "Logs").mkdir()
+    log_path = StationaryFlight_Build(tmp_path / "Logs" / "SS0000.BIN")
+    decoder_path = tmp_path / "Decoder" / "Flight.ssdecoder"
+    decoder_path.parent.mkdir()
+    decoder_path.write_bytes(b"decoder reference")
+    document = _ProjectDocument_Build(log_path, project_path)
+    assert document.decoder_profile is not None
+    document.decoder_profile = replace(
+        document.decoder_profile,
+        source_reference=str(decoder_path),
+    )
+    Project_Save(document, project_path)
+    payload = json.loads(project_path.read_text(encoding="utf-8"))
+    assert payload["log_reference"] == str(Path("Logs") / "SS0000.BIN")
+    assert payload["decoder_profile"]["source_reference"] == str(
+        Path("Decoder") / "Flight.ssdecoder"
+    )
+
+
+def test_project_reference_falls_back_to_absolute_when_not_relative(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "SS0000.BIN"
+    project = tmp_path / "Flight.ssflp"
+    original = Path.relative_to
+
+    def fail_for_source(self, other, *args, **kwargs):
+        if self == source.resolve():
+            raise ValueError("different drive")
+        return original(self, other, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "relative_to", fail_for_source)
+    assert _Reference_Encode(source, project) == str(source.resolve())
 
 
 def test_export_keeps_independent_channel_timestamps_and_language_suffix(

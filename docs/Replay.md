@@ -97,3 +97,10 @@ GUI and exported trajectories now share the cadence-guarded phase builder descri
 inside a normal position interval; replay inputs, quaternion propagation, timestamps, and result
 TimeSeries are unchanged. Real channel gaps remain broken. Global sequence-gap segments and
 missing IDs are record diagnostics, independent of the active position channel cadence.
+
+## Project draft state
+
+Replay draft edits are part of the existing Project v3 `replay_configurations` state. Changing a
+draft marks an open project dirty; New Project, Open Project, and Exit offer Save, Discard, or
+Cancel before replacing that state. Saving continues to validate actual values and provenance;
+the UI workflow does not alter replay timing, ordering, Pure INS, or KF_6 behavior.

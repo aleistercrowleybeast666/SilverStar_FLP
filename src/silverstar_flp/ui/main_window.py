@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QStatusBar,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
@@ -64,8 +63,6 @@ from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
 
-_DEFAULT_EXPORT_ROOT = Path(r"D:\SilverStar_FLP_Data")
-
 
 class MainWindow(QMainWindow):
     PAGE_CODES = (
@@ -96,6 +93,9 @@ class MainWindow(QMainWindow):
         self._replay_store = ReplayResultStore()
         self._channel_resolver: ChannelResolver | None = None
         self._project = ProjectDocument()
+        self._project_dirty = False
+        self._pending_new_project_path: Path | None = None
+        self._suspend_dirty = False
         self._thread_pool = QThreadPool.globalInstance()
         self._active_worker: FunctionWorker | None = None
         self._worker_error_callback = None
@@ -137,6 +137,10 @@ class MainWindow(QMainWindow):
         self.version_label.setObjectName("headerVersion")
         self.credit_label = QLabel()
         self.credit_label.setObjectName("headerCredit")
+        self.project_caption_label = QLabel()
+        self.project_caption_label.setObjectName("headerControlLabel")
+        self.project_name_label = QLabel()
+        self.project_name_label.setObjectName("headerProject")
         self.language_label = QLabel()
         self.language_label.setObjectName("headerControlLabel")
         self.language_combo = StandardComboBox()
@@ -157,6 +161,8 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.version_label)
         header_layout.addWidget(self.credit_label)
         header_layout.addStretch(1)
+        header_layout.addWidget(self.project_caption_label)
+        header_layout.addWidget(self.project_name_label)
         header_layout.addWidget(self.language_label)
         header_layout.addWidget(self.language_combo)
         header_layout.addWidget(self.theme_label)
@@ -223,9 +229,11 @@ class MainWindow(QMainWindow):
 
         self.replay_page.replayRequested.connect(self._Replay_Start)
         self.replay_page.analysisSourceRequested.connect(self._AnalysisSource_Set)
+        self.replay_page.configurationChanged.connect(self._Project_MarkDirty)
         self.import_dialog = ImportDialog(self._translator, self)
         self.import_dialog.importRequested.connect(self.LogPair_Open)
         self.import_dialog.folderSearchRequested.connect(self._FolderSearch_Start)
+        self.import_dialog.rejected.connect(self._PendingProject_Cancel)
         self.export_dialog = ExportDialog(self._translator, self)
         self.export_dialog.exportRequested.connect(self._Export_Start)
         self.export_dialog.manifestOpenRequested.connect(self._ExportManifest_Open)
@@ -234,14 +242,11 @@ class MainWindow(QMainWindow):
     def _Menu_Build(self) -> None:
         self.menuBar().setObjectName("mainMenuBar")
         self.file_menu = self.menuBar().addMenu("")
-        self.import_action = QAction(self)
-        self.import_action.setShortcut("Ctrl+O")
-        self.import_action.triggered.connect(self._ImportDialog_Show)
-        self.export_action = QAction(self)
-        self.export_action.setShortcut("Ctrl+E")
-        self.export_action.setEnabled(False)
-        self.export_action.triggered.connect(self._ExportDialog_Show)
+        self.new_project_action = QAction(self)
+        self.new_project_action.setShortcut("Ctrl+N")
+        self.new_project_action.triggered.connect(self._Project_New)
         self.open_project_action = QAction(self)
+        self.open_project_action.setShortcut("Ctrl+O")
         self.open_project_action.triggered.connect(self._ProjectDialog_Open)
         self.save_project_action = QAction(self)
         self.save_project_action.setShortcut("Ctrl+S")
@@ -249,23 +254,31 @@ class MainWindow(QMainWindow):
         self.save_project_as_action = QAction(self)
         self.save_project_as_action.setShortcut("Ctrl+Shift+S")
         self.save_project_as_action.triggered.connect(self._Project_SaveAs)
-        self.file_menu.addAction(self.import_action)
-        self.file_menu.addAction(self.export_action)
+        self.import_action = QAction(self)
+        self.import_action.triggered.connect(self._ImportDialog_Show)
+        self.export_action = QAction(self)
+        self.export_action.setShortcut("Ctrl+E")
+        self.export_action.setEnabled(False)
+        self.export_action.triggered.connect(self._ExportDialog_Show)
+        self.exit_action = QAction(self)
+        self.exit_action.triggered.connect(self.close)
+        self.file_menu.addAction(self.new_project_action)
+        self.file_menu.addAction(self.open_project_action)
         self.file_menu.addAction(self.save_project_action)
         self.file_menu.addAction(self.save_project_as_action)
-        self.file_menu.addAction(self.open_project_action)
-        self.toolbar = QToolBar(self)
-        self.toolbar.setObjectName("mainToolBar")
-        self.toolbar.setMovable(False)
-        self.toolbar.addAction(self.import_action)
-        self.toolbar.addAction(self.export_action)
-        self.toolbar.addAction(self.save_project_action)
-        self.toolbar.addAction(self.open_project_action)
-        self.addToolBar(self.toolbar)
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self.import_action)
+        self.file_menu.addAction(self.export_action)
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self.exit_action)
 
     def _Page_Select(self, index: int) -> None:
         if 0 <= index < self.pages.count():
             self.pages.setCurrentIndex(index)
+            if self._dataset is not None and not self._suspend_dirty:
+                previous = self._project.ui_state.get("page_index", 0)
+                if previous != index:
+                    self._Project_MarkDirty()
 
     def _ImportDialog_Show(self) -> None:
         self.import_dialog.result_label.hide()
@@ -280,12 +293,11 @@ class MainWindow(QMainWindow):
 
     def _ExportDirectory_Default(self) -> Path:
         if self._project.project_path is not None:
-            export_name = self._project.project_path.stem
+            return self._project.project_path.parent / "Result"
         elif self._dataset is not None:
-            export_name = self._dataset.source_path.stem
+            return self._dataset.source_path.parent / f"{self._dataset.source_path.stem}_Data"
         else:
-            export_name = PRODUCT_NAME
-        return _DEFAULT_EXPORT_ROOT / f"{export_name}_Data"
+            return Path.cwd() / f"{PRODUCT_NAME}_Data"
 
     def _Language_Selected(self) -> None:
         language = self.language_combo.currentData()
@@ -345,7 +357,8 @@ class MainWindow(QMainWindow):
         project: ProjectDocument | None = None,
     ) -> None:
         source_path = Path(path)
-        target_project = project or ProjectDocument()
+        target_project = project or self._Project_ForImport()
+        mark_dirty_on_success = project is None and self._pending_new_project_path is None
         request = LogOpenRequest(
             log_path=source_path,
             decoder_package_path=decoder_path,
@@ -359,8 +372,12 @@ class MainWindow(QMainWindow):
         )
         self._Task_Start(
             worker,
-            lambda result: self._LogOpenResult_Set(result, target_project),
-            lambda message: self._Error_Show(message),
+            lambda result: self._LogOpenResult_Set(
+                result,
+                target_project,
+                mark_dirty=mark_dirty_on_success,
+            ),
+            self._LogOpen_Error,
         )
 
     def _ProjectLogOpen_Run(
@@ -404,10 +421,14 @@ class MainWindow(QMainWindow):
             if project.decoder_profile is None:
                 raise ValueError("project_decoder_profile_missing")
             decoder_source_path = project.DecoderSourcePath_Resolve()
+            log_path = project.LogPath_Resolve()
+            if not log_path.is_file():
+                raise ValueError(f"project_log_missing:{log_path}")
+            if decoder_source_path is None or not decoder_source_path.is_file():
+                raise ValueError(f"project_decoder_missing:{decoder_source_path}")
             request = LogOpenRequest(
-                log_path=project.LogPath_Resolve(),
+                log_path=log_path,
                 decoder_package_path=decoder_source_path,
-                cache_reference=project.decoder_profile.cache_reference,
                 task_directory=(
                     decoder_source_path.parent
                     if decoder_source_path is not None
@@ -427,7 +448,7 @@ class MainWindow(QMainWindow):
         )
         self._Task_Start(
             worker,
-            lambda result: self._LogOpenResult_Set(result, project),
+            lambda result: self._LogOpenResult_Set(result, project, mark_dirty=False),
             lambda message: self._Error_Show(message),
         )
 
@@ -475,6 +496,8 @@ class MainWindow(QMainWindow):
         self,
         result: LogOpenResult,
         project: ProjectDocument,
+        *,
+        mark_dirty: bool = False,
     ) -> None:
         try:
             for configuration in project.replay_configurations.values():
@@ -487,26 +510,51 @@ class MainWindow(QMainWindow):
                 if configuration["provenance"] != provenance:
                     raise ValueError("project_parameter_provenance_invalid")
         except (KeyError, ValueError) as exc:
+            self._pending_new_project_path = None
             self._Error_Show(str(exc))
             return
         project.LogReference_Set(result.dataset.source_path)
         project.decoder_profile = self._DecoderProfile_Build(result)
+        if self._pending_new_project_path is not None:
+            project.project_path = self._pending_new_project_path
+            try:
+                Project_Save(project, self._pending_new_project_path)
+            except Exception as exc:
+                self._pending_new_project_path = None
+                logging.exception("Initial project save failed")
+                self._Error_Show(str(exc))
+                return
+            self._pending_new_project_path = None
         self._project = project
         self._log_open_result = result
-        self._Dataset_Set(result.dataset)
-        if "draft" in project.replay_configurations:
-            try:
-                self.replay_page.Configuration_Set(project.replay_configurations["draft"])
-            except ValueError as exc:
-                self._Error_Show(str(exc))
+        self._suspend_dirty = True
+        try:
+            self._Dataset_Set(result.dataset)
+            if "draft" in project.replay_configurations:
+                try:
+                    self.replay_page.Configuration_Set(project.replay_configurations["draft"])
+                except ValueError as exc:
+                    self._Error_Show(str(exc))
+            page_index = project.ui_state.get("page_index")
+            if isinstance(page_index, int) and 0 <= page_index < self.pages.count():
+                self.navigation_list.setCurrentRow(page_index)
+        finally:
+            self._suspend_dirty = False
+        self._Project_SetDirty(mark_dirty)
+        self._ProjectHeader_Refresh()
 
     def _Dataset_Set(self, dataset: FlightDataset) -> None:
+        was_suspended = self._suspend_dirty
+        self._suspend_dirty = True
         self._dataset = dataset
         self._replay_store.Clear()
         self._channel_resolver = ChannelResolver(dataset, self._replay_store)
         self.export_action.setEnabled(True)
         self.status_label.setText(self._DatasetStatus_TextGet(dataset))
-        self._Pages_Refresh()
+        try:
+            self._Pages_Refresh()
+        finally:
+            self._suspend_dirty = was_suspended
 
     def _DatasetStatus_TextGet(self, dataset: FlightDataset) -> str:
         warning = bool(
@@ -656,6 +704,7 @@ class MainWindow(QMainWindow):
         self.open_project_action.setEnabled(False)
         self.save_project_action.setEnabled(False)
         self.save_project_as_action.setEnabled(False)
+        self.new_project_action.setEnabled(False)
         self._thread_pool.start(worker)
 
     def _Task_Progress(self, progress: float, code: str) -> None:
@@ -677,6 +726,7 @@ class MainWindow(QMainWindow):
         self.open_project_action.setEnabled(True)
         self.save_project_action.setEnabled(True)
         self.save_project_as_action.setEnabled(True)
+        self.new_project_action.setEnabled(True)
         self.export_dialog.Task_Finish()
         self.replay_page.Task_Finish()
         self._active_worker = None
@@ -688,6 +738,8 @@ class MainWindow(QMainWindow):
             self.cancel_button.setEnabled(False)
 
     def _ProjectDialog_Open(self) -> None:
+        if not self._ProjectChanges_Confirm():
+            return
         selected, _ = QFileDialog.getOpenFileName(
             self,
             self._translator.Text_Get("action.open_project"),
@@ -698,6 +750,46 @@ class MainWindow(QMainWindow):
             return
         self._Project_Open(Path(selected))
 
+    def _Project_New(self) -> None:
+        if not self._ProjectChanges_Confirm():
+            return
+        path = self._ProjectPath_Select("action.new_project")
+        if path is None or not self._Overwrite_Confirm(path):
+            return
+        self._pending_new_project_path = path.resolve()
+        self.import_dialog.result_label.hide()
+        self.import_dialog.Paths_Set()
+        self.import_dialog.open()
+
+    def _PendingProject_Cancel(self) -> None:
+        self._pending_new_project_path = None
+
+    def _Overwrite_Confirm(self, path: Path) -> bool:
+        if not path.exists():
+            return True
+        answer = QMessageBox.question(
+            self,
+            self._translator.Text_Get("dialog.overwrite.title"),
+            self._translator.Text_Get("dialog.overwrite.message", path=path),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _Project_ForImport(self) -> ProjectDocument:
+        if self._pending_new_project_path is not None:
+            return ProjectDocument(project_path=self._pending_new_project_path)
+        return ProjectDocument(
+            replay_configurations=dict(self._project.replay_configurations),
+            notes=self._project.notes,
+            ui_state=dict(self._project.ui_state),
+            project_path=self._project.project_path,
+        )
+
+    def _LogOpen_Error(self, message: str) -> None:
+        self._pending_new_project_path = None
+        self._Error_Show(message)
+
     def _Project_Save(self) -> None:
         path = self._project.project_path
         if path is None:
@@ -707,7 +799,7 @@ class MainWindow(QMainWindow):
 
     def _Project_SaveAs(self) -> None:
         path = self._ProjectPath_Select("action.save_project_as")
-        if path is not None:
+        if path is not None and self._Overwrite_Confirm(path):
             self._Project_Write(path)
 
     def _ProjectPath_Select(self, title_key: str) -> Path | None:
@@ -717,6 +809,7 @@ class MainWindow(QMainWindow):
             self._translator.Text_Get(title_key),
             str(suggested_path),
             "SilverStar project (*.ssflp)",
+            options=QFileDialog.Option.DontConfirmOverwrite,
         )
         if not selected:
             return None
@@ -725,6 +818,7 @@ class MainWindow(QMainWindow):
 
     def _Project_Write(self, path: Path) -> None:
         try:
+            self._project.ui_state["page_index"] = self.navigation_list.currentRow()
             self._project.replay_configurations["draft"] = self.replay_page.Configuration_Get()
             for entry in self._replay_store.Entries_Get():
                 self._project.replay_configurations[entry.result_id] = {
@@ -737,10 +831,45 @@ class MainWindow(QMainWindow):
                     "provenance": entry.diagnostics["config_source"],
                 }
             Project_Save(self._project, path)
+            self._Project_SetDirty(False)
+            self._ProjectHeader_Refresh()
             self.status_label.setText(self._translator.Text_Get("status.project_saved", path=path))
         except Exception as exc:
             logging.exception("Project save failed")
             self._Error_Show(str(exc))
+
+    def _Project_MarkDirty(self) -> None:
+        if not self._suspend_dirty and self._dataset is not None:
+            self._Project_SetDirty(True)
+
+    def _Project_SetDirty(self, dirty: bool) -> None:
+        self._project_dirty = dirty
+
+    def _ProjectHeader_Refresh(self) -> None:
+        path = self._project.project_path
+        self.project_name_label.setText(
+            path.stem if path is not None else self._translator.Text_Get("project.unsaved")
+        )
+        self.project_name_label.setToolTip(str(path.resolve()) if path is not None else "")
+
+    def _ProjectChanges_Confirm(self) -> bool:
+        if not self._project_dirty:
+            return True
+        answer = QMessageBox.warning(
+            self,
+            self._translator.Text_Get("dialog.unsaved.title"),
+            self._translator.Text_Get("dialog.unsaved.message"),
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        self._Project_Save()
+        return not self._project_dirty
 
     def _Error_Show(self, message: str) -> None:
         code, separator, details = message.partition(":")
@@ -780,10 +909,13 @@ class MainWindow(QMainWindow):
         self.title_label.setText(self._translator.Text_Get("app.title"))
         self.version_label.setText(f"v{__version__}")
         self.credit_label.setText(self._translator.Text_Get("app.credit"))
+        self.project_caption_label.setText(self._translator.Text_Get("label.current_project"))
+        self._ProjectHeader_Refresh()
         self.language_label.setText(self._translator.Text_Get("label.interface_language"))
         self.theme_label.setText(self._translator.Text_Get("label.theme"))
         self.cancel_button.setText(self._translator.Text_Get("action.cancel"))
         self.file_menu.setTitle(self._translator.Text_Get("menu.file"))
+        self.new_project_action.setText(self._translator.Text_Get("action.new_project"))
         self.import_action.setText(self._translator.Text_Get("action.import"))
         self.export_action.setText(self._translator.Text_Get("action.export"))
         self.open_project_action.setText(self._translator.Text_Get("action.open_project"))
@@ -791,6 +923,7 @@ class MainWindow(QMainWindow):
         self.save_project_as_action.setText(
             self._translator.Text_Get("action.save_project_as")
         )
+        self.exit_action.setText(self._translator.Text_Get("action.exit"))
         for index in range(self.navigation_list.count()):
             item = self.navigation_list.item(index)
             page_code = str(item.data(Qt.ItemDataRole.UserRole))
@@ -863,6 +996,9 @@ class MainWindow(QMainWindow):
             path for path in paths if path.suffix.casefold() == ".ssflp"
         )
         if project_paths:
+            if not self._ProjectChanges_Confirm():
+                event.ignore()
+                return
             self._Project_Open(project_paths[0])
             event.acceptProposedAction()
             return
@@ -890,4 +1026,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._active_worker is not None:
             self._active_worker.Worker_Cancel()
-        event.accept()
+        if self._ProjectChanges_Confirm():
+            event.accept()
+        else:
+            event.ignore()

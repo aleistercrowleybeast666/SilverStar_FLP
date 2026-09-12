@@ -6,7 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEventLoop, QPoint, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QFileDialog, QPushButton
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QPushButton, QToolBar
 
 from silverstar_flp.app.application import _RuntimeDiagnostics_Log
 from silverstar_flp.app.version import PRODUCT_NAME, __version__
@@ -79,6 +79,8 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert window.title_label.text() == "SilverStar 飞行日志解析器"
     assert window.version_label.text() == f"v{__version__}" == "v0.0.2"
     assert window.credit_label.text() == "辰星引力开发"
+    assert window.project_name_label.text() == "未保存工程"
+    assert window.project_name_label.toolTip() == ""
     assert dataset.source_path.name not in window.windowTitle()
     assert not hasattr(window, "timeline_frame")
     assert not hasattr(window, "timeline_slider")
@@ -116,20 +118,23 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert window.export_action.isEnabled()
     assert not hasattr(window, "export_button")
     assert not hasattr(window, "import_button")
-    assert window.toolbar.actions() == [
-        window.import_action,
-        window.export_action,
-        window.save_project_action,
-        window.open_project_action,
-    ]
+    assert window.findChildren(QToolBar) == []
     assert [action for action in window.file_menu.actions() if not action.isSeparator()] == [
-        window.import_action,
-        window.export_action,
+        window.new_project_action,
+        window.open_project_action,
         window.save_project_action,
         window.save_project_as_action,
-        window.open_project_action,
+        window.import_action,
+        window.export_action,
+        window.exit_action,
     ]
-    assert all(not action.isSeparator() for action in window.file_menu.actions())
+    shortcuts = {
+        action.shortcut().toString()
+        for action in window.file_menu.actions()
+        if not action.shortcut().isEmpty()
+    }
+    assert shortcuts == {"Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+E"}
+    assert len(shortcuts) == 5
     saved_as_path = tmp_path / "SYNTHETIC_gui_project_copy.ssflp"
     monkeypatch.setattr(
         QFileDialog,
@@ -139,6 +144,8 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     window.save_project_as_action.trigger()
     assert saved_as_path.is_file()
     assert window._project.project_path == saved_as_path.resolve()
+    assert window.project_name_label.text() == saved_as_path.stem
+    assert window.project_name_label.toolTip() == str(saved_as_path.resolve())
     assert not hasattr(window.flight_page, "source_combo")
     assert not hasattr(window.state_estimation_page, "source_combo")
     assert not hasattr(window.replay_page, "source_combo")
@@ -181,16 +188,17 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     if window.flight_page.trajectory_view is not None:
         window.flight_page.trajectory_view.opts["distance"] = 73.0
     window.Language_Apply("zh_CN")
-    assert window.import_action.text() == "导入"
-    assert window.toolbar.actions()[1].text() == "导出"
+    assert window.new_project_action.text() == "新建工程"
+    assert window.import_action.text() == "导入日志 / 解码包"
     assert window.save_project_action.text() == "保存工程"
     assert window.open_project_action.text() == "打开工程"
-    assert window.save_project_as_action.text() == "另存为…"
+    assert window.save_project_as_action.text() == "工程另存为…"
     assert window.title_label.text() == "SilverStar 飞行日志解析器"
     assert window.credit_label.text() == "辰星引力开发"
     assert window.replay_page.parameters_group.title() == "假设参数"
     window.Language_Apply("en_US")
-    assert window.import_action.text() == "Import"
+    assert window.new_project_action.text() == "New Project"
+    assert window.import_action.text() == "Import Log / Decoder"
     assert window.save_project_action.text() == "Save Project"
     assert window.open_project_action.text() == "Open Project"
     assert window.save_project_as_action.text() == "Save Project As…"
@@ -211,7 +219,6 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
         in style_sheet
     )
     assert "QTabBar::tab:selected" in style_sheet
-    assert "QToolBar#mainToolBar" in style_sheet
     window.navigation_list.setCurrentRow(2)
     application.processEvents()
     attitude_width, trajectory_width = window.flight_page.replay_splitter.sizes()
@@ -245,7 +252,7 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     window._ExportDialog_Show()
     application.processEvents()
     assert Path(window.export_dialog.folder_edit.text()) == (
-        Path(r"D:\SilverStar_FLP_Data") / "SYNTHETIC_default_export_Data"
+        tmp_path / "SYNTHETIC_default_export_Data"
     )
     assert not window.export_dialog.folder_edit.isReadOnly()
     window.export_dialog.folder_edit.setText(str(tmp_path / "custom_export"))
@@ -256,7 +263,7 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     window._ExportDialog_Show()
     application.processEvents()
     assert Path(window.export_dialog.folder_edit.text()) == (
-        Path(r"D:\SilverStar_FLP_Data") / "Named Flight_Data"
+        tmp_path / "Result"
     )
 
     manifest_directory = tmp_path / "manifest_export"
@@ -292,6 +299,55 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     assert Path(opened_urls[0].toLocalFile()) == manifest_path.resolve()
     window.Language_Apply("en_US")
     assert window.export_dialog.manifest_button.text() == "Open Export Manifest"
+    window.close()
+
+
+def test_new_project_selects_destination_before_import_and_cancel_leaves_no_file(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = MainWindow(builtin_registry())
+    target = tmp_path / "Flight.ssflp"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(target), "SilverStar project (*.ssflp)"),
+    )
+    window.new_project_action.trigger()
+    application.processEvents()
+    assert window._pending_new_project_path == target.resolve()
+    assert window.import_dialog.isVisible()
+    assert not target.exists()
+    window.import_dialog.reject()
+    assert window._pending_new_project_path is None
+    assert not target.exists()
+    window.close()
+
+
+def test_new_project_requires_overwrite_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = MainWindow(builtin_registry())
+    target = tmp_path / "Existing.ssflp"
+    target.write_text("original", encoding="utf-8")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(target), "SilverStar project (*.ssflp)"),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.No,
+    )
+    window.new_project_action.trigger()
+    application.processEvents()
+    assert window._pending_new_project_path is None
+    assert not window.import_dialog.isVisible()
+    assert target.read_text(encoding="utf-8") == "original"
     window.close()
 
 

@@ -141,3 +141,11 @@ Historical hash-locked 1.1 manual gates above are retained as historical referen
 are intentionally rejected by the new production loader. Do not update their hashes to make an
 unrelated package appear matched. A new matching real 1.2 flight/host gate is outstanding. See
 [Actual_Parameters_Validation.md](Actual_Parameters_Validation.md).
+
+## Project-shell regression
+
+Project-shell GUI coverage checks the unsaved/saved header and full-path tooltip, toolbar absence,
+File-menu shortcuts, destination-first New Project cancellation/overwrite behavior, Project v3
+relative references, and project/log-relative export defaults. `.ssproject` has no import or drop
+semantics. Export tests intentionally contain no fixed `D:\\SilverStar_FLP_Data` default and no
+source-code-package product.

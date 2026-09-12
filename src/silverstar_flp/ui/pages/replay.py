@@ -42,6 +42,7 @@ from silverstar_flp.ui.widgets import StandardComboBox
 class ReplayPage(QWidget):
     replayRequested = Signal(str, object)
     analysisSourceRequested = Signal(str)
+    configurationChanged = Signal()
 
     def __init__(self, translator: Translator, registry: PluginRegistry) -> None:
         super().__init__()
@@ -366,6 +367,7 @@ class ReplayPage(QWidget):
         )
         what_if = self.mode_combo.currentData() == ReplayMode.WHAT_IF
         self.parameter_modified_label.setVisible(what_if and self._parameters_dirty)
+        self.configurationChanged.emit()
 
     def _ParameterTooltip_Apply(self, parameter: ParameterSpec) -> None:
         tooltip = ""
@@ -435,6 +437,7 @@ class ReplayPage(QWidget):
         self.parameter_reset_button.setEnabled(what_if and self._dataset is not None)
         self._ParametersDirty_Refresh()
         self._Availability_Refresh()
+        self.configurationChanged.emit()
 
     def _ActualValues_Get(self) -> dict[str, float]:
         values = {}
