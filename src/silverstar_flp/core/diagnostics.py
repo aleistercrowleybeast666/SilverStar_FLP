@@ -16,6 +16,7 @@ class DiagnosticSeverity(StrEnum):
 class DataQualityStatus(StrEnum):
     CLEAN = "clean"
     WARNINGS = "warnings"
+    STARTUP_DROPS = "startup_drops"
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,11 +197,19 @@ class DataQualitySummary:
     unknown_record_count: int
     decoder_failure_count: int
     damaged_span_count: int
-    logger_overflow_count: int
+    logger_overflow_count: int | None
     truncated_tail: bool
     record_counts: Mapping[str, int] = field(default_factory=dict)
+    imu_queue_overflow_count: int | None = None
+    logger_overflow_event_count: int = 0
+    sequence_gaps: tuple[Mapping[str, Any], ...] = ()
+    mission_record_continuity: str = "unknown"
+    structural_integrity: str = "unknown"
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "sequence_gaps", tuple(MappingProxyType(dict(gap)) for gap in self.sequence_gaps)
+        )
         object.__setattr__(
             self,
             "record_counts",
@@ -213,18 +222,94 @@ class DataQualitySummary:
         diagnostics: ParserDiagnostics,
         *,
         record_counts: Mapping[str, int] | None = None,
-        logger_overflow_count: int = 0,
+        logger_overflow_count: int | None = None,
+        imu_queue_overflow_count: int | None = None,
+        logger_overflow_event_count: int = 0,
+        start_timestamp_us: int | None = None,
+        start_file_offset: int | None = None,
+        landing_timestamp_us: int | None = None,
     ) -> DataQualitySummary:
+        gaps = []
+        for diagnostic in diagnostics.diagnostics:
+            if diagnostic.code != "record_sequence_gap":
+                continue
+            details = diagnostic.details
+            timestamp = details.get("timestamp_us")
+            previous = details.get("previous_timestamp_us")
+            offset = diagnostic.offset
+            phase = "unknown"
+            if start_timestamp_us is not None and timestamp is not None and previous is not None:
+                if (
+                    max(timestamp, previous) < start_timestamp_us
+                    and start_file_offset is not None
+                    and offset is not None
+                    and offset < start_file_offset
+                ):
+                    phase = "before_start"
+                elif min(timestamp, previous) >= start_timestamp_us:
+                    phase = (
+                        "after_landing"
+                        if landing_timestamp_us is not None
+                        and min(timestamp, previous) > landing_timestamp_us
+                        else "mission"
+                    )
+                else:
+                    phase = "start_boundary"
+            gaps.append(
+                {
+                    "expected_sequence": details.get("expected_sequence"),
+                    "actual_sequence": details.get("actual_sequence", diagnostic.record_sequence),
+                    "missing_count": details.get("missing_count"),
+                    "file_offset": offset,
+                    "timestamp_us": timestamp,
+                    "previous_timestamp_us": previous,
+                    "mission_phase": phase,
+                }
+            )
+        structural_clean = not (
+            not diagnostics.header_valid
+            or not diagnostics.header_crc_valid
+            or diagnostics.record_crc_failures
+            or diagnostics.record_length_failures
+            or diagnostics.resync_count
+            or diagnostics.resync_failure_count
+            or diagnostics.unknown_record_type_count
+            or diagnostics.unknown_record_version_count
+            or diagnostics.decoder_failure_count
+            or diagnostics.truncated_tail
+            or diagnostics.damaged_spans
+        )
+        complete_details = len(gaps) == diagnostics.sequence_gap_count
+        startup_only = (
+            bool(gaps)
+            and complete_details
+            and all(gap["mission_phase"] == "before_start" for gap in gaps)
+        )
+        continuity = "unknown"
+        if any(gap["mission_phase"] in {"mission", "start_boundary"} for gap in gaps):
+            continuity = "gaps"
+        elif (
+            start_timestamp_us is not None
+            and structural_clean
+            and complete_details
+            and all(gap["mission_phase"] in {"before_start", "after_landing"} for gap in gaps)
+        ):
+            continuity = "continuous"
         has_warnings = bool(
             diagnostics.has_integrity_warnings
+            or not structural_clean
             or diagnostics.unknown_record_type_count
             or diagnostics.unknown_record_version_count
             or diagnostics.decoder_failure_count
             or logger_overflow_count
+            or imu_queue_overflow_count
+            or logger_overflow_event_count
         )
         return cls(
             status=(
-                DataQualityStatus.WARNINGS
+                DataQualityStatus.STARTUP_DROPS
+                if startup_only and structural_clean
+                else DataQualityStatus.WARNINGS
                 if has_warnings
                 else DataQualityStatus.CLEAN
             ),
@@ -235,12 +320,16 @@ class DataQualitySummary:
             sequence_gap_count=diagnostics.sequence_gap_count,
             sequence_missing_count=diagnostics.sequence_missing_count,
             unknown_record_count=(
-                diagnostics.unknown_record_type_count
-                + diagnostics.unknown_record_version_count
+                diagnostics.unknown_record_type_count + diagnostics.unknown_record_version_count
             ),
             decoder_failure_count=diagnostics.decoder_failure_count,
             damaged_span_count=len(diagnostics.damaged_spans),
             logger_overflow_count=logger_overflow_count,
+            imu_queue_overflow_count=imu_queue_overflow_count,
+            logger_overflow_event_count=logger_overflow_event_count,
+            sequence_gaps=tuple(gaps),
+            mission_record_continuity=continuity,
+            structural_integrity="normal" if structural_clean else "warnings",
             truncated_tail=diagnostics.truncated_tail,
             record_counts=dict(record_counts or {}),
         )
@@ -258,6 +347,19 @@ class DataQualitySummary:
             "decoder_failure_count": self.decoder_failure_count,
             "damaged_span_count": self.damaged_span_count,
             "logger_overflow_count": self.logger_overflow_count,
+            "logger_queue_overflow_count": self.logger_overflow_count,
+            "imu_queue_overflow_count": self.imu_queue_overflow_count,
+            "logger_overflow_event_count": self.logger_overflow_event_count,
+            "gap_segments": self.sequence_gap_count,
+            "missing_ids": self.sequence_missing_count,
+            "missing_sequence_ids": self.sequence_missing_count,
+            "queue_overflow": {
+                "logger": self.logger_overflow_count,
+                "imu": self.imu_queue_overflow_count,
+            },
+            "sequence_gaps": [dict(gap) for gap in self.sequence_gaps],
+            "mission_record_continuity": self.mission_record_continuity,
+            "structural_integrity": self.structural_integrity,
             "truncated_tail": self.truncated_tail,
             "record_counts": dict(self.record_counts),
         }

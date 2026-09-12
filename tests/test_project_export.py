@@ -15,6 +15,7 @@ from silverstar_flp.core.project import (
     ProjectDecoderProfile,
     ProjectDocument,
 )
+from silverstar_flp.core.trajectory import TrajectoryPhaseSegments_Build, TrajectoryPhaseValues_Get
 from silverstar_flp.core.visual_semantics import (
     TRAJECTORY_DEPLOY_COLOR,
     TRAJECTORY_LANDING_COLOR,
@@ -241,7 +242,8 @@ def test_follow_ui_exports_standard_plot_set_segmented_trajectory_and_combined_g
         for record in dataset.Records_Get("EVENT")
         if int(record.payload["event_id"]) == 0x29
     )
-    pre, post = FlightExporter._TrajectorySegments_Get(position, deploy)
+    segments = TrajectoryPhaseSegments_Build(position, (deploy,))
+    pre, post = (TrajectoryPhaseValues_Get(segments, phase) for phase in (0, 1))
     assert pre.size > 0
     assert post.size > 0
     assert FlightExporter._Position_At(position, landing) is None

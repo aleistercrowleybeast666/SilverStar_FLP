@@ -97,3 +97,34 @@ identity calibration, online/no-fix GNSS and zero measurement count, Alignment/I
 provenance, exact decoder match, valid-record/CRC/length/resync/sequence diagnostics, approximate
 algorithm fidelity, GUI degradation, export audit fields, and source immutability. It is real-log
 compatibility evidence, not a numerical host-C Golden, so it does not justify `EXACT` replay.
+
+## Current SS0000 display/quality gate
+
+```powershell
+$env:SILVERSTAR_CURRENT_LOG_ROOT = 'D:\stm32_project\SS0_0_5_TEST_0'
+python -m pytest -q tests/test_current_log_manual.py
+```
+
+This separate hash-locked gate checks exact import, startup-only 3 segments / 12 IDs, Logger 39,
+IMU 0, NONE/no-fix, finite recorded INS/KF6, shared GUI phase endpoints, PNG/GIF export and source
+immutability. It never substitutes for SS0014, SS0007, or SS_TEST_0 gates.
+
+`test_display_quality.py` covers explicit/semantic/fallback columns, exact and between-sample
+events, multiple events, true gaps, invalid samples, independent sequence gaps and queue counters,
+unknown phase evidence, bilingual summaries, and CSV/GIF inheritance. `test_clean_workspace.py`
+checks dry-run/apply, newly tracked targets, protected files, outside paths, symlink/junction
+escapes, and ignore rules. Run lint over `src tests tools`, compileall, focused tests, then the full
+suite. Use `-p no:cacheprovider` when an old pytest cache is locked. Generated runs belong in
+`.acceptance`, not source/fixture directories. See [Workspace_Cleanup.md](Workspace_Cleanup.md).
+
+### Packaging inside a tool-managed shell
+
+If a shell adds another application's native DLL directory to PATH, PyInstaller can collect an
+incompatible dependency even though the Python source runs correctly. The 2026-09-12 smoke audit
+found a Poppler ICU 78 `icuuc.dll` shadowing Windows ICU: Qt needs unversioned `ucnv_open`, while
+that foreign copy exports `ucnv_open_78`. A frozen QtCore import then fails with a missing entry
+point. Do not copy foreign ICU DLLs into the distribution or change application parsing logic.
+For a reproducible smoke build, launch PyInstaller in a child shell whose PATH contains only the
+project venv Scripts, the venv base Python directory, Windows System32, and Windows directory.
+Use a fresh work directory so stale dependency analysis cannot preserve the foreign DLL. The
+normal application source and formal spec remain unchanged.

@@ -41,6 +41,8 @@ class TimeSeries:
             raise ValueError("time-series timestamps must be monotonic")
         if self.columns and values.ndim > 1 and len(self.columns) != values.shape[1]:
             raise ValueError("column metadata does not match values")
+        if not self.columns and values.ndim > 1:
+            object.__setattr__(self, "columns", tuple(f"[{i}]" for i in range(values.shape[1])))
         timestamps.setflags(write=False)
         values.setflags(write=False)
         valid.setflags(write=False)
@@ -109,18 +111,36 @@ class FlightDataset:
                 name: len(records)
                 for name, records in self.records.items()
             }
-            logger_overflow_count = sum(
+            logger_overflow_event_count = sum(
                 1
                 for record in self.records.get("EVENT", ())
                 if int(record.payload.get("event_id", 0)) == 0x06
             )
+            def overflow_max(field_name: str) -> int | None:
+                counters = [int(record.payload[field_name])
+                            for name in ("STATS", "SAMPLE", "HEALTH")
+                            for record in self.records.get(name, ())
+                            if field_name in record.payload]
+                return max(counters, default=None)
+
+            starts = [record for record in self.Records_Get("EVENT")
+                      if int(record.payload.get("event_id", 0)) == 0x03]
+            start = min(starts, key=lambda record: record.timestamp_us, default=None)
+            landings = [record.timestamp_us for record in self.Records_Get("EVENT")
+                        if int(record.payload.get("event_id", 0)) == 0x2A
+                        and start is not None and record.timestamp_us >= start.timestamp_us]
             object.__setattr__(
                 self,
                 "data_quality",
                 DataQualitySummary.FromDiagnostics(
                     self.diagnostics,
                     record_counts=record_counts,
-                    logger_overflow_count=logger_overflow_count,
+                    logger_overflow_count=overflow_max("logger_queue_overflow_count"),
+                    imu_queue_overflow_count=overflow_max("imu_queue_overflow_count"),
+                    logger_overflow_event_count=logger_overflow_event_count,
+                    start_timestamp_us=start.timestamp_us if start else None,
+                    start_file_offset=start.file_offset if start else None,
+                    landing_timestamp_us=min(landings, default=None),
                 ),
             )
 

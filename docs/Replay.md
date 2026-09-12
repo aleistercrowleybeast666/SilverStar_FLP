@@ -77,3 +77,11 @@ when a replay source is active, both recorded layers are dashed references. Stat
 only compatible estimator diagnostics declared by that algorithm's visualization metadata and
 never invents per-axis sequential updates. Data Explorer exposes every run under a unique
 human-readable prefix. No source selection copies or overwrites the immutable recorded dataset.
+
+## Display-only event points
+
+GUI and exported trajectories now share the cadence-guarded phase builder described in
+[Display_DataQuality.md](Display_DataQuality.md). It can add an event point to drawing geometry
+inside a normal position interval; replay inputs, quaternion propagation, timestamps, and result
+TimeSeries are unchanged. Real channel gaps remain broken. Global sequence-gap segments and
+missing IDs are record diagnostics, independent of the active position channel cadence.

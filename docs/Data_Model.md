@@ -89,7 +89,7 @@ configured one-face/six-face sampling procedures. All calibration records remain
 effective snapshot is the latest valid result at or before START, otherwise the initial-state or
 first-corrected-IMU boundary. Dataset construction fails if no valid snapshot can be selected.
 
-`DataQualitySummary` is derived from parser diagnostics and recorded overflow events. It reports
+`DataQualitySummary` is derived from parser diagnostics, recorded cumulative queue counters, and overflow events. It reports
 clean/warnings status, valid-record count, CRC and length failures, successful resynchronizations,
 sequence gaps/missing records, unknown/decode counts, damaged spans, logger overflows, truncation,
 and per-Record counts. It never changes exact decoder-package identity into an algorithm
@@ -101,3 +101,9 @@ Firmware membership, recorded output presence, complete recorded parameter avail
 offline plugin availability are separate fields. A firmware component string does not instantiate
 a plugin. A recorded curve does not prove its full configuration was logged. Offline defaults are
 immutable plugin metadata and are not inserted into `recorded_parameters`.
+
+## Display and integrity additions
+
+See [Display_DataQuality.md](Display_DataQuality.md) for semantic column rules and the independent
+record-gap/queue/channel-continuity model. Column metadata changes labels only; raw/stable aliases
+remain the same immutable objects. Unknown array columns use bracketed indices.

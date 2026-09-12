@@ -228,9 +228,7 @@ class OverviewPage(QWidget):
         self._Gnss_Set(summary.gnss)
         self.quality_card.value_label.setText(
             self._translator.Text_Get(
-                "data_quality.clean"
-                if summary.data_quality.status.value == "clean"
-                else "data_quality.warnings"
+                f"data_quality.{summary.data_quality.status.value}"
             )
         )
         self.quality_card.detail_label.setText(
@@ -243,7 +241,16 @@ class OverviewPage(QWidget):
                 gaps=summary.data_quality.sequence_gap_count,
                 unknown=summary.data_quality.unknown_record_count,
                 decoder=summary.data_quality.decoder_failure_count,
-                overflow=summary.data_quality.logger_overflow_count,
+                overflow=(summary.data_quality.logger_overflow_count
+                          if summary.data_quality.logger_overflow_count is not None else "—"),
+                imu_overflow=(summary.data_quality.imu_queue_overflow_count
+                              if summary.data_quality.imu_queue_overflow_count is not None
+                              else "—"),
+                missing=summary.data_quality.sequence_missing_count,
+                integrity=self._translator.Text_Get(
+                    f"data_quality.integrity.{summary.data_quality.structural_integrity}"),
+                continuity=self._translator.Text_Get(
+                    f"data_quality.continuity.{summary.data_quality.mission_record_continuity}"),
             )
         )
         _Status_Apply(

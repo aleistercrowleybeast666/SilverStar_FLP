@@ -102,6 +102,8 @@ class Sslog0ContainerPlugin(LogContainerPlugin):
         file_size = len(data)
         offset = FILE_HEADER_SIZE
         previous_sequence: int | None = None
+        previous_timestamp_us: int | None = None
+        previous_offset: int | None = None
 
         while offset < file_size:
             options.context.Cancel_RaiseIfRequested()
@@ -311,9 +313,13 @@ class Sslog0ContainerPlugin(LogContainerPlugin):
                         actual_sequence=record_sequence,
                         missing_count=int(missing),
                         gap_size=int(missing),
+                        previous_timestamp_us=previous_timestamp_us,
+                        previous_offset=previous_offset,
                         timestamp_us=timestamp_us,
                     )
             previous_sequence = record_sequence
+            previous_timestamp_us = timestamp_us
+            previous_offset = offset
 
             payload_offset = offset + RECORD_HEADER_SIZE
             yield RawRecordFrame(

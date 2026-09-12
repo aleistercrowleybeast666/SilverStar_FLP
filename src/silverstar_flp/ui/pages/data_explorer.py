@@ -110,6 +110,11 @@ class DataExplorerPage(QWidget):
         )
         self.diagnostics_table.verticalHeader().setVisible(False)
         diagnostics_layout.addWidget(self.diagnostics_table)
+        self.sequence_gap_table = QTableWidget()
+        self.sequence_gap_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.sequence_gap_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.sequence_gap_table.verticalHeader().setVisible(False)
+        diagnostics_layout.addWidget(self.sequence_gap_table)
         self.tabs.addTab(diagnostics_widget, "")
         layout.addWidget(self.tabs)
         self.Language_Apply(translator)
@@ -363,12 +368,29 @@ class DataExplorerPage(QWidget):
                 length=diagnostics.record_length_failures,
                 resync=diagnostics.resync_count,
                 damaged=len(diagnostics.damaged_spans),
+                gaps=diagnostics.sequence_gap_count,
+                missing=diagnostics.sequence_missing_count,
                 unknown=(
                     diagnostics.unknown_record_type_count
                     + diagnostics.unknown_record_version_count
                 ),
             )
         )
+        gaps = quality.sequence_gaps if quality is not None else ()
+        fields = ("expected_sequence", "actual_sequence", "missing_count", "file_offset",
+                  "timestamp_us", "mission_phase")
+        self.sequence_gap_table.setColumnCount(len(fields))
+        self.sequence_gap_table.setHorizontalHeaderLabels([
+            self._translator.Text_Get(f"diagnostic.gap.{field}") for field in fields])
+        self.sequence_gap_table.setRowCount(len(gaps))
+        for row, gap in enumerate(gaps):
+            for column, field in enumerate(fields):
+                value = gap[field]
+                text = (self._translator.Text_Get(f"data_quality.phase.{value}")
+                        if field == "mission_phase" else str(value) if value is not None else "—")
+                self.sequence_gap_table.setItem(row, column, QTableWidgetItem(text))
+        self.sequence_gap_table.resizeColumnsToContents()
+        self.sequence_gap_table.setVisible(bool(gaps))
         headers = (
             self._translator.Text_Get("diagnostic.severity"),
             self._translator.Text_Get("diagnostic.code"),

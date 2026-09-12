@@ -32,9 +32,13 @@ from silverstar_flp.core.mission import (
     MissionReplayEndReason,
 )
 from silverstar_flp.core.trajectory import (
+    TimeSeriesGapSummary_Get,
     TrajectoryBounds,
     TrajectoryBounds_Calculate,
     TrajectoryOrigin_Get,
+    TrajectoryPhaseSegment,
+    TrajectoryPhaseSegments_Build,
+    TrajectoryPhaseValues_Get,
     TrajectoryPosition_At,
     TrajectoryPosition_NearEvent,
 )
@@ -340,13 +344,12 @@ _TRAJECTORY_VIEW_AZIMUTH = 35.0
 class _ReplayFrameSample:
     timestamp_us: int
     quaternion: np.ndarray
-    trajectory_end_index: int
-    pre_deploy_end_index: int
-    post_deploy_start_index: int
     current_position: np.ndarray
     current_color: str
     deploy_visible: bool
     landing_visible: bool
+    pre_deploy_values: np.ndarray
+    post_deploy_values: np.ndarray
 
 
 @dataclass(slots=True)
@@ -1042,6 +1045,8 @@ class FlightExporter:
                 "sample_count": series.count,
                 "valid_sample_count": int(np.count_nonzero(series.valid)),
                 "timestamps": "recorded_per_channel",
+                "columns": list(series.columns),
+                "cadence_quality": TimeSeriesGapSummary_Get(series),
             }
         summary = FlightSummary_Build(dataset)
         generated_payload = [
@@ -2676,18 +2681,6 @@ class FlightExporter:
         return TrajectoryOrigin_Get(position, start_timestamp_us)
 
     @staticmethod
-    def _TrajectorySegments_Get(
-        position: TimeSeries,
-        deploy_timestamp_us: int | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        if deploy_timestamp_us is None:
-            return np.arange(position.count, dtype=np.int64), np.asarray([], dtype=np.int64)
-        timestamps = position.timestamp_us
-        pre = np.flatnonzero(timestamps <= np.uint64(deploy_timestamp_us))
-        post = np.flatnonzero(timestamps >= np.uint64(deploy_timestamp_us))
-        return pre, post
-
-    @staticmethod
     def _Axis3d_Equal(axis: Any, values: np.ndarray) -> None:
         if values.size == 0:
             return
@@ -2831,22 +2824,27 @@ class FlightExporter:
         )
         deploy = _Event_Timestamp(dataset, _EVENT_DEPLOY)
         landing = _Event_Timestamp(dataset, _EVENT_LANDING)
-        pre, post = self._TrajectorySegments_Get(cropped, deploy)
+        segments = TrajectoryPhaseSegments_Build(
+            position, (() if deploy is None else (deploy,)),
+            start_timestamp_us=start, end_timestamp_us=display_timestamp,
+        )
+        pre, post = (TrajectoryPhaseValues_Get(segments, phase, origin=origin)
+                     for phase in (0, 1))
         labels = _LABELS[language]
         if pre.size:
             axis.plot(
-                values[pre, 0],
-                values[pre, 1],
-                values[pre, 2],
+                pre[:, 0],
+                pre[:, 1],
+                pre[:, 2],
                 color=TRAJECTORY_PRE_DEPLOY_COLOR,
                 linewidth=1.7,
                 label=labels["pre_deploy"],
             )
         if post.size:
             axis.plot(
-                values[post, 0],
-                values[post, 1],
-                values[post, 2],
+                post[:, 0],
+                post[:, 1],
+                post[:, 2],
                 color=TRAJECTORY_POST_DEPLOY_COLOR,
                 linewidth=1.7,
                 label=labels["post_deploy"],
@@ -3133,23 +3131,13 @@ class FlightExporter:
         deploy_timestamp_us: int | None,
         landing_timestamp_us: int | None,
         event_frame_indices: Mapping[str, int],
+        phase_segments: tuple[TrajectoryPhaseSegment, ...] | None = None,
     ) -> tuple[_ReplayFrameSample, ...]:
-        deploy_left = int(trajectory_timestamps.size)
-        deploy_right = int(trajectory_timestamps.size)
-        if deploy_timestamp_us is not None:
-            deploy_left = int(
-                np.searchsorted(
-                    trajectory_timestamps,
-                    np.uint64(deploy_timestamp_us),
-                    side="left",
-                )
-            )
-            deploy_right = int(
-                np.searchsorted(
-                    trajectory_timestamps,
-                    np.uint64(deploy_timestamp_us),
-                    side="right",
-                )
+        if phase_segments is None:
+            phase_segments = TrajectoryPhaseSegments_Build(
+                TimeSeries(trajectory_timestamps, trajectory_values, "m", "position", "display",
+                           np.ones(trajectory_timestamps.size, dtype=np.bool_)),
+                (() if deploy_timestamp_us is None else (deploy_timestamp_us,)),
             )
         deploy_frame = event_frame_indices.get("deploy")
         landing_frame = event_frame_indices.get("landing")
@@ -3168,16 +3156,6 @@ class FlightExporter:
                 )
             )
             trajectory_end = max(1, min(trajectory_end, trajectory_timestamps.size))
-            pre_deploy_end = (
-                trajectory_end
-                if deploy_timestamp_us is None
-                else min(trajectory_end, deploy_right)
-            )
-            post_deploy_start = (
-                trajectory_end
-                if deploy_timestamp_us is None
-                else min(deploy_left, trajectory_end)
-            )
             samples.append(
                 _ReplayFrameSample(
                     timestamp_us=timestamp_us,
@@ -3185,9 +3163,10 @@ class FlightExporter:
                         attitude.values[attitude_index],
                         dtype=np.float64,
                     ).copy(),
-                    trajectory_end_index=trajectory_end,
-                    pre_deploy_end_index=pre_deploy_end,
-                    post_deploy_start_index=post_deploy_start,
+                    pre_deploy_values=TrajectoryPhaseValues_Get(
+                        phase_segments, 0, timestamp_us=timestamp_us),
+                    post_deploy_values=TrajectoryPhaseValues_Get(
+                        phase_segments, 1, timestamp_us=timestamp_us),
                     current_position=np.asarray(
                         trajectory_values[trajectory_end - 1],
                         dtype=np.float64,
@@ -3307,13 +3286,10 @@ class FlightExporter:
     @staticmethod
     def _ReplayTrajectoryArtists_Update(
         artists: _ReplayTrajectoryArtists,
-        trajectory_values: np.ndarray,
         sample: _ReplayFrameSample,
     ) -> None:
-        pre_deploy = trajectory_values[: sample.pre_deploy_end_index]
-        post_deploy = trajectory_values[
-            sample.post_deploy_start_index : sample.trajectory_end_index
-        ]
+        pre_deploy = sample.pre_deploy_values
+        post_deploy = sample.post_deploy_values
 
         def line_update(line: Any, values: np.ndarray) -> None:
             if values.size:
@@ -3406,6 +3382,7 @@ class FlightExporter:
 
         attitude_values = np.asarray(attitude.values, dtype=np.float64)
         position_values = np.asarray(position.values, dtype=np.float64)
+        geometry_position = position
         if attitude_values.ndim != 2 or attitude_values.shape[1] != 4:
             raise ValueError("attitude_channel_must_be_wxyz")
         if position_values.ndim != 2 or position_values.shape[1] != 3:
@@ -3443,7 +3420,7 @@ class FlightExporter:
             source_end_timestamp_us=source_end,
         )
         resolved_bounds = trajectory_bounds or TrajectoryBounds_Calculate(
-            position,
+            geometry_position,
             resolved_mission,
         )
         start = resolved_mission.start_timestamp_us
@@ -3515,6 +3492,14 @@ class FlightExporter:
             deploy,
             landing,
             event_frame_indices,
+            phase_segments=tuple(
+                TrajectoryPhaseSegment(segment.phase, segment.timestamp_us, segment.values - origin)
+                for segment in TrajectoryPhaseSegments_Build(
+                    geometry_position, (() if deploy is None else (deploy,)),
+                    start_timestamp_us=start,
+                    end_timestamp_us=resolved_mission.end_timestamp_us,
+                )
+            ),
         )
         full_values = np.asarray(
             (resolved_bounds.min_enu, resolved_bounds.max_enu),
@@ -3526,7 +3511,7 @@ class FlightExporter:
         )
         deploy_mesh: tuple[np.ndarray, np.ndarray] | None = None
         if deploy is not None:
-            deploy_point = self._Position_At(position, deploy)
+            deploy_point = self._Position_At(geometry_position, deploy)
             if deploy_point is not None:
                 deploy_mesh = TrajectoryEventMesh_Get(
                     np.asarray(deploy_point, dtype=np.float64) - origin,
@@ -3534,7 +3519,7 @@ class FlightExporter:
                 )
         landing_mesh: tuple[np.ndarray, np.ndarray] | None = None
         if landing is not None:
-            landing_point = self._Position_NearEvent(position, landing)
+            landing_point = self._Position_NearEvent(geometry_position, landing)
             if landing_point is not None:
                 landing_mesh = TrajectoryEventMesh_Get(
                     np.asarray(landing_point, dtype=np.float64) - origin,
@@ -3576,7 +3561,6 @@ class FlightExporter:
                 )
                 self._ReplayTrajectoryArtists_Update(
                     trajectory_artists,
-                    trajectory_values,
                     sample,
                 )
                 elapsed = (sample.timestamp_us - start) * 1.0e-6

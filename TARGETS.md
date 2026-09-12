@@ -41,3 +41,11 @@
 - ESKF24 Algorithm Plugin
 
 No ESKF implementation is part of Phase 1.
+
+## Display and workspace closeout
+
+- Shared semantic array labels with explicit metadata priority.
+- Shared event-phase geometry, true-gap preservation, and channel-local cadence diagnostics.
+- Explicit startup record drops, missing-ID counts, and independent queue counters.
+- Conservative cleanup CLI and regression tests for Git/protected-file/reparse-point boundaries.
+- Separate hash-locked current SS0000 display/compatibility acceptance (not a numerical Golden).

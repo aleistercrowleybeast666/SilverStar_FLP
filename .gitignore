@@ -15,3 +15,10 @@ projects/*.ssflp
 
 # User-provided source archive; never include it in application commits.
 /main.zip
+
+# Bounded generated outputs; ignore rules never authorize deleting input artifacts.
+/.acceptance/
+/.codex_pytest_*/
+/.codex_container_stage_*/
+/packaging-temp/
+# Tests use tmp_path / .acceptance; do not globally ignore PNG/JSON/CSV or source logs.

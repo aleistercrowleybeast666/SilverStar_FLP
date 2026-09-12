@@ -28,32 +28,165 @@ def _Vector3_Get(values: np.ndarray) -> Vector3:
     return float(vector[0]), float(vector[1]), float(vector[2])
 
 
-def TrajectoryPosition_At(series: TimeSeries, timestamp_us: int) -> np.ndarray | None:
-    if series.count == 0:
-        return None
+def TrajectoryGapThreshold_Get(series: TimeSeries) -> float:
+    """Cadence is channel-local; global record sequence gaps are irrelevant here."""
+    intervals = np.diff(series.timestamp_us.astype(np.float64))
+    positive = intervals[intervals > 0]
+    median = float(np.median(positive)) if positive.size else 0.0
+    tolerance = float(series.metadata.get("trajectory_gap_tolerance_us", 0.0))
+    if not np.isfinite(tolerance) or tolerance < 0:
+        raise ValueError("trajectory_gap_tolerance_invalid")
+    return max(2.5 * median, tolerance)
+
+
+def TimeSeriesGapSummary_Get(
+    series: TimeSeries,
+    start_timestamp_us: int | None = None,
+    end_timestamp_us: int | None = None,
+) -> dict[str, float | int]:
+    threshold = TrajectoryGapThreshold_Get(series)
+    times = series.timestamp_us
+    mask = np.ones(times.size, dtype=np.bool_)
+    if start_timestamp_us is not None:
+        mask &= times >= start_timestamp_us
+    if end_timestamp_us is not None:
+        mask &= times <= end_timestamp_us
+    selected = times[mask].astype(np.float64)
+    values = np.asarray(series.values)[mask]
+    finite = np.isfinite(values)
+    if values.ndim > 1:
+        finite = np.all(finite, axis=1)
+    return {
+        "gap_threshold_us": threshold,
+        "timestamp_gap_segments": int(np.count_nonzero(np.diff(selected) > threshold)),
+        "invalid_samples": int(np.count_nonzero(~(series.valid[mask] & finite))),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class TrajectoryPhaseSegment:
+    phase: int
+    timestamp_us: np.ndarray
+    values: np.ndarray
+
+
+def TrajectoryPhaseSegments_Build(
+    series: TimeSeries,
+    phase_timestamps_us: tuple[int, ...] = (),
+    *,
+    start_timestamp_us: int | None = None,
+    end_timestamp_us: int | None = None,
+) -> tuple[TrajectoryPhaseSegment, ...]:
+    """Create display geometry only. Invalid samples and true gaps split every phase."""
     values = np.asarray(series.values, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] != 3:
+        raise ValueError("trajectory_channel_must_be_enu")
+    events = sorted(set(phase_timestamps_us))
+    threshold = TrajectoryGapThreshold_Get(series)
+    times = series.timestamp_us
+    valid = series.valid & np.all(np.isfinite(values), axis=1)
+    segments: list[TrajectoryPhaseSegment] = []
+    run_times: list[int] = []
+    run_values: list[np.ndarray] = []
+    phase = 0
+
+    def flush() -> None:
+        if not run_times:
+            return
+        t = np.asarray(run_times, dtype=np.uint64)
+        v = np.asarray(run_values, dtype=np.float64)
+        mask = np.ones(t.size, dtype=np.bool_)
+        if start_timestamp_us is not None:
+            mask &= t >= start_timestamp_us
+        if end_timestamp_us is not None:
+            mask &= t <= end_timestamp_us
+        if mask.any():
+            t, v = t[mask], v[mask]
+            t.setflags(write=False)
+            v.setflags(write=False)
+            segments.append(TrajectoryPhaseSegment(phase, t, v))
+        run_times.clear()
+        run_values.clear()
+
+    previous: int | None = None
+    for i in range(series.count):
+        if not valid[i]:
+            flush()
+            previous = None
+            continue
+        timestamp = int(times[i])
+        if previous is None or not (0 < timestamp - int(times[previous]) <= threshold):
+            flush()
+            phase = int(np.searchsorted(events, timestamp, side="right"))
+            run_times.append(timestamp)
+            run_values.append(values[i])
+        else:
+            lower = int(times[previous])
+            for event in events:
+                if lower < event <= timestamp:
+                    ratio = (event - lower) / (timestamp - lower)
+                    point = values[previous] + ratio * (values[i] - values[previous])
+                    run_times.append(event)
+                    run_values.append(point)
+                    flush()
+                    phase = int(np.searchsorted(events, event, side="right"))
+                    run_times.append(event)
+                    run_values.append(point)
+            if not run_times or run_times[-1] != timestamp:
+                run_times.append(timestamp)
+                run_values.append(values[i])
+        previous = i
+    flush()
+    return tuple(segments)
+
+
+def TrajectoryPhaseValues_Get(
+    segments: tuple[TrajectoryPhaseSegment, ...],
+    phase: int,
+    *,
+    timestamp_us: int | None = None,
+    origin: np.ndarray | None = None,
+    max_points_per_segment: int | None = None,
+) -> np.ndarray:
+    """NaN separators retain real breaks for Matplotlib and GL line strips."""
+    parts: list[np.ndarray] = []
+    for segment in segments:
+        if segment.phase != phase:
+            continue
+        end = (
+            segment.timestamp_us.size
+            if timestamp_us is None
+            else int(np.searchsorted(segment.timestamp_us, timestamp_us, side="right"))
+        )
+        points = segment.values[:end]
+        if not points.size:
+            continue
+        if max_points_per_segment and points.shape[0] > max_points_per_segment:
+            indices = np.linspace(0, points.shape[0] - 1, max_points_per_segment).astype(int)
+            points = points[indices]
+        if parts:
+            parts.append(np.full((1, 3), np.nan))
+        parts.append(points)
+    result = np.concatenate(parts) if parts else np.empty((0, 3))
+    return result if origin is None else result - origin
+
+
+def TrajectoryPosition_At(series: TimeSeries, timestamp_us: int) -> np.ndarray | None:
+    values = np.asarray(series.values, dtype=np.float64)
+    if series.count == 0 or values.ndim != 2 or values.shape[1] != 3:
         return None
     valid = series.valid & np.all(np.isfinite(values), axis=1)
-    timestamps = series.timestamp_us[valid]
-    points = values[valid]
-    if timestamps.size == 0:
+    upper = int(np.searchsorted(series.timestamp_us, timestamp_us, side="left"))
+    if upper < series.count and int(series.timestamp_us[upper]) == timestamp_us:
+        return values[upper].copy() if valid[upper] else None
+    if upper == 0 or upper == series.count or not (valid[upper - 1] and valid[upper]):
         return None
-    first = int(timestamps[0])
-    last = int(timestamps[-1])
-    if timestamp_us < first or timestamp_us > last:
-        return None
-    upper = int(np.searchsorted(timestamps, np.uint64(timestamp_us), side="right"))
-    if upper == 0:
-        return points[0].copy()
-    if upper >= timestamps.size:
-        return points[-1].copy()
     lower = upper - 1
-    lower_time = int(timestamps[lower])
-    upper_time = int(timestamps[upper])
-    span = upper_time - lower_time
-    ratio = 0.0 if span <= 0 else (timestamp_us - lower_time) / span
-    return points[lower] + ratio * (points[upper] - points[lower])
+    span = int(series.timestamp_us[upper]) - int(series.timestamp_us[lower])
+    if not 0 < span <= TrajectoryGapThreshold_Get(series):
+        return None
+    ratio = (timestamp_us - int(series.timestamp_us[lower])) / span
+    return values[lower] + ratio * (values[upper] - values[lower])
 
 
 def TrajectoryPosition_NearEvent(
@@ -70,6 +203,8 @@ def TrajectoryPosition_NearEvent(
     timestamps = series.timestamp_us[valid].astype(np.int64)
     points = values[valid]
     if timestamps.size == 0:
+        return None
+    if int(timestamps[0]) <= timestamp_us <= int(timestamps[-1]):
         return None
     intervals = np.diff(timestamps)
     positive_intervals = intervals[intervals > 0]

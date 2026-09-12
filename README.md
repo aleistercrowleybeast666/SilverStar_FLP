@@ -234,3 +234,12 @@ matching, corruption exclusion/recovery, semantic adaptation, GUI degradation, a
 when its opt-in gate is run. It is not a numerical host-C Golden. Pure INS and KF_6 therefore
 remain `APPROXIMATE` for firmware 0.0.10 and retain build identity `SILV0008`. Never claim
 `EXACT` until the matching immutable real-log and host golden gate passes.
+
+## Display quality and workspace maintenance
+
+Arrays now inherit semantic axis labels, and GUI/PNG/GIF share event-point drawing geometry that
+keeps true data gaps visible. Overview distinguishes sequence-gap segments, missing IDs, and
+recorded queue counters. See [Display_DataQuality.md](docs/Display_DataQuality.md).
+
+Run `python tools/clean_workspace.py --dry-run` to inspect bounded cleanup candidates, then
+`--apply` to remove only verified generated files. See [Workspace_Cleanup.md](docs/Workspace_Cleanup.md).

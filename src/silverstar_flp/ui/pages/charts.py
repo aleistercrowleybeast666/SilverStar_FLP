@@ -29,9 +29,12 @@ from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector, Quaternion_ToEulerEnuDeg
 from silverstar_flp.core.mission import MissionReplayBounds
 from silverstar_flp.core.trajectory import (
+    TimeSeriesGapSummary_Get,
     TrajectoryBounds,
     TrajectoryCameraDistance_Get,
     TrajectoryOrigin_Get,
+    TrajectoryPhaseSegments_Build,
+    TrajectoryPhaseValues_Get,
     TrajectoryPosition_At,
     TrajectoryPosition_NearEvent,
 )
@@ -408,6 +411,10 @@ class FlightPage(QWidget):
     def _Replay3d_Create(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        self.trajectory_quality_label = QLabel()
+        self.trajectory_quality_label.setObjectName("muted")
+        self.trajectory_quality_label.setWordWrap(True)
+        layout.addWidget(self.trajectory_quality_label)
         self.replay_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.replay_splitter.setChildrenCollapsible(False)
         self.attitude_3d_group = QGroupBox()
@@ -828,6 +835,22 @@ class FlightPage(QWidget):
         )
 
     def _Trajectory3d_Prepare(self, *, reset_camera: bool) -> None:
+        if self._position is not None:
+            quality = TimeSeriesGapSummary_Get(
+                self._position, self._start_timestamp_us, self._end_timestamp_us)
+            self.trajectory_quality_label.setText(self._translator.Text_Get(
+                "flight.trajectory_quality", gaps=quality["timestamp_gap_segments"],
+                invalid=quality["invalid_samples"], threshold=quality["gap_threshold_us"] / 1000))
+        else:
+            self.trajectory_quality_label.clear()
+        self._trajectory_phase_segments = (
+            TrajectoryPhaseSegments_Build(
+                self._position,
+                (() if self._deploy_timestamp_us is None else (self._deploy_timestamp_us,)),
+                start_timestamp_us=self._start_timestamp_us,
+                end_timestamp_us=self._end_timestamp_us,
+            ) if self._position is not None else ()
+        )
         if gl is None:
             return
         axis_colors = (
@@ -988,7 +1011,6 @@ class FlightPage(QWidget):
             & (self._position.timestamp_us <= np.uint64(timestamp_us))
         )
         points = raw_values[valid] - self._trajectory_origin
-        times = self._position.timestamp_us[valid]
         if points.size == 0:
             self.pre_deploy_line.setData(pos=empty)
             self.post_deploy_line.setData(pos=empty)
@@ -998,16 +1020,15 @@ class FlightPage(QWidget):
             self._landing_marker_vertices = empty
             self.current_marker.setData(pos=empty)
             return
-        stride = max(1, len(points) // 10000)
-        points = points[::stride]
-        times = times[::stride]
         deploy = self._deploy_timestamp_us
-        if deploy is None:
-            pre = points
-            post = empty
-        else:
-            pre = points[times <= np.uint64(deploy)]
-            post = points[times >= np.uint64(deploy)]
+        pre, post = (
+            TrajectoryPhaseValues_Get(
+                self._trajectory_phase_segments, phase,
+                timestamp_us=timestamp_us, origin=self._trajectory_origin,
+                max_points_per_segment=10000,
+            ).astype(np.float32)
+            for phase in (0, 1)
+        )
         self.pre_deploy_line.setData(
             pos=pre,
             color=QColor(TRAJECTORY_PRE_DEPLOY_COLOR).getRgbF(),

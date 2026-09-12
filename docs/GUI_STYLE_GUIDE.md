@@ -52,3 +52,10 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
   not rescan bounds or reset orbit, pan, or zoom.
 - Every user-visible Replay fidelity, warning, parameter, provenance, result, and source label must
   exist in both `zh_CN.json` and `en_US.json`; keep raw diagnostic IDs in tooltips.
+
+
+- Semantic columns, record quality labels, and shared event drawing geometry follow
+  [Display_DataQuality.md](Display_DataQuality.md). The existing diagnostics inner tab contains
+  a per-gap table. Flight separately reports position timestamp gaps and the drawing threshold.
+  Event-marker interpolation is permitted only across valid normal-cadence samples; the nearest
+  scheduling fallback applies only outside channel coverage, never inside a data hole.

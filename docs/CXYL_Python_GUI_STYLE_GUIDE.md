@@ -1457,3 +1457,12 @@ Reuse:
 Do **not** force unrelated applications to copy the same page structure or domain workflow.
 
 The standard is a common engineering UI language, not a rigid template.
+
+## 37. Cadence-aware phase rendering
+
+Event color transitions should share an exact or display-interpolated point between neighboring
+continuous samples. Derive the continuity threshold from that channel; do not connect through
+invalid samples or timestamp gaps. GUI, static export, and animation use one segment builder.
+Nearest-event scheduling tolerance applies only outside sample coverage, never inside a data
+hole. Keep segment geometry separate from immutable recorded/recomputed samples and expose
+record-sequence gaps separately from each plotted channel's cadence.

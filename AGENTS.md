@@ -31,3 +31,12 @@ Preserve these boundaries:
 - Run lint plus focused tests, then the full test suite. A real package alone proves only package
   validity; decoded/replay claims require its matching actual log. Synthetic fixtures never
   satisfy SS0007 or SS_TEST_0 real-log validation gates.
+
+- Preserve explicit Catalog columns before audited semantic axis fallbacks; stable aliases share
+  immutable raw TimeSeries objects. Unknown arrays use bracketed index IDs.
+- GUI/PNG/GIF must use the shared trajectory phase builder. Event interpolation is display-only;
+  never interpolate real per-channel gaps or use global sequence gaps to split every channel.
+- Report sequence-gap segments, missing IDs, queue counters, and overflow event counts separately;
+  only positively evidenced gaps may be classified as pre-START.
+- Use `tools/clean_workspace.py` for bounded cleanup; never remove tracked files, fixtures, raw
+  logs/decoder/project inputs, or symlink/junction targets. See `docs/Workspace_Cleanup.md`.

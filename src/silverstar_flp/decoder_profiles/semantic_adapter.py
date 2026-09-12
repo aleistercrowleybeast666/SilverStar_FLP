@@ -946,7 +946,7 @@ class SilverStarSslog0SemanticAdapter:
 
     def Apply(self, dataset: FlightDataset) -> FlightDataset:
         adapted_records = _Events_Adapt(dataset.records, self.package)
-        with_events = replace(dataset, records=adapted_records)
+        with_events = replace(dataset, records=adapted_records, data_quality=None)
         adapted_series, aliases = _StableSeries_Adapt(
             with_events,
             self.package,

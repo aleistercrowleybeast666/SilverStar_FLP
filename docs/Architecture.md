@@ -173,3 +173,11 @@ worker threads, reports progress, and requests cancellation without terminating 
 open never clears the current dataset or replay store. Core and plugins emit stable codes; the
 i18n layer translates them. Full tracebacks go to the application log while dialogs show concise
 user-facing messages.
+
+## Shared display closeout
+
+Semantic columns are assigned during channel construction, before stable alias publication.
+Core trajectory phase geometry is shared by OpenGL, PNG, and GIF and preserves channel-local gaps.
+Data Quality classification is derived from recorded evidence and never relaxes decoder or replay
+contracts. See [Display_DataQuality.md](Display_DataQuality.md) and
+[Workspace_Cleanup.md](Workspace_Cleanup.md).

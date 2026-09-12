@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import Any
 
 from silverstar_flp.core.dataset import ChannelDefinition
+from silverstar_flp.core.semantic_columns import SemanticColumns_Get
 from silverstar_flp.decoder_profiles.errors import DecoderProfileError
 
 _CHANNEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
@@ -564,11 +565,9 @@ class ProjectSemantics:
                     quantity = "dimensionless"
                 columns = field_metadata.get("columns")
                 if not isinstance(columns, list) or len(columns) != field_layout.count:
-                    columns = (
-                        [str(index) for index in range(field_layout.count)]
-                        if field_layout.count > 1
-                        else []
-                    )
+                    columns = list(SemanticColumns_Get(
+                        record_name, field_name, field_layout.count,
+                    ))
                 validity_field, validity_mask = _ViewValidity_Get(
                     raw_validity,
                     field_name,

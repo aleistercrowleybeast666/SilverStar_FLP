@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Unified semantic array columns with explicit Catalog metadata priority and bracketed unknown
+  indices, preserving raw/stable zero-copy aliases and audited position-first KF6 order.
+- Unified GUI/PNG/GIF event phase geometry with shared visual event points and channel-cadence
+  breaks; source samples remain immutable and true gaps are never interpolated.
+- Split Data Quality sequence-gap segments/missing IDs, cumulative queue counters/event counts,
+  structural integrity and mission phase evidence; added bilingual per-gap diagnostics and
+  per-channel cadence/column export provenance.
+- Added a conservative dry-run/apply workspace cleanup tool, generated-directory ignore rules,
+  safety regressions, and a separate hash-locked current SS0000 compatibility/display gate.
+
 - Adapted exact `.ssdecoder` 1.1 opening to the current FCCG 0.0.10 Record Catalog and Project
   Semantics without adding legacy/package/fixed-parser fallbacks.
 - Accepted ready identity `CALIBRATION_RESULT mode=NONE` independently of configured one/six-face
