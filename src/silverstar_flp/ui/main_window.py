@@ -15,6 +15,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -52,6 +54,7 @@ from silverstar_flp.log_open import (
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
 from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
 from silverstar_flp.plugins.registry import PluginRegistry
+from silverstar_flp.ui.new_project import NewProjectDialog
 from silverstar_flp.ui.pages import (
     DataExplorerPage,
     ExportDialog,
@@ -251,15 +254,22 @@ class MainWindow(QMainWindow):
         self.export_dialog.exportRequested.connect(self._Export_Start)
         self.export_dialog.manifestOpenRequested.connect(self._ExportManifest_Open)
         self.plugin_manager_dialog = PluginManagerDialog(self._translator, self)
+        self.plugin_manager_dialog.installRequested.connect(self._Plugin_InstallDialog_Show)
+        self.plugin_manager_dialog.refreshRequested.connect(self._Plugins_Refresh)
         self.about_dialog = AboutDialog(self._translator, self)
         self._Plugins_Refresh(show_message=False)
         self.navigation_list.setCurrentRow(0)
 
     def _Menu_Build(self) -> None:
-        self.menuBar().setObjectName("mainMenuBar")
-        self.file_menu = self.menuBar().addMenu("")
-        self.plugins_menu = self.menuBar().addMenu("")
-        self.help_menu = self.menuBar().addMenu("")
+        self._menu_bar = self.menuBar()
+        self._menu_bar.setObjectName("mainMenuBar")
+        self.file_menu = QMenu(self._menu_bar)
+        self.plugins_menu = QMenu(self._menu_bar)
+        self.help_menu = QMenu(self._menu_bar)
+        self._menu_actions = [
+            self._menu_bar.addMenu(menu)
+            for menu in (self.file_menu, self.plugins_menu, self.help_menu)
+        ]
         self.new_project_action = QAction(self)
         self.new_project_action.setShortcut("Ctrl+N")
         self.new_project_action.triggered.connect(self._Project_New)
@@ -283,7 +293,7 @@ class MainWindow(QMainWindow):
         self.manage_plugins_action = QAction(self)
         self.manage_plugins_action.triggered.connect(self._PluginManager_Show)
         self.install_plugin_action = QAction(self)
-        self.install_plugin_action.triggered.connect(self._Plugin_InstallDialog_Show)
+        self.install_plugin_action.triggered.connect(self._PluginManager_Show)
         self.refresh_plugins_action = QAction(self)
         self.refresh_plugins_action.triggered.connect(
             lambda _checked=False: self._Plugins_Refresh()
@@ -313,7 +323,7 @@ class MainWindow(QMainWindow):
 
     def _Plugin_InstallDialog_Show(self) -> None:
         source_name, _ = QFileDialog.getOpenFileName(
-            self,
+            self.plugin_manager_dialog if self.plugin_manager_dialog.isVisible() else self,
             self._translator.Text_Get("dialog.plugin_install.title"),
             "",
             self._translator.Text_Get("dialog.plugin_install.filter"),
@@ -823,7 +833,11 @@ class MainWindow(QMainWindow):
     def _Project_New(self) -> None:
         if not self._ProjectChanges_Confirm():
             return
-        path = self._ProjectPath_Select("action.new_project")
+        directory = self._project.project_path.parent if self._project.project_path else Path.cwd()
+        dialog = NewProjectDialog(self._translator, directory, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        path = dialog.Path_Get()
         if path is None or not self._Overwrite_Confirm(path):
             return
         self._pending_new_project_path = path.resolve()

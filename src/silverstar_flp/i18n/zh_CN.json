@@ -88,7 +88,7 @@
   "label.current_project": "当前工程",
   "label.version": "版本",
   "dialog.plugins.title": "插件管理器",
-  "dialog.plugins.description": "显示当前运行时插件与已安装的受信日志容器包。新安装包需要重启，并且必须具有宿主批准的工厂后才能启用。",
+  "dialog.plugins.description": "查看、安装和验证日志容器插件，查看内置离线算法。",
   "plugin.column.type": "类型",
   "plugin.column.display_name": "显示名称",
   "plugin.column.id": "插件 ID",
@@ -578,5 +578,16 @@
   "action.reset_firmware_parameters": "恢复机载配置",
   "action.reset_offline_parameters": "恢复算法默认值",
   "replay.firmware_parameter_provenance": "来自 .ssdecoder 的固件构建配置",
-  "error.code.parameter_dynamic_uncertainty_missing": "此不确定度下限修改需要原始接收机/传感器及起点不确定度；当前重放输入未提供，无法准确重建。"
+  "error.code.parameter_dynamic_uncertainty_missing": "此不确定度下限修改需要原始接收机/传感器及起点不确定度；当前重放输入未提供，无法准确重建。",
+  "dialog.plugins.heading": "插件",
+  "dialog.plugins.notice": "FLP 安装时只验证插件包，不执行包内代码。日志容器须经明确授权并具有宿主批准的工厂，重启后才能启用。",
+  "dialog.about.product": "SilverStar 飞行日志解析器",
+  "dialog.about.description": "飞行日志解析、数据检查、离线算法复算与轨迹可视化工具。",
+  "action.ok": "确定",
+  "dialog.new.summary": "填写工程名称并选择输出目录，下一步导入配套日志和解码包。",
+  "dialog.new.name": "工程名称",
+  "dialog.new.name_hint": "例如 SilverStar_Flight",
+  "dialog.new.directory": "输出目录",
+  "dialog.new.create": "创建工程并导入",
+  "dialog.new.cancel": "取消"
 }

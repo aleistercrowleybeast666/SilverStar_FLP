@@ -177,10 +177,10 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     window._About_Show()
     application.processEvents()
     assert window.about_dialog.isVisible()
-    assert window.about_dialog.product_label.text() == "SilverStar_FLP"
+    assert window.about_dialog.product_label.text() == "SilverStar 飞行日志解析器"
     assert window.about_dialog.version_label.text() == "版本 0.0.2"
-    assert window.about_dialog.description_label.text() == "SilverStar Flight Log Parser"
-    assert window.about_dialog.credit_label.text() == "辰星引力 / CXYL"
+    assert "离线算法复算" in window.about_dialog.description_label.text()
+    assert window.about_dialog.windowTitle() == "SilverStar_FLP"
     window.about_dialog.reject()
     saved_as_path = tmp_path / "SYNTHETIC_gui_project_copy.ssflp"
     monkeypatch.setattr(
@@ -286,6 +286,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     application.processEvents()
     assert window.replay_page.scroll_area.verticalScrollBar().maximum() > 0
     assert window.overview_page.scroll_area.widgetResizable()
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -353,6 +354,7 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     assert Path(opened_urls[0].toLocalFile()) == manifest_path.resolve()
     window.Language_Apply("en_US")
     assert window.export_dialog.manifest_button.text() == "Open Export Manifest"
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -392,6 +394,7 @@ def test_plugin_install_rejects_unsupported_algorithm_and_refresh_preserves_runt
     assert window._registry.log_containers == containers_before
     assert window._dataset is dataset
     assert manager.Discover().manifests == ()
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -402,11 +405,10 @@ def test_new_project_selects_destination_before_import_and_cancel_leaves_no_file
     application = QApplication.instance() or QApplication([])
     window = MainWindow(builtin_registry())
     target = tmp_path / "Flight.ssflp"
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *args, **kwargs: (str(target), "SilverStar project (*.ssflp)"),
-    )
+    from silverstar_flp.ui.new_project import NewProjectDialog
+
+    monkeypatch.setattr(NewProjectDialog, "exec", lambda self: 1)
+    monkeypatch.setattr(NewProjectDialog, "Path_Get", lambda self: target)
     window.new_project_action.trigger()
     application.processEvents()
     assert window._pending_new_project_path == target.resolve()
@@ -415,6 +417,7 @@ def test_new_project_selects_destination_before_import_and_cancel_leaves_no_file
     window.import_dialog.reject()
     assert window._pending_new_project_path is None
     assert not target.exists()
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -426,11 +429,10 @@ def test_new_project_requires_overwrite_confirmation(
     window = MainWindow(builtin_registry())
     target = tmp_path / "Existing.ssflp"
     target.write_text("original", encoding="utf-8")
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *args, **kwargs: (str(target), "SilverStar project (*.ssflp)"),
-    )
+    from silverstar_flp.ui.new_project import NewProjectDialog
+
+    monkeypatch.setattr(NewProjectDialog, "exec", lambda self: 1)
+    monkeypatch.setattr(NewProjectDialog, "Path_Get", lambda self: target)
     monkeypatch.setattr(
         QMessageBox,
         "question",
@@ -441,6 +443,7 @@ def test_new_project_requires_overwrite_confirmation(
     assert window._pending_new_project_path is None
     assert not window.import_dialog.isVisible()
     assert target.read_text(encoding="utf-8") == "original"
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -476,6 +479,7 @@ def test_export_dialog_lists_failed_items_and_toggles_error_details(
     assert "[flight_replay_gif] 三维飞行回放 GIF" in detail
     assert "AttributeError" in detail
     assert "'str' object has no attribute 'value'" in detail
+    window._Project_SetDirty(False)
     window.close()
 
 
@@ -523,4 +527,26 @@ def test_export_dialog_runs_gif_and_manifest_through_real_qthreadpool_worker(
     assert not (output / "Export_Failures_ZH.txt").exists()
     assert dialog._result_manifest is not None
     assert not dialog._result_manifest.failures
+    window._Project_SetDirty(False)
     window.close()
+
+
+def test_new_project_form_validates_identity_and_preserves_suffix(tmp_path: Path) -> None:
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from silverstar_flp.core.i18n import Translator
+    from silverstar_flp.ui.new_project import NewProjectDialog
+
+    application = QApplication.instance() or QApplication([])
+    dialog = NewProjectDialog(Translator("zh_CN"), tmp_path)
+    button = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    for name in ("", "../Flight", "CON", "flight?", ".ssflp"):
+        dialog.name_edit.setText(name)
+        assert not button.isEnabled()
+    dialog.name_edit.setText("Flight.ssflp")
+    assert button.isEnabled()
+    assert dialog.Path_Get() == tmp_path / "Flight.ssflp"
+    dialog.directory_edit.setText(str(tmp_path / "missing"))
+    assert not button.isEnabled()
+    dialog.reject()
+    application.processEvents()

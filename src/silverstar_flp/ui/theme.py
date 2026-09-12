@@ -7,6 +7,11 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 LIGHT_STYLESHEET = """
+QLabel#dialogHeading { font-size: 26px; font-weight: 700; }
+QLabel#noticeLabel { background: #FFFBEB; color: #172033; border: 1px solid #D97706;
+    border-radius: 4px; padding: 10px; }
+QTableWidget#pluginManagerTable::item:alternate { background: #F4F6FA; }
+
 QMainWindow, QWidget#centralRoot, QStackedWidget, QScrollArea,
 QScrollArea > QWidget > QWidget {
     background: #F4F6FA;
@@ -249,6 +254,11 @@ QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 
 
 DARK_STYLESHEET = """
+QLabel#dialogHeading { font-size: 26px; font-weight: 700; }
+QLabel#noticeLabel { background: #302711; color: #FDE68A; border: 1px solid #D97706;
+    border-radius: 4px; padding: 10px; }
+QTableWidget#pluginManagerTable::item:alternate { background: #1E293B; }
+
 QMainWindow, QWidget#centralRoot, QStackedWidget, QScrollArea,
 QScrollArea > QWidget > QWidget {
     background: #0F172A;

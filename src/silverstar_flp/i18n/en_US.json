@@ -79,7 +79,7 @@
   "label.current_project": "Current project",
   "label.version": "Version",
   "dialog.plugins.title": "Plugin Manager",
-  "dialog.plugins.description": "Active runtime plugins and installed trusted container packages. Newly installed packages require a restart and a host-approved factory before activation.",
+  "dialog.plugins.description": "View, install and validate log container plugins and inspect built-in offline algorithms.",
   "plugin.column.type": "Type",
   "plugin.column.display_name": "Display Name",
   "plugin.column.id": "Plugin ID",
@@ -578,5 +578,16 @@
   "action.reset_firmware_parameters": "Restore firmware configuration",
   "action.reset_offline_parameters": "Restore algorithm defaults",
   "replay.firmware_parameter_provenance": "Firmware build configuration from .ssdecoder",
-  "error.code.parameter_dynamic_uncertainty_missing": "This uncertainty-floor change requires raw receiver/sensor and origin uncertainty terms that the replay input does not contain."
+  "error.code.parameter_dynamic_uncertainty_missing": "This uncertainty-floor change requires raw receiver/sensor and origin uncertainty terms that the replay input does not contain.",
+  "dialog.plugins.heading": "Plugins",
+  "dialog.plugins.notice": "FLP validates packages without executing their code during installation. Log containers require explicit trust and a host-approved factory, and take effect after restart.",
+  "dialog.about.product": "SilverStar Flight Log Parser",
+  "dialog.about.description": "Flight log decoding, data inspection, offline algorithm replay and trajectory visualization.",
+  "action.ok": "OK",
+  "dialog.new.summary": "Enter a project name and output directory, then import the matching log and decoder package.",
+  "dialog.new.name": "Project name",
+  "dialog.new.name_hint": "e.g. SilverStar_Flight",
+  "dialog.new.directory": "Output directory",
+  "dialog.new.create": "Create and import",
+  "dialog.new.cancel": "Cancel"
 }

@@ -65,3 +65,14 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
 ## Shell menus and plugin visibility
 
 The header order is product, version, credit, current project, stretch, language, theme. Top-level menus are File, Plugins, Help. Plugins contains Manage, Install, Refresh; Help contains About. Plugin Manager is registry-driven and uses shared theme/i18n.
+
+
+## Shared compact dialogs
+
+About follows the FCCG information-dialog layout: information icon on the left, localized
+product/version/description on the right, and one bottom-right OK button. New Project uses
+name and output-directory rows before exact-pair import; cancellation creates no project file.
+Plugin Manager uses a heading, descriptive notice, install/refresh action row and ID-first table.
+The Install menu opens this manager. FLP retains its trusted-container installation rules;
+FCCG declarative firmware component installation/removal is not an FLP runtime capability.
+All three dialogs follow the active Light/Dark theme and interface language.

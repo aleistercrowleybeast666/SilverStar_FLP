@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QPushButton,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -32,20 +35,44 @@ class PluginDisplayRow:
 class PluginManagerDialog(QDialog):
     """Read-only view of active runtime plugins and safely discovered packages."""
 
+    installRequested = Signal()
+    refreshRequested = Signal()
+
     def __init__(self, translator: Translator, parent=None) -> None:
         super().__init__(parent)
         self.setModal(True)
-        self.resize(900, 430)
+        self.resize(1180, 680)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 18)
+        layout.setSpacing(12)
+        self.title_label = QLabel()
+        self.title_label.setObjectName("dialogHeading")
+        layout.addWidget(self.title_label)
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
+        self.description_label.setObjectName("muted")
         layout.addWidget(self.description_label)
+        self.notice_label = QLabel()
+        self.notice_label.setObjectName("noticeLabel")
+        self.notice_label.setWordWrap(True)
+        layout.addWidget(self.notice_label)
+        toolbar = QHBoxLayout()
+        self.install_button = QPushButton()
+        self.install_button.setObjectName("primaryButton")
+        self.install_button.clicked.connect(self.installRequested.emit)
+        self.refresh_button = QPushButton()
+        self.refresh_button.clicked.connect(self.refreshRequested.emit)
+        toolbar.addWidget(self.install_button)
+        toolbar.addWidget(self.refresh_button)
+        toolbar.addStretch(1)
+        layout.addLayout(toolbar)
         self.table = QTableWidget(0, 6)
         self.table.setObjectName("pluginManagerTable")
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(34)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table, 1)
@@ -58,11 +85,15 @@ class PluginManagerDialog(QDialog):
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
         self.setWindowTitle(translator.Text_Get("dialog.plugins.title"))
+        self.title_label.setText(translator.Text_Get("dialog.plugins.heading"))
         self.description_label.setText(translator.Text_Get("dialog.plugins.description"))
+        self.notice_label.setText(translator.Text_Get("dialog.plugins.notice"))
+        self.install_button.setText(translator.Text_Get("action.install_plugin"))
+        self.refresh_button.setText(translator.Text_Get("action.refresh_plugins"))
         headers = (
-            "plugin.column.type",
-            "plugin.column.display_name",
             "plugin.column.id",
+            "plugin.column.display_name",
+            "plugin.column.type",
             "plugin.column.version",
             "plugin.column.source",
             "plugin.column.status",
@@ -122,9 +153,9 @@ class PluginManagerDialog(QDialog):
         self.table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             values = (
-                self._translator.Text_Get(row.plugin_type),
-                row.display_name,
                 row.plugin_id,
+                row.display_name,
+                self._translator.Text_Get(row.plugin_type),
                 row.version,
                 self._translator.Text_Get(row.source),
                 self._translator.Text_Get(row.status),
@@ -139,34 +170,40 @@ class AboutDialog(QDialog):
     def __init__(self, translator: Translator, parent=None) -> None:
         super().__init__(parent)
         self.setModal(True)
-        self.setFixedSize(460, 250)
+        self.setMinimumWidth(600)
         layout = QVBoxLayout(self)
-        self.product_label = QLabel(PRODUCT_NAME)
-        self.product_label.setObjectName("aboutProduct")
-        self.product_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(16, 16, 16, 14)
+        layout.setSpacing(16)
+        body = QHBoxLayout()
+        body.setSpacing(22)
+        self.icon_label = QLabel()
+        self.icon_label.setPixmap(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation).pixmap(60, 60)
+        )
+        body.addWidget(self.icon_label, 0, Qt.AlignmentFlag.AlignTop)
+        text = QVBoxLayout()
+        text.setSpacing(4)
+        self.product_label = QLabel()
         self.version_label = QLabel()
-        self.version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.description_label = QLabel("SilverStar Flight Log Parser")
-        self.description_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.credit_label = QLabel("辰星引力 / CXYL")
-        self.credit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        for widget in (
-            self.product_label,
-            self.version_label,
-            self.description_label,
-            self.credit_label,
-        ):
-            layout.addWidget(widget)
-        layout.addStretch(1)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        buttons.accepted.connect(self.accept)
-        layout.addWidget(buttons)
-        self._buttons = buttons
+        self.description_label = QLabel()
+        self.description_label.setWordWrap(True)
+        self.description_label.setMinimumWidth(460)
+        text.addWidget(self.product_label)
+        text.addWidget(self.version_label)
+        text.addSpacing(14)
+        text.addWidget(self.description_label)
+        body.addLayout(text, 1)
+        layout.addLayout(body)
+        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        self._buttons.accepted.connect(self.accept)
+        layout.addWidget(self._buttons)
         self.Language_Apply(translator)
 
     def Language_Apply(self, translator: Translator) -> None:
-        self.setWindowTitle(translator.Text_Get("dialog.about.title"))
+        self.setWindowTitle(PRODUCT_NAME)
+        self.product_label.setText(translator.Text_Get("dialog.about.product"))
         self.version_label.setText(f"{translator.Text_Get('label.version')} {__version__}")
+        self.description_label.setText(translator.Text_Get("dialog.about.description"))
         self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            translator.Text_Get("action.close")
+            translator.Text_Get("action.ok")
         )
