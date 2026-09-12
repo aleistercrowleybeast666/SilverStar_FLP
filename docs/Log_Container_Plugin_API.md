@@ -102,3 +102,7 @@ plugin is missing or incompatible, package loading stops with a stable local err
 4. Provide an explicitly installed trusted package and host factory.
 5. Keep all payload/semantic changes in `.ssdecoder`; do not revise container code for a new
    Record alone.
+
+## GUI installation and refresh
+
+The GUI Install command filters for `.ssplugin`, asks for explicit trust, and delegates to the same path/hash/API/type checks. Algorithm packages are unsupported. Refresh repeats inert discovery without unloading or modifying the live registry or dataset. Installed packages require restart and an exact host-allowlisted factory; archive entry points are never imported by the GUI.

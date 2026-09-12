@@ -140,3 +140,7 @@ parser: `LogOpenCoordinator` constructs `DecoderProfileParserPlugin(container, v
 for each accepted log. Future container or algorithm modules are added explicitly. This API does
 not implement a plugin store, entry-point discovery, online installation, signatures, hot reload,
 or dependency management.
+
+## GUI installation boundary
+
+Plugin Manager enumerates runtime-registered Algorithm Plugins, so future registrations appear without dialog changes. Install Plugin intentionally does not accept dynamic Algorithm packages or execute archive Python/entry points.

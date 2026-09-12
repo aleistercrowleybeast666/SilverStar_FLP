@@ -45,10 +45,10 @@ python main.py D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder
 ```
 
 The dark-blue brand header shows the localized application name, `v0.0.2`, developer credit,
-compact current-project name (with the absolute `.ssflp` path in its tooltip), language, and
-theme. The File menu provides New Project (`Ctrl+N`), Open Project (`Ctrl+O`), Save Project
+compact current-project name (with the absolute `.ssflp` path in its tooltip), then flexible
+space, language, and theme. The File menu provides New Project (`Ctrl+N`), Open Project (`Ctrl+O`), Save Project
 (`Ctrl+S`), Save Project As (`Ctrl+Shift+S`), Import Log / Decoder, Export (`Ctrl+E`), and Exit.
-There is no duplicate toolbar.
+The adjacent Plugins menu provides Manage, Install, and Refresh; Help provides About. Plugin Manager reads the runtime registry. Install accepts only explicitly trusted `.ssplugin` container packages, never executes archive Python, and requires restart plus a host-allowlisted factory before activation. There is no online store, dynamic Algorithm installer, or duplicate toolbar.
 Import and export use focused option dialogs. The five analysis pages are:
 
 1. Overview — mission/file and exact decoder identity, flight metrics, deploy altitude/reason,

@@ -51,3 +51,5 @@ Preserve these boundaries:
 - Explicit user-authorized retirement of verified historical test runs may use
   `WorkspaceClean_RetireTests`, including mistakenly tracked synthetic outputs. Ordinary cleanup
   remains conservative; never remove actual source inputs or follow links/junctions.
+
+- Keep the FCCG-aligned shell order: product/version/credit/project, stretch, language/theme; top-level menus are File, Plugins, Help. Plugin install remains explicit-trust `.ssplugin` container installation only, with no package-code execution or algorithm hot-loading.
