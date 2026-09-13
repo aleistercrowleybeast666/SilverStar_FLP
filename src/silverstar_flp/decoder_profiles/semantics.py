@@ -94,7 +94,27 @@ def _TimestampField_Select(
     catalog: Any,
     record_name: str,
     layout: Any,
+    view: Mapping[str, Any] | None = None,
 ) -> str | None:
+    if view is not None and "timestamp_field" in view:
+        explicit = view["timestamp_field"]
+        field = next((item for item in layout.fields if item.name == explicit), None)
+        if not isinstance(explicit, str) or not explicit or field is None:
+            raise DecoderProfileError(
+                "decoder_record_view_timestamp_field_invalid", f"{record_name}:{explicit}"
+            )
+        metadata = catalog.FieldMetadata_Get(record_name, explicit)
+        if (
+            field.count != 1
+            or field.data_type not in {"u32", "i32", "u64", "i64"}
+            or field.scale != 1.0
+            or field.offset != 0.0
+            or not (metadata.get("timestamp") is True or explicit.endswith("timestamp_us"))
+        ):
+            raise DecoderProfileError(
+                "decoder_record_view_timestamp_field_invalid", f"{record_name}:{explicit}"
+            )
+        return explicit
     named_fields = {
         field_layout.name
         for field_layout in layout.fields
@@ -104,15 +124,16 @@ def _TimestampField_Select(
         "sample_timestamp_us",
         "timestamp_us",
         "interval_end_timestamp_us",
-        "receive_timestamp_us",
     ):
         if preferred in named_fields:
             return preferred
-    for field_name in sorted(named_fields):
-        metadata = catalog.FieldMetadata_Get(record_name, field_name)
-        if metadata.get("timestamp") is True:
-            return field_name
-    return None
+    candidates = [
+        name for name in named_fields
+        if catalog.FieldMetadata_Get(record_name, name).get("timestamp") is True
+    ]
+    # Multiple payload clocks may describe measurements inside a state snapshot.
+    # None preserves the builder's record-header timestamp; never guess by name order.
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _ViewValidity_Get(
@@ -550,7 +571,11 @@ class ProjectSemantics:
                 catalog,
                 record_name,
                 first_layout,
+                view,
             )
+            if "timestamp_field" in view:
+                for layout in layouts[1:]:
+                    _TimestampField_Select(catalog, record_name, layout, view)
             raw_validity = view.get("validity", {})
             channels: list[SemanticChannel] = []
             for field_layout in first_layout.fields:
