@@ -969,50 +969,33 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
     def _MeasurementSchedule_Build(
         dataset: FlightDataset, increments: tuple[InertialIncrement, ...]
     ) -> tuple[tuple[_ScheduledMeasurement, ...], bool]:
+        if not increments:
+            return (), False
         increment_timestamps = [item.interval_end_timestamp_us for item in increments]
-        first_increment_timestamp = increment_timestamps[0]
-        last_increment_timestamp = increment_timestamps[-1]
-        states = dataset.Records_Get("ESTIMATOR") or dataset.Records_Get("KF6_STATE")
-        gnss_application: dict[int, int] = {}
-        baro_application: dict[int, int] = {}
-        for state in sorted(states, key=lambda item: item.record_sequence):
-            payload = state.payload
-            gnss_sequence = int(payload.get("gnss_sequence", 0))
-            baro_sequence = int(payload.get("baro_sequence", 0))
-            if gnss_sequence and gnss_sequence not in gnss_application:
-                gnss_application[gnss_sequence] = state.timestamp_us
-            if baro_sequence and baro_sequence not in baro_application:
-                baro_application[baro_sequence] = state.timestamp_us
         scheduled: list[_ScheduledMeasurement] = []
-        inferred_any = False
-        for kind, records, applications in (
-            ("gnss", dataset.Records_Get("GNSS_MEASUREMENT"), gnss_application),
-            ("baro", dataset.Records_Get("BARO_MEASUREMENT"), baro_application),
+        for kind, records in (
+            ("gnss", dataset.Records_Get("GNSS_MEASUREMENT")),
+            ("baro", dataset.Records_Get("BARO_MEASUREMENT")),
         ):
             for record in records:
-                sequence = int(record.payload["sequence"])
-                application_timestamp = applications.get(sequence)
-                inferred = application_timestamp is None
-                if application_timestamp is None:
-                    sample_timestamp = int(record.payload["sample_timestamp_us"])
-                    index = bisect_left(increment_timestamps, sample_timestamp)
-                    if index >= len(increment_timestamps):
-                        continue
-                    application_timestamp = increment_timestamps[index]
-                    inferred_any = True
-                if not (
-                    first_increment_timestamp
-                    <= application_timestamp
-                    <= last_increment_timestamp
-                ):
+                # The adapters preserve device sample and host receive time. A sample
+                # cannot be used before receipt, nor before its sample time (the
+                # firmware rejects future samples). ESTIMATOR is a decimated snapshot,
+                # not evidence that a referenced sequence was first applied there.
+                available_timestamp = max(
+                    int(record.payload["sample_timestamp_us"]),
+                    int(record.payload["receive_timestamp_us"]),
+                )
+                index = bisect_left(increment_timestamps, available_timestamp)
+                if index >= len(increment_timestamps):
                     continue
                 scheduled.append(
                     _ScheduledMeasurement(
-                        application_timestamp_us=int(application_timestamp),
+                        application_timestamp_us=increment_timestamps[index],
                         source_order=record.record_sequence,
                         kind=kind,
                         record=record,
-                        inferred=inferred,
+                        inferred=True,
                     )
                 )
         scheduled.sort(
@@ -1022,7 +1005,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 item.source_order,
             )
         )
-        return tuple(scheduled), inferred_any
+        return tuple(scheduled), bool(scheduled)
 
     def _Replay_Run(
         self,

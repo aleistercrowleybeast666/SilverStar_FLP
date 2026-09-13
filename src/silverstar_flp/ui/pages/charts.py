@@ -330,7 +330,7 @@ class FlightPage(QWidget):
         self._trajectory_origin = np.zeros(3, dtype=np.float32)
         self._trajectory_camera_center = np.zeros(3, dtype=np.float32)
         self._trajectory_camera_distance = 40.0
-        self._trajectory_marker_sizes = (0.014, 0.010, 0.010)
+        self._trajectory_marker_sizes = TrajectoryMarkerWorldSizesFromExtent_Get(1.0)
         self._deploy_marker_vertices = np.empty((0, 3), dtype=np.float32)
         self._landing_marker_vertices = np.empty((0, 3), dtype=np.float32)
         self._trajectory_camera_fit_count = 0

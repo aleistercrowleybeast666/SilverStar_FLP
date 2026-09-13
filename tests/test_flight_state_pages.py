@@ -39,7 +39,8 @@ def test_trajectory_marker_sizes_are_world_scaled_and_phase_color_changes() -> N
     small_sizes = np.asarray(TrajectoryMarkerWorldSizes_Get(small))
     large_sizes = np.asarray(TrajectoryMarkerWorldSizes_Get(large))
     assert np.allclose(large_sizes, small_sizes * 500.0)
-    assert np.isclose(small_sizes[0], 0.014)
+    assert np.isclose(small_sizes[0], 0.035)
+    assert np.isclose(small_sizes[2], 0.030)
     assert np.isclose(small_sizes[1], 0.010)
     assert small_sizes[0] > small_sizes[1]
     vertices, faces = TrajectoryEventMesh_Get(np.asarray((4.0, 5.0, 6.0)), 0.14)

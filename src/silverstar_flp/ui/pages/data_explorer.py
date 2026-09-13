@@ -7,6 +7,7 @@ import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -297,7 +298,12 @@ class DataExplorerPage(QWidget):
             ]
             for column, value in enumerate(cells):
                 self.channel_table.setItem(row, column, QTableWidgetItem(value))
-        self.channel_table.resizeColumnsToContents()
+        header = self.channel_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(
+            self.channel_table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
+        )
 
     def _Records_Show(self) -> None:
         if self._dataset is None:
@@ -347,7 +353,12 @@ class DataExplorerPage(QWidget):
                 else:
                     text = str(value)
                 self.record_table.setItem(row, column, QTableWidgetItem(text))
-        self.record_table.resizeColumnsToContents()
+        header = self.record_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(
+            self.record_table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
+        )
 
     def _Diagnostics_Show(self) -> None:
         if self._dataset is None:

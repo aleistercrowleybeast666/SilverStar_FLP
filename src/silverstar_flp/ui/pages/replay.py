@@ -175,8 +175,13 @@ class ReplayPage(QWidget):
         self.comparison_group = QGroupBox()
         comparison_layout = QVBoxLayout(self.comparison_group)
         self.comparison_table = QTableWidget(0, 5)
+        self.comparison_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.comparison_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Stretch
+        )
         self.comparison_table.setMinimumHeight(280)
-        self.comparison_table.horizontalHeader().setStretchLastSection(True)
         self.comparison_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.comparison_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.comparison_table.verticalHeader().setVisible(False)
@@ -863,7 +868,12 @@ class ReplayPage(QWidget):
             )
             for column, value in enumerate(values):
                 self.comparison_table.setItem(row, column, QTableWidgetItem(value))
-        self.comparison_table.resizeColumnsToContents()
+        header = self.comparison_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(
+            self.comparison_table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
+        )
 
     def _ComboLabels_Refresh(self) -> None:
         mode = self.mode_combo.currentData() or ReplayMode.RECORDED_CONFIGURATION

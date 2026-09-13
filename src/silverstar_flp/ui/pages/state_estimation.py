@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QSplitter,
@@ -190,6 +191,12 @@ class StateEstimationPage(QWidget):
 
     def _UpdatesTab_Build(self) -> None:
         self.update_table = QTableWidget(0, 7)
+        self.update_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.update_table.horizontalHeader().setSectionResizeMode(
+            6, QHeaderView.ResizeMode.Stretch
+        )
         self.update_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.update_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.update_table.verticalHeader().setVisible(False)
@@ -751,7 +758,12 @@ class StateEstimationPage(QWidget):
         for row, (_, _, values) in enumerate(rows):
             for column, value in enumerate(values):
                 self.update_table.setItem(row, column, QTableWidgetItem(value))
-        self.update_table.resizeColumnsToContents()
+        header = self.update_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(
+            self.update_table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
+        )
 
     @staticmethod
     def _SeriesValue_Get(series: TimeSeries, row: int, column: int) -> float:
