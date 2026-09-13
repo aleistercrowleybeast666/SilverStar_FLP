@@ -24,6 +24,70 @@ class SeriesComparison:
     statistics: ComparisonStatistics
     unit: str
     quantity: str
+    comparison_mode: str = "exact"
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesSampling:
+    sample_count: int
+    measured_rate_hz: float | None
+    median_period_us: float | None
+
+
+def Series_SamplingGet(series: TimeSeries) -> SeriesSampling:
+    timestamps = series.timestamp_us[series.valid]
+    intervals = np.diff(timestamps)
+    intervals = intervals[intervals > 0]
+    period = float(np.median(intervals)) if intervals.size else None
+    return SeriesSampling(series.count, 1e6 / period if period else None, period)
+
+
+def Series_ExactTimestampMatch(
+    source_timestamps: np.ndarray,
+    target_timestamps: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return indices (-1 for missing/ambiguous) and an exact match mask; never interpolate."""
+    source = np.asarray(source_timestamps, dtype=np.uint64)
+    target = np.asarray(target_timestamps, dtype=np.uint64)
+    if source.ndim != 1 or target.ndim != 1:
+        raise ValueError("timestamp_arrays_must_be_one_dimensional")
+    if source.size > 1 and np.any(source[1:] < source[:-1]):
+        raise ValueError("source_timestamps_must_be_monotonic")
+    left = np.searchsorted(source, target, side="left")
+    right = np.searchsorted(source, target, side="right")
+    matched = (right - left) == 1
+    return np.where(matched, left, -1), matched
+
+
+def Series_ComparisonView(recorded: TimeSeries, recomputed: TimeSeries) -> TimeSeries:
+    indices, matched = Series_ExactTimestampMatch(recomputed.timestamp_us, recorded.timestamp_us)
+    values = np.full((recorded.count,) + recomputed.values.shape[1:], np.nan)
+    values[matched] = recomputed.values[indices[matched]]
+    valid = recorded.valid & matched
+    valid[matched] &= recomputed.valid[indices[matched]]
+    missing = recorded.valid & ~matched
+    source_rate = Series_SamplingGet(recomputed)
+    display_rate = Series_SamplingGet(recorded)
+    return TimeSeries(
+        timestamp_us=recorded.timestamp_us,
+        values=values,
+        unit=recomputed.unit,
+        quantity=recomputed.quantity,
+        source=recomputed.source,
+        valid=valid,
+        columns=recomputed.columns,
+        metadata={
+            **recomputed.metadata,
+            "display_only": True,
+            "comparison_sampling": "recorded_timestamps",
+            "recorded_count": int(np.count_nonzero(recorded.valid)),
+            "exact_match_count": int(np.count_nonzero(recorded.valid & matched)),
+            "missing_exact_match_count": int(np.count_nonzero(missing)),
+            "missing_timestamp_us": tuple(int(v) for v in recorded.timestamp_us[missing]),
+            "source_rate_hz": source_rate.measured_rate_hz,
+            "display_rate_hz": display_rate.measured_rate_hz,
+        },
+    )
 
 
 def _Values_Interpolate(
@@ -103,10 +167,20 @@ def Series_Compare(
     mask = recorded.valid & (recorded.timestamp_us >= start) & (recorded.timestamp_us <= end)
     timestamps = recorded.timestamp_us[mask]
     recorded_values = np.asarray(recorded.values[mask], dtype=np.float64)
-    if quaternion:
+    indices, matched = Series_ExactTimestampMatch(recomputed.timestamp_us, timestamps)
+    mode = "exact" if np.all(matched) else "interpolated"
+    if mode == "exact":
+        recomputed_values = np.asarray(recomputed.values[indices], dtype=np.float64).copy()
+        recomputed_values[~recomputed.valid[indices]] = np.nan
+    elif quaternion:
         recomputed_values = _Quaternion_Interpolate(
             recomputed.timestamp_us, recomputed.values, timestamps
         )
+    else:
+        recomputed_values = _Values_Interpolate(
+            recomputed.timestamp_us, recomputed.values, timestamps
+        )
+    if quaternion:
         error = np.asarray(
             [
                 Quaternion_GeodesicErrorDeg(recorded_values[index], recomputed_values[index])
@@ -117,9 +191,6 @@ def Series_Compare(
         unit = "deg"
         quantity = "attitude_geodesic_error"
     else:
-        recomputed_values = _Values_Interpolate(
-            recomputed.timestamp_us, recomputed.values, timestamps
-        )
         error = recorded_values - recomputed_values
         unit = recorded.unit
         quantity = f"{recorded.quantity}_error"
@@ -139,4 +210,4 @@ def Series_Compare(
         )
     else:
         statistics = ComparisonStatistics(0, float("nan"), float("nan"), float("nan"), float("nan"))
-    return SeriesComparison(timestamps, error, statistics, unit, quantity)
+    return SeriesComparison(timestamps, error, statistics, unit, quantity, mode)

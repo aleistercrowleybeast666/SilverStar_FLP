@@ -589,5 +589,8 @@
   "dialog.new.name_hint": "e.g. SilverStar_Flight",
   "dialog.new.directory": "Output directory",
   "dialog.new.create": "Create and import",
-  "dialog.new.cancel": "Cancel"
+  "dialog.new.cancel": "Cancel",
+  "explorer.sampling": "Samples: {count}; Measured rate: {rate}; Median period: {period}",
+  "explorer.sampling_unavailable": "N/A",
+  "flight.comparison_sampling": "Recorded / comparison: {recorded_rate:.2f} Hz (recorded timestamps); full replay: {full_rate:.2f} Hz; missing exact matches: {missing}"
 }

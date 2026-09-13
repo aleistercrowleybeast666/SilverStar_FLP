@@ -24,6 +24,7 @@ from silverstar_flp.core.analysis_source import (
     ChannelResolver,
     ReplayResultStore,
 )
+from silverstar_flp.core.comparison import Series_ComparisonView
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector, Quaternion_ToEulerEnuDeg
@@ -637,6 +638,7 @@ class FlightPage(QWidget):
             self.source_detail_label.setText(
                 self._translator.Text_Get("flight.start_crop", timestamp=start)
             )
+        self.source_detail_label.setToolTip("")
         self._start_timestamp_us = start
         _Plot_Reset(
             (
@@ -681,37 +683,42 @@ class FlightPage(QWidget):
                     )
         else:
             active_prefix = f"{_Source_Label(self._translator, self._resolver, source_id)} · "
-            _Series_Plot(
-                self.velocity_plot,
-                velocity,
-                start,
-                end_timestamp_us=end,
-                colors=color_allocators[self.velocity_plot],
-                prefix=active_prefix,
-                width=1.9,
-            )
-            _Series_Plot(
-                self.position_plot,
-                position,
-                start,
-                end_timestamp_us=end,
-                colors=color_allocators[self.position_plot],
-                prefix=active_prefix,
-                width=1.9,
-            )
-            for channel_id, plot in (
-                ("navigation.velocity_enu", self.velocity_plot),
-                ("navigation.position_enu", self.position_plot),
+            kf_comparison = source.algorithm_id == "silverstar.algorithm.kf6"
+            for channel_id, plot, full_series in (
+                ("navigation.velocity_enu", self.velocity_plot, velocity),
+                ("navigation.position_enu", self.position_plot, position),
             ):
-                for layer in self._resolver.RecordedSolutionLayers_Get(channel_id):
+                layers = self._resolver.RecordedSolutionLayers_Get(channel_id)
+                recorded_kf = next(
+                    (layer.series for layer in layers if layer.solution_id == "kf6"), None
+                )
+                display_series = full_series
+                if kf_comparison and recorded_kf is not None and full_series is not None:
+                    display_series = Series_ComparisonView(recorded_kf, full_series)
+                    if channel_id == "navigation.position_enu":
+                        detail = self._translator.Text_Get(
+                            "flight.comparison_sampling",
+                            recorded_rate=display_series.metadata["display_rate_hz"] or 0.0,
+                            full_rate=display_series.metadata["source_rate_hz"] or 0.0,
+                            missing=display_series.metadata["missing_exact_match_count"],
+                        )
+                        self.source_detail_label.setText(
+                            self.source_detail_label.text() + "\n" + detail
+                        )
+                        self.source_detail_label.setToolTip(
+                            str(display_series.metadata["missing_timestamp_us"])
+                        )
+                _Series_Plot(
+                    plot, display_series, start, end_timestamp_us=end,
+                    colors=color_allocators[plot], prefix=active_prefix, width=1.9,
+                )
+                for layer in layers:
+                    matched_kf = kf_comparison and layer.solution_id == "kf6"
                     _Series_Plot(
-                        plot,
-                        layer.series,
-                        start,
-                        end_timestamp_us=end,
+                        plot, layer.series, start, end_timestamp_us=end,
                         colors=color_allocators[plot],
                         prefix=f"{_RecordedSolution_Label(self._translator, layer.solution_id)} · ",
-                        reference=True,
+                        reference=not matched_kf, width=1.9 if matched_kf else 1.4,
                     )
         attitude_prefix = (
             f"{self._translator.Text_Get('status.recorded')} · "

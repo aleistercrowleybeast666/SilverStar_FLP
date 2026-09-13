@@ -76,3 +76,15 @@ Plugin Manager uses a heading, descriptive notice, install/refresh action row an
 The Install menu opens this manager. FLP retains its trusted-container installation rules;
 FCCG declarative firmware component installation/removal is not an FLP runtime capability.
 All three dialogs follow the active Light/Dark theme and interface language.
+
+
+## KF6 comparison sampling
+
+Flight position/velocity overlays sample the active KF6 replay exactly at Recorded KF6 timestamps.
+Both KF6 layers use distinct colors, normal-width solid lines and no markers. Unmatched samples
+are invalid display gaps; the detail label reports missing matches and its tooltip lists timestamps.
+Pure INS/reference styling elsewhere is unchanged. Full replay arrays, Data Explorer, CSV exports
+and 3D trajectories retain full resolution. Data Explorer reports sample count and measured rate
+from the median positive interval between valid timestamps; insufficient intervals display N/A.
+Series_Compare reports exact versus interpolated mode so interpolation is never presented as exact
+reproduction. Display comparison sampling itself never interpolates.

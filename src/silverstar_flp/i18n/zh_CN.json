@@ -589,5 +589,8 @@
   "dialog.new.name_hint": "例如 SilverStar_Flight",
   "dialog.new.directory": "输出目录",
   "dialog.new.create": "创建工程并导入",
-  "dialog.new.cancel": "取消"
+  "dialog.new.cancel": "取消",
+  "explorer.sampling": "样本数：{count}；实测频率：{rate}；中位采样周期：{period}",
+  "explorer.sampling_unavailable": "不适用",
+  "flight.comparison_sampling": "飞控记录 / 对比显示：{recorded_rate:.2f} Hz（按记录时刻）；完整复算：{full_rate:.2f} Hz；缺失精确匹配：{missing}"
 }

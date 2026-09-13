@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
+from silverstar_flp.core.comparison import Series_SamplingGet
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult
@@ -251,6 +252,15 @@ class DataExplorerPage(QWidget):
             unit=series.unit,
             source=series.source,
             count=series.count,
+        )
+        sampling = Series_SamplingGet(series)
+        unavailable = self._translator.Text_Get("explorer.sampling_unavailable")
+        metadata_text += "\n" + self._translator.Text_Get(
+            "explorer.sampling", count=sampling.sample_count,
+            rate=(f"{sampling.measured_rate_hz:.2f} Hz"
+                  if sampling.measured_rate_hz is not None else unavailable),
+            period=(f"{sampling.median_period_us / 1000:.2f} ms"
+                    if sampling.median_period_us is not None else unavailable),
         )
         if self._dataset is not None and self._dataset.semantic_context is not None:
             context = self._dataset.semantic_context
