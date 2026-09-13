@@ -8,7 +8,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -405,7 +405,11 @@ def _Filename_Sanitize(value: str) -> str:
 
 def _Json_Default(value: Any) -> Any:
     if is_dataclass(value):
-        return asdict(value)
+        # Leave nested immutable values to JSON's default callback; asdict deep-copies
+        # mappingproxy fields and fails before Mapping can be serialized.
+        return {item.name: getattr(value, item.name) for item in fields(value)}
+    if isinstance(value, Mapping):
+        return dict(value)
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, np.generic):
@@ -1125,7 +1129,7 @@ class FlightExporter:
             "failures": failure_payload,
         }
         path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
+            json.dumps(payload, default=_Json_Default, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
