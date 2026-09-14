@@ -36,6 +36,7 @@ from silverstar_flp.plugins.api.algorithm import (
     ReplayRequest,
 )
 from silverstar_flp.plugins.registry import PluginRegistry
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
 
@@ -63,6 +64,7 @@ class ReplayPage(QWidget):
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
         self.scroll_area = QScrollArea()
+        TouchScroll_Enable(self.scroll_area)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -151,6 +153,7 @@ class ReplayPage(QWidget):
         self.stored_results_group = QGroupBox()
         stored_results_layout = QVBoxLayout(self.stored_results_group)
         self.stored_results_table = QTableWidget(0, 8)
+        TouchScroll_Enable(self.stored_results_table)
         self.stored_results_table.setMinimumHeight(220)
         self.stored_results_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers
@@ -175,6 +178,7 @@ class ReplayPage(QWidget):
         self.comparison_group = QGroupBox()
         comparison_layout = QVBoxLayout(self.comparison_group)
         self.comparison_table = QTableWidget(0, 5)
+        TouchScroll_Enable(self.comparison_table)
         self.comparison_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )

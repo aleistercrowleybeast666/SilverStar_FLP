@@ -24,6 +24,7 @@ from silverstar_flp.analysis.overview import (
 )
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 
 
 class _MetricCard(QGroupBox):
@@ -54,6 +55,7 @@ class OverviewPage(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self.scroll_area = QScrollArea()
+        TouchScroll_Enable(self.scroll_area)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -110,6 +112,7 @@ class OverviewPage(QWidget):
             setattr(self, f"calibration_{field}_title", title)
         calibration_layout.addLayout(self.calibration_summary)
         self.calibration_model_table = QTableWidget(4, 5)
+        TouchScroll_Enable(self.calibration_model_table)
         self.calibration_model_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.calibration_model_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.calibration_model_table.verticalHeader().setVisible(False)
@@ -149,6 +152,7 @@ class OverviewPage(QWidget):
         self.alignment_q_title.setObjectName("muted")
         alignment_layout.addWidget(self.alignment_q_title)
         self.alignment_q_table = QTableWidget(1, 4)
+        TouchScroll_Enable(self.alignment_q_table)
         self.alignment_q_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.alignment_q_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.alignment_q_table.verticalHeader().setVisible(False)
@@ -167,6 +171,7 @@ class OverviewPage(QWidget):
         self.timeline_group = QGroupBox(translator.Text_Get("label.timeline"))
         timeline_layout = QVBoxLayout(self.timeline_group)
         self.timeline_table = QTableWidget(0, 4)
+        TouchScroll_Enable(self.timeline_table)
         self.timeline_table.setMinimumHeight(260)
         self.timeline_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.timeline_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)

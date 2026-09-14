@@ -88,3 +88,19 @@ and 3D trajectories retain full resolution. Data Explorer reports sample count a
 from the median positive interval between valid timestamps; insufficient intervals display N/A.
 Series_Compare reports exact versus interpolated mode so interpolation is never presented as exact
 reproduction. Display comparison sampling itself never interpolates.
+
+
+## Touch scrolling
+
+Ordinary scrolling content opts into the repository-local `TouchScroll_Enable` helper.
+It registers Qt `QScroller.TouchGesture` on the viewport of a page, item view, or text
+view. It does not convert touch into mouse drags, change wheel handlers, or change existing
+ScrollPerPixel settings. Table headers are excluded; combo popups opt in separately.
+Buttons, spinboxes, sliders, 2D plots and OpenGL views are not scrolling targets. Keep
+plots, 3D views and time sliders outside page-scroll ancestors so their own drag semantics
+remain authoritative. New ordinary scroll areas should opt in at construction.
+
+Before field use, check finger swipes and taps on a CF-33: page scroll, nested table/list
+scroll and selection, popup selection, button taps, spinboxes, mouse wheel/scrollbars,
+stylus, plot pan/zoom, camera lock/rotation and replay time slider. Automated synthetic
+Qt touch tests do not certify the physical Windows touch driver.

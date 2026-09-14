@@ -5,6 +5,8 @@ from typing import Any
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QAbstractItemView, QComboBox, QStyle
 
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
+
 
 class StandardComboBox(QComboBox):
     """Conventional drop-down: open below and scroll only for long lists."""
@@ -13,6 +15,7 @@ class StandardComboBox(QComboBox):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        TouchScroll_Enable(self.view())
         self.setMaxVisibleItems(self.MAX_VISIBLE_ITEMS)
         self.setMinimumContentsLength(12)
         self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)

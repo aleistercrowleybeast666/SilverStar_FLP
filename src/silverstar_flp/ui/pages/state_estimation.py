@@ -41,6 +41,7 @@ from silverstar_flp.ui.pages.charts import (
     _Series_Plot,
     _Source_Label,
 )
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
 
@@ -191,6 +192,7 @@ class StateEstimationPage(QWidget):
 
     def _UpdatesTab_Build(self) -> None:
         self.update_table = QTableWidget(0, 7)
+        TouchScroll_Enable(self.update_table)
         self.update_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )

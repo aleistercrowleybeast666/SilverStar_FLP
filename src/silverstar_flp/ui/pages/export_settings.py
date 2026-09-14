@@ -26,6 +26,7 @@ from silverstar_flp.export.service import (
     ExportOptions,
     ExportTheme,
 )
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
 
@@ -298,6 +299,7 @@ class ExportDialog(QDialog):
         self.items_group = QGroupBox()
         items_group_layout = QVBoxLayout(self.items_group)
         self.items_scroll = QScrollArea()
+        TouchScroll_Enable(self.items_scroll)
         self.items_scroll.setWidgetResizable(True)
         self.items_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.items_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -337,6 +339,7 @@ class ExportDialog(QDialog):
         self.result_label.setWordWrap(True)
         layout.addWidget(self.result_label)
         self.failure_details_edit = QPlainTextEdit()
+        TouchScroll_Enable(self.failure_details_edit)
         self.failure_details_edit.setReadOnly(True)
         self.failure_details_edit.setMaximumHeight(170)
         self.failure_details_edit.setVisible(False)

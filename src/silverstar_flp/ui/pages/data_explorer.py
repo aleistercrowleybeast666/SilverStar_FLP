@@ -25,6 +25,7 @@ from silverstar_flp.core.comparison import Series_SamplingGet
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
 
@@ -49,6 +50,7 @@ class DataExplorerPage(QWidget):
         channel_layout.addLayout(channel_filter_layout)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.channel_list = QListWidget()
+        TouchScroll_Enable(self.channel_list)
         self.channel_list.currentItemChanged.connect(self._Channel_Show)
         splitter.addWidget(self.channel_list)
         detail_widget = QWidget()
@@ -58,6 +60,7 @@ class DataExplorerPage(QWidget):
         self.channel_metadata.setObjectName("muted")
         detail_layout.addWidget(self.channel_metadata)
         self.channel_table = QTableWidget()
+        TouchScroll_Enable(self.channel_table)
         self.channel_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.channel_table.verticalHeader().setVisible(False)
         detail_layout.addWidget(self.channel_table, 1)
@@ -89,6 +92,7 @@ class DataExplorerPage(QWidget):
         )
         record_layout.addWidget(self.record_metadata)
         self.record_table = QTableWidget()
+        TouchScroll_Enable(self.record_table)
         self.record_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.record_table.verticalHeader().setVisible(False)
         record_layout.addWidget(self.record_table)
@@ -104,6 +108,7 @@ class DataExplorerPage(QWidget):
         )
         diagnostics_layout.addWidget(self.diagnostics_summary)
         self.diagnostics_table = QTableWidget()
+        TouchScroll_Enable(self.diagnostics_table)
         self.diagnostics_table.setEditTriggers(
             QTableWidget.EditTrigger.NoEditTriggers
         )
@@ -113,6 +118,7 @@ class DataExplorerPage(QWidget):
         self.diagnostics_table.verticalHeader().setVisible(False)
         diagnostics_layout.addWidget(self.diagnostics_table)
         self.sequence_gap_table = QTableWidget()
+        TouchScroll_Enable(self.sequence_gap_table)
         self.sequence_gap_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.sequence_gap_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.sequence_gap_table.verticalHeader().setVisible(False)

@@ -66,6 +66,7 @@ from silverstar_flp.ui.pages import (
 )
 from silverstar_flp.ui.plugin_manager import AboutDialog, PluginManagerDialog
 from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
+from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
 
@@ -195,6 +196,7 @@ class MainWindow(QMainWindow):
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 8, 0, 8)
         self.navigation_list = QListWidget()
+        TouchScroll_Enable(self.navigation_list)
         self.navigation_list.setObjectName("navigation")
         for page_code in self.PAGE_CODES:
             item = QListWidgetItem(page_code)
