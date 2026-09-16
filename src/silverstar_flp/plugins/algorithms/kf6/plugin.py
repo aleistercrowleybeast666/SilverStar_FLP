@@ -329,6 +329,38 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 tooltip_key="parameter.tooltip.gnss_velocity_std",
             ),
             ParameterSpec(
+                "gnss_velocity_vertical_scale",
+                "float",
+                1.0,
+                1.0,
+                10.0,
+                "1",
+                representation="value",
+                precision=3,
+                order=22,
+                step=0.05,
+                label_key="parameter.gnss_velocity_vertical_scale",
+                group_key="parameter_group.measurement_noise",
+                tooltip_key="parameter.tooltip.gnss_velocity_vertical_scale",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_reacquire_outage_ms",
+                "int",
+                300,
+                100,
+                10000,
+                "ms",
+                representation="value",
+                precision=0,
+                order=23,
+                step=10,
+                label_key="parameter.gnss_reacquire_outage_ms",
+                group_key="parameter_group.consistency_gating",
+                tooltip_key="parameter.tooltip.gnss_reacquire_outage_ms",
+                required=False,
+            ),
+            ParameterSpec(
                 "baro_std_m",
                 "float",
                 5.0,
@@ -625,6 +657,20 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         ),
     )
 
+    def ParameterSchemaCompatible_Is(self, identity: str) -> bool:
+        if super().ParameterSchemaCompatible_Is(identity):
+            return True
+        legacy = replace(
+            self.metadata,
+            parameter_schema=tuple(
+                spec
+                for spec in self.metadata.parameter_schema
+                if spec.parameter_id
+                not in {"gnss_reacquire_outage_ms", "gnss_velocity_vertical_scale"}
+            ),
+        )
+        return identity == legacy.ParameterSchemaIdentity_Get()
+
     def availability(
         self, dataset: FlightDataset, input_source: str | None = None
     ) -> AlgorithmAvailability:
@@ -678,9 +724,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         elif not self.metadata.exact_validation_reference:
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("host_golden_not_verified")
-        if dataset.data_quality is not None and (
-            dataset.data_quality.status.value == "warnings"
-        ):
+        if dataset.data_quality is not None and (dataset.data_quality.status.value == "warnings"):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("source_log_has_integrity_or_sequence_gaps")
         return AlgorithmAvailability(True, fidelity, (), tuple(warnings), tuple(supported))
@@ -690,6 +734,10 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         dataset: FlightDataset,
         request: ReplayRequest,
         context: TaskContext | None = None,
+        *,
+        velocity_shift_ms: int | None = None,
+        analysis_legacy_reacquisition: bool = False,
+        analysis_frozen_initial: bool = False,
     ) -> AlgorithmResult:
         task_context = context or TaskContext()
         availability = self.availability(dataset, request.input_source)
@@ -740,6 +788,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             )
         parameters = self._Parameters_Resolve(dataset, request)
         filter_instance = Kf6Filter.Kf6_Create(
+            gnss_reacquire_outage_ms=parameters.get("gnss_reacquire_outage_ms", 300),
             process_accel_std_mps2=np.asarray(
                 (
                     parameters["process_accel_std_e"],
@@ -772,7 +821,14 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         )
         q_nb = Quaternion_Normalize(np.asarray(initial.payload["q_nb"], dtype=np.float32))
         schedule, schedule_inferred = self._MeasurementSchedule_Build(dataset, increments)
-        schedule = self._MeasurementParameters_Apply(dataset, schedule, parameters)
+        filter_instance.outage_required = not analysis_legacy_reacquisition
+        schedule = self._MeasurementParameters_Apply(
+            dataset, schedule, parameters, frozen_initial=analysis_frozen_initial
+        )
+        if velocity_shift_ms is not None:
+            from silverstar_flp.plugins.algorithms.kf6.field_analysis import VelocitySchedule_Shift
+
+            schedule = VelocitySchedule_Shift(schedule, velocity_shift_ms)
         task_context.Progress_Report(0.08, "replay.inputs")
         snapshots = self._Replay_Run(
             filter_instance,
@@ -796,6 +852,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         if source_diagnostics.get("sample_gap_count", 0):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("input_sample_gaps_detected")
+        if (
+            velocity_shift_ms is not None
+            or analysis_legacy_reacquisition
+            or analysis_frozen_initial
+        ):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("kf6_offline_field_analysis")
+        if "gnss_reacquire_outage_ms" not in parameters and dataset.Records_Get("GNSS_MEASUREMENT"):
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("kf6_reacquisition_policy_changed")
         channels = self._Channels_Build(snapshots)
         task_context.Progress_Report(1.0, "replay.complete")
         return AlgorithmResult(
@@ -817,6 +883,29 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "mission_end_reason": mission_bounds.end_reason.value,
                 "predict_count": filter_instance.predict_count,
                 "health_flags": filter_instance.health_flags,
+                "gnss_group_results": filter_instance.gnss_result_counts,
+                "gnss_group_nis": [
+                    {
+                        "count": len(values),
+                        "max": max(values) if values else None,
+                        "p50_p90_p95_p99": np.percentile(values, [50, 90, 95, 99]).tolist()
+                        if values
+                        else None,
+                    }
+                    for values in filter_instance.gnss_nis_samples
+                ],
+                "inflation_counts": filter_instance.inflation_counts,
+                "velocity_shift_ms": velocity_shift_ms,
+                "analysis_legacy_reacquisition": analysis_legacy_reacquisition,
+                "analysis_frozen_initial": analysis_frozen_initial,
+                "compatibility_defaults": {
+                    name: value
+                    for name, value in (
+                        ("gnss_reacquire_outage_ms", 300),
+                        ("gnss_velocity_vertical_scale", 1.0),
+                    )
+                    if name not in parameters
+                },
                 "reacquire_count": filter_instance.reacquire_count,
                 "reacquire_active_mask": filter_instance.reacquire_active_mask,
                 "last_inflation_group": filter_instance.last_inflation_group,
@@ -851,7 +940,10 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         names = tuple(f"p0_{group}_{axis}" for group in ("position", "velocity") for axis in "enu")
         result = initial.copy()
         for index, name in enumerate(names):
-            before, after = np.float32(baseline[name]), np.float32(parameters[name])
+            before, after = (
+                np.float32(baseline.get(name, self.OfflineParameters_Get()[name])),
+                np.float32(parameters[name]),
+            )
             if before == after:
                 continue
             if not int(dataset.initial_state.payload.get("origin_valid_flags", 0)) & 1:
@@ -867,19 +959,26 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         dataset: FlightDataset,
         schedule: tuple[_ScheduledMeasurement, ...],
         parameters: Mapping[str, float],
+        *,
+        frozen_initial: bool = False,
     ) -> tuple[_ScheduledMeasurement, ...]:
         baseline = self.recorded_parameters(dataset) or self.OfflineParameters_Get()
         changed = {
             name
             for name in parameters
-            if np.float32(parameters[name]) != np.float32(baseline[name])
+            if np.float32(parameters[name])
+            != np.float32(baseline.get(name, self.OfflineParameters_Get()[name]))
         }
         position_names = {"gnss_position_std_horizontal", "gnss_position_std_vertical"}
-        gnss_names = position_names | {"gnss_velocity_std"}
+        gnss_names = position_names | {"gnss_velocity_std", "gnss_velocity_vertical_scale"}
         if not changed & (gnss_names | {"baro_std_m"}):
             return schedule
         initial = dataset.initial_state.payload
-        if changed & gnss_names and int(initial.get("origin_valid_flags", 0)) & 1:
+        if (
+            not frozen_initial
+            and changed & gnss_names
+            and int(initial.get("origin_valid_flags", 0)) & 1
+        ):
             # Frozen GNSS initialization has already used the selected floors. The
             # logged aggregate is insufficient to repeat its pre-START averaging.
             raise ValueError("parameter_dynamic_uncertainty_missing:GNSS_initialization")
@@ -942,7 +1041,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                         )
                         sigma = np.maximum(sigma * np.float32(1.25), floors)
                         payload["position_variance_m2"] = tuple(sigma * sigma + origin * origin)
-                    if "gnss_velocity_std" in changed:
+                    if changed & {"gnss_velocity_std", "gnss_velocity_vertical_scale"}:
                         sigma = np.sqrt(
                             np.maximum(
                                 np.asarray(native["velocity_variance_m2ps2"], dtype=np.float32), 0
@@ -951,6 +1050,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                         sigma = np.maximum(
                             sigma * np.float32(1.25), np.float32(parameters["gnss_velocity_std"])
                         )
+                        sigma[2] *= np.float32(parameters.get("gnss_velocity_vertical_scale", 1.0))
                         payload["velocity_variance_m2ps2"] = tuple(sigma * sigma)
                 else:
                     sigma = np.float32(parameters["baro_std_m"])
@@ -1123,17 +1223,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             epoch_mask |= 1 << int(Kf6GnssGroup.VELOCITY_HORIZONTAL)
             if velocity_mask & 0x04:
                 epoch_mask |= 1 << int(Kf6GnssGroup.VELOCITY_VERTICAL)
-        if epoch_mask:
-            filter_instance.Kf6_GnssEpochTrack(
-                Kf6GnssEpoch(
-                    timestamp_us=int(payload["sample_timestamp_us"]),
-                    position_enu_m=position,
-                    velocity_enu_mps=velocity,
-                    position_std_m=np.sqrt(np.maximum(position_variance, 0.0)).astype(np.float32),
-                    velocity_std_mps=np.sqrt(np.maximum(velocity_variance, 0.0)).astype(np.float32),
-                    valid_group_mask=epoch_mask,
-                )
+        filter_instance.Kf6_GnssEpochTrack(
+            Kf6GnssEpoch(
+                timestamp_us=int(payload["sample_timestamp_us"]),
+                position_enu_m=position,
+                velocity_enu_mps=velocity,
+                position_std_m=np.sqrt(np.maximum(position_variance, 0.0)).astype(np.float32),
+                velocity_std_mps=np.sqrt(np.maximum(velocity_variance, 0.0)).astype(np.float32),
+                valid_group_mask=epoch_mask,
             )
+        )
         position_result = int(Kf6UpdateResult.REJECTED_INVALID)
         velocity_result = int(Kf6UpdateResult.REJECTED_INVALID)
         position_scale_applied = np.float32(1.0)
@@ -1315,27 +1414,21 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             ),
             "kf6.measurement_r.position": _Series_Create(
                 timestamps,
-                np.asarray(
-                    [item.position_measurement_variance for item in snapshots]
-                ),
+                np.asarray([item.position_measurement_variance for item in snapshots]),
                 unit="m^2",
                 quantity="variance",
                 columns=("E", "N", "U"),
             ),
             "kf6.measurement_r.velocity": _Series_Create(
                 timestamps,
-                np.asarray(
-                    [item.velocity_measurement_variance for item in snapshots]
-                ),
+                np.asarray([item.velocity_measurement_variance for item in snapshots]),
                 unit="m^2/s^2",
                 quantity="variance",
                 columns=("E", "N", "U"),
             ),
             "kf6.measurement_r.baro": _Series_Create(
                 timestamps,
-                np.asarray(
-                    [item.baro_measurement_variance for item in snapshots]
-                ),
+                np.asarray([item.baro_measurement_variance for item in snapshots]),
                 unit="m^2",
                 quantity="variance",
             ),

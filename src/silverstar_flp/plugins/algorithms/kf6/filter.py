@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
 import numpy as np
@@ -46,6 +46,9 @@ class Kf6GnssEpoch:
 
 @dataclass(slots=True)
 class _ReacquireGroupState:
+    availability_timestamp_us: int = 0
+    outage: bool = False
+    loss_latched: bool = False
     reject_streak: int = 0
     consistent_count: int = 0
     accepted_streak: int = 0
@@ -94,6 +97,11 @@ class Kf6Filter:
     _reacquire_groups: list[_ReacquireGroupState] = field(
         default_factory=lambda: [_ReacquireGroupState() for _ in range(4)]
     )
+    outage_required: bool = True
+    inflation_counts: list[int] = field(default_factory=lambda: [0] * 4)
+    gnss_nis_samples: list[list[float]] = field(default_factory=lambda: [[] for _ in range(4)])
+    gnss_result_counts: list[list[int]] = field(default_factory=lambda: [[0] * 5 for _ in range(4)])
+    gnss_reacquire_outage_ms: int = 300
     reacquire_count: int = 0
     reacquire_active_mask: int = 0
     last_inflation_group: int = -1
@@ -109,6 +117,7 @@ class Kf6Filter:
         nis_soft_threshold: NDArray[np.floating],
         nis_hard_threshold: NDArray[np.floating],
         nis_max_r_scale: float,
+        gnss_reacquire_outage_ms: int = 300,
     ) -> Kf6Filter:
         process = np.asarray(process_accel_std_mps2, dtype=np.float32)
         p0 = np.asarray(p0_diagonal, dtype=np.float32)
@@ -125,6 +134,7 @@ class Kf6Filter:
             or np.any(p0 < 0.0)
             or np.any(soft <= 0.0)
             or np.any(hard <= soft)
+            or not 100 <= gnss_reacquire_outage_ms <= 10000
             or nis_max_r_scale < 1.0
         ):
             raise ValueError("kf6_configuration_invalid")
@@ -133,6 +143,7 @@ class Kf6Filter:
             nis_soft_threshold=soft.copy(),
             nis_hard_threshold=hard.copy(),
             nis_max_r_scale=np.float32(nis_max_r_scale),
+            gnss_reacquire_outage_ms=gnss_reacquire_outage_ms,
         )
         instance.covariance = np.diag(np.maximum(p0, P_DIAGONAL_MIN)).astype(np.float32)
         instance.state[3:6] = velocity
@@ -297,9 +308,51 @@ class Kf6Filter:
         return result
 
     def Kf6_GnssEpochTrack(self, epoch: Kf6GnssEpoch) -> None:
+        if epoch.timestamp_us <= 0:
+            self.health_flags |= 1
+            if self._previous_epoch is not None:
+                self._previous_epoch = replace(self._previous_epoch, valid_group_mask=0)
+            return
         current_mask = int(epoch.valid_group_mask) & 0x0F
+        for group in Kf6GnssGroup:
+            indices = (0, 1) if int(group) % 2 == 0 else (2,)
+            values, std = (
+                (epoch.position_enu_m, epoch.position_std_m)
+                if int(group) < 2
+                else (epoch.velocity_enu_mps, epoch.velocity_std_mps)
+            )
+            if not all(
+                np.isfinite(values[i]) and np.isfinite(std[i]) and std[i] > 0 for i in indices
+            ):
+                current_mask &= ~(1 << int(group))
+        epoch = replace(epoch, valid_group_mask=current_mask)
         previous = self._previous_epoch
-        if previous is None or epoch.timestamp_us <= previous.timestamp_us:
+        if previous is not None and epoch.timestamp_us <= previous.timestamp_us:
+            self._reacquire_groups = [_ReacquireGroupState() for _ in range(4)]
+            self.reacquire_active_mask = 0
+            self._previous_epoch = replace(epoch, valid_group_mask=0)
+            return
+        for group in Kf6GnssGroup:
+            bit = 1 << int(group)
+            state = self._reacquire_groups[int(group)]
+            anchor = state.availability_timestamp_us
+            if anchor == 0:
+                state.availability_timestamp_us = epoch.timestamp_us
+            elif (
+                epoch.timestamp_us - anchor > self.gnss_reacquire_outage_ms * 1000
+                and not state.loss_latched
+            ):
+                state = _ReacquireGroupState(
+                    availability_timestamp_us=anchor, outage=True, loss_latched=True
+                )
+                self._reacquire_groups[int(group)] = state
+                self.reacquire_active_mask &= ~bit
+            if current_mask & bit:
+                state.loss_latched = False
+                state.availability_timestamp_us = epoch.timestamp_us
+            else:
+                state.reject_streak = state.accepted_streak = state.consistent_count = 0
+        if previous is None:
             for state in self._reacquire_groups:
                 state.consistent_count = 0
             self._previous_epoch = epoch
@@ -329,12 +382,26 @@ class Kf6Filter:
     def Kf6_GnssGroupResultProcess(self, group: Kf6GnssGroup, result: Kf6UpdateResult) -> None:
         state = self._reacquire_groups[int(group)]
         bit = 1 << int(group)
+        if self._previous_epoch is None or not self._previous_epoch.valid_group_mask & bit:
+            state.reject_streak = state.accepted_streak = 0
+            return
+        self.gnss_result_counts[int(group)][int(result)] += 1
+        if result in (
+            Kf6UpdateResult.ACCEPTED,
+            Kf6UpdateResult.SOFT_WEIGHTED,
+            Kf6UpdateResult.REJECTED_NIS,
+        ):
+            self.gnss_nis_samples[int(group)].append(float(self.last_group_nis[int(group)]))
         if result == Kf6UpdateResult.REJECTED_NIS:
             state.reject_streak += 1
             state.accepted_streak = 0
             if state.active:
                 state.epochs_since_inflation += 1
-            if state.reject_streak >= 5 and state.consistent_count >= 3:
+            if (
+                (state.outage or not self.outage_required)
+                and state.reject_streak >= 5
+                and state.consistent_count >= 3
+            ):
                 if not state.active:
                     state.active = True
                     state.inflation_attempt_count = 0
@@ -344,6 +411,7 @@ class Kf6Filter:
                 if state.inflation_attempt_count < 8 and state.epochs_since_inflation >= 5:
                     factor = self._Covariance_Inflate(group)
                     if factor is not None:
+                        self.inflation_counts[int(group)] += 1
                         state.inflation_attempt_count += 1
                         state.epochs_since_inflation = 0
                         state.last_inflation_factor = factor
@@ -352,10 +420,13 @@ class Kf6Filter:
             return
         if result in (Kf6UpdateResult.ACCEPTED, Kf6UpdateResult.SOFT_WEIGHTED):
             state.reject_streak = 0
+            if not state.active:
+                state.outage = False
             if state.active:
                 state.accepted_streak += 1
                 if state.accepted_streak >= 3:
                     state.active = False
+                    state.outage = False
                     state.accepted_streak = 0
                     self.reacquire_active_mask &= ~bit
             return

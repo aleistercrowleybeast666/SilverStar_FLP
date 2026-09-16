@@ -597,5 +597,12 @@
   "state.nis_u_soft_reference": "U 1D soft reference",
   "state.nis_u_hard_reference": "U 1D hard reference",
   "state.nis_en_soft_reference": "EN 2D soft reference",
-  "state.nis_en_hard_reference": "EN 2D hard reference"
+  "state.nis_en_hard_reference": "EN 2D hard reference",
+  "parameter.gnss_velocity_vertical_scale": "GNSS vertical velocity standard deviation scale",
+  "parameter.tooltip.gnss_velocity_vertical_scale": "GNSS vertical velocity standard deviation scale",
+  "parameter.gnss_reacquire_outage_ms": "GNSS reacquisition outage threshold",
+  "parameter.tooltip.gnss_reacquire_outage_ms": "GNSS reacquisition outage threshold",
+  "action.default_project_root": "Default Project Root...",
+  "replay.warning.kf6_offline_field_analysis": "Offline sweep: measurement resampling or frozen initialization analysis",
+  "replay.warning.kf6_reacquisition_policy_changed": "Legacy log uses the new outage recovery policy; this is not exact legacy firmware reproduction"
 }

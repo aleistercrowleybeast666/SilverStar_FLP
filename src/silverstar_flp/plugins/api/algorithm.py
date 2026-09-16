@@ -93,12 +93,14 @@ class MeasurementGroupSpec:
         if self.nis_reference_thresholds:
             return self.nis_reference_thresholds
         return tuple(
-            spec for spec in (
+            spec
+            for spec in (
                 NisThresholdSpec(self.soft_threshold_parameter_id, "state.nis_soft_threshold"),
                 NisThresholdSpec(
                     self.hard_threshold_parameter_id, "state.nis_hard_threshold", True
                 ),
-            ) if spec.parameter_id
+            )
+            if spec.parameter_id
         )
 
     def __post_init__(self) -> None:
@@ -149,9 +151,7 @@ class EstimatorVisualizationSpec:
 
     def __post_init__(self) -> None:
         state_ids = tuple(group.group_id for group in self.state_groups)
-        measurement_ids = tuple(
-            group.measurement_group_id for group in self.measurement_groups
-        )
+        measurement_ids = tuple(group.measurement_group_id for group in self.measurement_groups)
         if len(state_ids) != len(set(state_ids)):
             raise ValueError("duplicate_state_group")
         if len(measurement_ids) != len(set(measurement_ids)):
@@ -341,6 +341,9 @@ class AlgorithmResult:
 
 class AlgorithmPlugin(ABC):
     metadata: AlgorithmMetadata
+
+    def ParameterSchemaCompatible_Is(self, identity: str) -> bool:
+        return identity == self.metadata.ParameterSchemaIdentity_Get()
 
     def recorded_parameters(self, dataset: FlightDataset) -> Mapping[str, Any]:
         if not self.FirmwareMember_Is(dataset) or dataset.semantic_context is None:

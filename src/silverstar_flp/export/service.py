@@ -466,6 +466,8 @@ class FlightExporter:
         language = self._Language_Resolve(requested.language, requested.ui_language)
         task_context = context or TaskContext()
         output = Path(output_directory)
+        if output.exists() and (not output.is_dir() or any(output.iterdir())):
+            raise FileExistsError(f"export_directory_not_empty: {output}")
         output.mkdir(parents=True, exist_ok=True)
         suffix = "_ZH" if language == ExportLanguage.ZH else "_EN"
         files: list[Path] = []

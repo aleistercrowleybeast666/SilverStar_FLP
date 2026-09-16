@@ -1138,8 +1138,8 @@ When any product fails, also attempt a dependency-free localized `Export_Failure
 `Export_Failures_EN.txt`. This fallback uses only standard text file I/O so a Manifest failure
 cannot erase the diagnostic reason.
 
-For SilverStar_FLP, the default output directory is `<project-directory>/Result`. If no
-saved/open project exists, use `<source-log-directory>/<source-log-stem>_Data`. Changing the field
+For SilverStar_FLP, the default output directory is `<project-directory>/Result_<log-stem>`. If no
+saved/open project exists, use `<source-log-directory>/Result_<log-stem>`. Changing the field
 affects only the current export request; never impose a fixed drive root.
 
 Recommended export language:

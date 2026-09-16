@@ -146,6 +146,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
         window.open_project_action,
         window.save_project_action,
         window.save_project_as_action,
+        window.default_root_action,
         window.import_action,
         window.export_action,
         window.exit_action,
@@ -305,7 +306,7 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     window._ExportDialog_Show()
     application.processEvents()
     assert Path(window.export_dialog.folder_edit.text()) == (
-        tmp_path / "SYNTHETIC_default_export_Data"
+        tmp_path / "Result_SYNTHETIC_default_export"
     )
     assert not window.export_dialog.folder_edit.isReadOnly()
     window.export_dialog.folder_edit.setText(str(tmp_path / "custom_export"))
@@ -315,7 +316,9 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     window._project.project_path = tmp_path / "Named Flight.ssflp"
     window._ExportDialog_Show()
     application.processEvents()
-    assert Path(window.export_dialog.folder_edit.text()) == (tmp_path / "Result")
+    assert Path(window.export_dialog.folder_edit.text()) == (
+        tmp_path / "Result_SYNTHETIC_default_export"
+    )
 
     source_text = Path("src/silverstar_flp/ui/main_window.py").read_text(encoding="utf-8")
     assert "_DEFAULT_EXPORT_ROOT" not in source_text
@@ -404,7 +407,7 @@ def test_new_project_selects_destination_before_import_and_cancel_leaves_no_file
 ) -> None:
     application = QApplication.instance() or QApplication([])
     window = MainWindow(builtin_registry())
-    target = tmp_path / "Flight.ssflp"
+    target = tmp_path / "Flight" / "Flight.ssflp"
     from silverstar_flp.ui.new_project import NewProjectDialog
 
     monkeypatch.setattr(NewProjectDialog, "exec", lambda self: 1)
@@ -545,8 +548,9 @@ def test_new_project_form_validates_identity_and_preserves_suffix(tmp_path: Path
         assert not button.isEnabled()
     dialog.name_edit.setText("Flight.ssflp")
     assert button.isEnabled()
-    assert dialog.Path_Get() == tmp_path / "Flight.ssflp"
+    assert dialog.Path_Get() == tmp_path / "Flight" / "Flight.ssflp"
     dialog.directory_edit.setText(str(tmp_path / "missing"))
-    assert not button.isEnabled()
+    assert button.isEnabled()
+    assert not (tmp_path / "missing").exists()
     dialog.reject()
     application.processEvents()

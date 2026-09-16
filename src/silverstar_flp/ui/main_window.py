@@ -37,6 +37,12 @@ from silverstar_flp.app.version import PRODUCT_NAME, __version__
 from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.core.path_preferences import (
+    ExistingDirectory_Get,
+    ExportDirectory_Default,
+    PathPreferences,
+    ProjectDirectory_Prepare,
+)
 from silverstar_flp.core.project import (
     Project_Load,
     Project_Save,
@@ -90,9 +96,19 @@ class MainWindow(QMainWindow):
         initial_decoder_path: Path | None = None,
         initial_auto_find: bool = False,
         plugin_manager: TrustedContainerPluginManager | None = None,
+        path_preferences: PathPreferences | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry
+        self._path_preferences = path_preferences or PathPreferences(
+            Path(
+                QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.AppLocalDataLocation
+                )
+            )
+            / "path_preferences.json"
+        )
+        self._last_import_directory: Path | None = None
         self._plugin_manager = plugin_manager or TrustedContainerPluginManager(
             Path(
                 QStandardPaths.writableLocation(
@@ -272,6 +288,8 @@ class MainWindow(QMainWindow):
             self._menu_bar.addMenu(menu)
             for menu in (self.file_menu, self.plugins_menu, self.help_menu)
         ]
+        self.default_root_action = QAction(self)
+        self.default_root_action.triggered.connect(self._DefaultProjectRoot_Select)
         self.new_project_action = QAction(self)
         self.new_project_action.setShortcut("Ctrl+N")
         self.new_project_action.triggered.connect(self._Project_New)
@@ -307,6 +325,7 @@ class MainWindow(QMainWindow):
         self.file_menu.addAction(self.save_project_action)
         self.file_menu.addAction(self.save_project_as_action)
         self.file_menu.addSeparator()
+        self.file_menu.addAction(self.default_root_action)
         self.file_menu.addAction(self.import_action)
         self.file_menu.addAction(self.export_action)
         self.file_menu.addSeparator()
@@ -377,7 +396,28 @@ class MainWindow(QMainWindow):
                 if previous != index:
                     self._Project_MarkDirty()
 
+    def _DefaultProjectRoot_Select(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            self._translator.Text_Get("action.default_project_root"),
+            str(ExistingDirectory_Get(self._path_preferences.DefaultProjectRoot_Get())),
+        )
+        if selected:
+            try:
+                self._path_preferences.DefaultProjectRoot_Set(Path(selected))
+            except (OSError, ValueError) as error:
+                self._Error_Show(str(error))
+
+    def _ImportDirectory_Get(self) -> Path:
+        project_path = self._pending_new_project_path or self._project.project_path
+        if project_path is not None:
+            return project_path.parent
+        return ExistingDirectory_Get(
+            self._path_preferences.DefaultProjectRoot_Get(), self._last_import_directory
+        )
+
     def _ImportDialog_Show(self) -> None:
+        self.import_dialog.Folder_Set(self._ImportDirectory_Get())
         self.import_dialog.result_label.hide()
         self.import_dialog.open()
 
@@ -389,12 +429,8 @@ class MainWindow(QMainWindow):
         self.export_dialog.open()
 
     def _ExportDirectory_Default(self) -> Path:
-        if self._project.project_path is not None:
-            return self._project.project_path.parent / "Result"
-        elif self._dataset is not None:
-            return self._dataset.source_path.parent / f"{self._dataset.source_path.stem}_Data"
-        else:
-            return Path.cwd() / f"{PRODUCT_NAME}_Data"
+        log_path = self._dataset.source_path if self._dataset is not None else Path.cwd() / "Log"
+        return ExportDirectory_Default(log_path, self._project.project_path)
 
     def _Language_Selected(self) -> None:
         language = self.language_combo.currentData()
@@ -606,6 +642,7 @@ class MainWindow(QMainWindow):
             self._pending_new_project_path = None
             self._Error_Show(str(exc))
             return
+        self._last_import_directory = result.dataset.source_path.parent
         project.LogReference_Set(result.dataset.source_path)
         project.decoder_profile = self._DecoderProfile_Build(result)
         if self._pending_new_project_path is not None:
@@ -835,16 +872,21 @@ class MainWindow(QMainWindow):
     def _Project_New(self) -> None:
         if not self._ProjectChanges_Confirm():
             return
-        directory = self._project.project_path.parent if self._project.project_path else Path.cwd()
+        directory = ExistingDirectory_Get(self._path_preferences.DefaultProjectRoot_Get())
         dialog = NewProjectDialog(self._translator, directory, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         path = dialog.Path_Get()
         if path is None or not self._Overwrite_Confirm(path):
             return
+        try:
+            ProjectDirectory_Prepare(path)
+        except OSError as error:
+            self._Error_Show(str(error))
+            return
         self._pending_new_project_path = path.resolve()
         self.import_dialog.result_label.hide()
-        self.import_dialog.Paths_Set()
+        self.import_dialog.Folder_Set(self._ImportDirectory_Get())
         self.import_dialog.open()
 
     def _PendingProject_Cancel(self) -> None:
@@ -1004,6 +1046,7 @@ class MainWindow(QMainWindow):
         self.plugins_menu.setTitle(self._translator.Text_Get("menu.plugins"))
         self.help_menu.setTitle(self._translator.Text_Get("menu.help"))
         self.new_project_action.setText(self._translator.Text_Get("action.new_project"))
+        self.default_root_action.setText(self._translator.Text_Get("action.default_project_root"))
         self.import_action.setText(self._translator.Text_Get("action.import"))
         self.export_action.setText(self._translator.Text_Get("action.export"))
         self.open_project_action.setText(self._translator.Text_Get("action.open_project"))

@@ -38,14 +38,15 @@ def FirmwareSets_Build(overrides=None):
         }
         for p in contract["parameters"]:
             value = (overrides or {}).get(name, {}).get(p["id"], p["default"])
-            value = struct.unpack("<f", struct.pack("<f", value))[0]
+            if p["type"] == "float":
+                value = struct.unpack("<f", struct.pack("<f", value))[0]
             group["parameters"].append(
                 {
                     "id": p["id"],
                     "value": value,
                     "unit": p["unit"],
                     "representation": p["representation"],
-                    "storage_type": "float32",
+                    "storage_type": "float32" if p["type"] == "float" else "int32",
                     "description": p["description"]["en_US"],
                 }
             )

@@ -1,5 +1,186 @@
 # Validation
 
+## 2026-09-17 — KF6 outage、独立 U 速度权重、离线扫描与工程工作流
+
+初始 HEAD：`2a301d8c6c0c7f37568998acc675a0c5d68b9d3c`；初始 `git status --short` 为空。
+本轮按附件分别本地中文提交，不 push；未 reset/checkout/clean。FLP 0.0.2、.ssflp v3、
+decoder/project-semantics 1.2、算法参数 schema 1.0 均未升级，无 FCCG/GSHC 运行时依赖。
+详细行为与 CLI 见 [KF6 分析与工程路径](docs/KF6_FIELD_ANALYSIS.md)。
+
+### 改动与兼容结论
+
+- Python KF6 同步 C：position EN/U、velocity EN/U 各自跟踪有效时间戳和恢复状态；
+  连续有效 GNSS 即使 hard reject 仍刷新可用性，不触发 inflation。
+  仅严格超过 outage 阈值才允许恢复；正常融合返回直接解除，无需膨胀。
+  真掉线后五次 hard reject + 三个一致间隔可启动 DPD'，factor=2、间隔五次 reject、
+  上限八次与三次融合退出保持。重复掉线/非法数据/重复和回退时间戳有回归覆盖。
+- 新增 `gnss_reacquire_outage_ms`（整数，默认 300）和
+  `gnss_velocity_vertical_scale`（默认 1）；保留既有 `gnss_velocity_std`。
+  EN sigma=max(receiver sigma*1.25, floor)，U 再乘独立 scale，R 平方；
+  receiver uncertainty 不被固定 R 代替。P0、Q、NIS 阈值、gravity、INS/姿态保持。
+- Barometer 直接更新 pU，通过交叉协方差间接修正 vU；GNSS pU、vU 分别量测更新。
+  正式默认仍为 GNSS pU floor 2.5 m、Barometer 5 m、velocity floor 0.15 m/s、U scale 1。
+  这些是兼容的保守候选，不是本轮新证明的飞行最佳参数。
+- 旧工程只接受精确的旧 KF6 参数身份，只有两个新字段允许缺失 fallback；
+  原有必需参数缺失仍报错。Recorded Configuration 不可变，What-if 使用独立实际值，
+  int 参数保持整数。旧 GNSS 日志使用新恢复策略明确标为 approximate；
+  不能把新策略宣称为旧固件 exact replay。新实际参数继续走原 exact matching 和哈希校验。
+- 保留 GNSS NIS max(EN 2D,U 1D) 展示、稀疏 PRE-FLIGHT、时间戳匹配、Pure INS、full P、
+  replay cadence、导出。未改 AIR/GSP、SSLOG、FCCG project 12、部署或着陆逻辑。
+
+### 离线能力与证据边界
+
+`tools/kf6_field_analysis.py --pair LOG DECODER [--pair ...] --output NEW_DIRECTORY`
+对每个日志独立 exact-pair 打开与复算，前后核对源 SHA256，输出逐日志 JSON 和 comparison.json。
+无多日志 .ssflp schema 或跨仓库运行时依赖。扫描使用实际 KF6：
+
+| 扫描 | 候选 |
+| --- | --- |
+| 恢复门禁 | 旧 reject-only comparator / 新 outage-required |
+| outage | 160 / 200 / 250 / 300 / 500 ms |
+| GNSS pU floor | 2.5 / 3 / 4 / 5 / 6 m |
+| Barometer floor | 1.5 / 2 / 3 / 5 m |
+| velocity U scale | 1 / 1.25 / 1.5 / 2 |
+| velocity latency | -500…+500 ms，20 ms coarse，最优附近 5 ms refinement |
+
+延迟扫描在原 GNSS epoch 网格上重采样 velocity 和 receiver variance，正值表示延后，
+所有候选使用共同内部时间窗，不越过大 source gap、不外推。position/Baro/IMU 时间不变；
+每个候选重跑 KF6。这是 approximate 离线试验，不是 OOSM，也不是简单移动结果曲线。
+评分为实际 EN/U hard 阈值归一化 p95 NIS 与 hard-reject 比例。
+INITIAL_STATE/P0 冻结仅限显式 analysis；正常 What-if 仍保留初始化证据门禁。
+缺少匹配 native uncertainty 时 R sweep 明确 unavailable，不虚构固定方差。
+
+统计含逐组 accept/soft/hard/invalid/numeric、NIS max/p50/p90/p95/p99、inflation 次数、
+最终 p/v、P 对角峰值、同时间戳 Recorded residual 与 Pure INS。
+Recorded residual 不是 ground truth；静止 RMSE 只在显式已知区间计算，
+reference RMSE 只在有参考序列时计算，否则 null。
+
+合成验证：
+
+- 已知 +80 ms velocity 延迟，57 次实际重跑找回 **-80 ms**，score=0。
+- 连续 fresh GNSS 拒绝对照：新策略四组 inflation=[0,0,0,0]；
+  旧 comparator=[0,0,5,0]。这说明旧策略会把动态不一致当作恢复，不表示旧输出更准确。
+- 显式 native uncertainty 合成 fixture 覆盖全部权重候选；U scale=1.5 时对应 R×2.25，
+  EN 不变；缺 native 的 fixture 如实拒绝权重重建。
+- 输出在 `tests/.pytest-closeout-0917/` 下相应 test 目录：
+  `latency_synthetic.json`、`continuous_rejection_comparison.json`、
+  `native_weight_sweeps.json` 和 `c_python_equivalence.json`。
+
+三仓库、D:/python_software 与用户 Desktop 搜索未找到真实 SS0005–SS0008 BIN/SSLOG；
+少数历史测试缓存 ACL 不可读。**未执行真实 SS0005–8 baseline/A/B**。
+四组真实日志的最佳 shift、手持最优参数均未知；无稳定物理延迟证据，
+不支持 firmware compensation，本轮没有加入固定补偿。地面候选不能自动推广为火箭飞行参数。
+
+### 工程工作流示例
+
+默认根目录 JSON 位于应用 AppLocalDataLocation 下 `path_preferences.json`，UTF-8、原子 replace、
+schema_version=1。独立于 .ssflp 和 compatibility hash。坏 JSON、缺失文件/根目录安全 fallback；
+设置偏好不创建未确认的大目录。名称自动跟随，实际手改或 Browse 后使用所选目录本身。
+
+例如默认 root=`D:/SilverStarFlightProjects`、name=`FieldTest_0917`：
+
+```text
+D:/SilverStarFlightProjects/FieldTest_0917/
+├─ FieldTest_0917.ssflp
+├─ SS0005.BIN
+├─ SS0006.BIN
+├─ Flight.ssdecoder
+├─ Result_SS0005/
+└─ Result_SS0006/
+```
+
+这表示同一目录可依次处理不同日志；.ssflp 仍只保存一个当前日志。
+Import 默认 folder_search，当前或待建工程目录优先，打开另一工程时刷新；
+无工程按 default root → 最近成功导入目录 → 安全现存目录。
+Browse 从当前搜索目录开始，manual pair 仍可用且语言切换不丢模式。
+默认 Result_<logstem> 正确处理 BIN/SSLOG 大小写、中文/空格/括号；Windows 非法字符替换。
+碰撞自动 _2/_3，手工目的地保持；非空导出目录拒绝，不覆盖旧结果。
+新工程接受路径时创建子目录，取消后续导入不留下 .ssflp；Save/Open 原路径语义保留。
+
+### 数值等价与测试
+
+C 真实生成 fixture 十场景×64帧=640帧，FLP 使用独立仓库本地固定数据。
+最大 position deviation=**7.499018093992671e-09 m**；
+velocity=**4.881515330845687e-11 m/s**；
+P=**3.7143001591077862e-09**。
+所有恢复状态/计数逐帧相同；C 文本序列化精度带来这些差异，符合 float32 等价。
+
+- `.venv/Scripts/python.exe -m pytest tests -q --basetemp=tests/.pytest-closeout-0917 --ignore-glob='tests/.pytest-*' -o cache_dir=tests/.pytest-cache/0917`：
+  **272 passed, 8 skipped, 62.42 s**，日志 `tests/.pytest-cache/0917-closeout.log`。
+  覆盖 KF、replay、参数、NIS、sparse preflight、比较、export、GUI、路径/导入/结果目录。
+- 跳过八项：SS0000 一项、SS0007 三项、SS0014 一项、SS_TEST_0 三项；
+  缺少各自 hash-locked 实测日志与 decoder，不能伪造通过。
+- `.venv/Scripts/python.exe -m ruff check --no-cache src tests tools --exclude '.pytest-*' --output-format concise`：通过。
+  排除一次性测试输出中故意非法的 fixture，不排除正式源/测试。
+- `git diff --check`、`git diff --cached --check`：通过。
+- Qt offscreen Light/Dark × zh_CN/en_US 新工程对话框渲染，测试进程加载 Windows 字体；
+  检视英文 Dark、中文 Light 无裁切，图在 `tests/.pytest-visual-0917/`。
+  未完成实体触屏、真实飞行或新安装包验证；无对应支持声明。
+
+### 提交前 Git 快照（不含本报告）
+
+初始 HEAD 复核：2a301d8c6c0c7f37568998acc675a0c5d68b9d3c
+
+```text
+M	README.md
+M	docs/CXYL_Python_GUI_STYLE_GUIDE.md
+M	docs/GUI_STYLE_GUIDE.md
+A	docs/KF6_FIELD_ANALYSIS.md
+A	src/silverstar_flp/core/path_preferences.py
+M	src/silverstar_flp/core/project.py
+M	src/silverstar_flp/export/service.py
+M	src/silverstar_flp/i18n/en_US.json
+M	src/silverstar_flp/i18n/zh_CN.json
+A	src/silverstar_flp/plugins/algorithms/kf6/field_analysis.py
+M	src/silverstar_flp/plugins/algorithms/kf6/filter.py
+M	src/silverstar_flp/plugins/algorithms/kf6/plugin.py
+M	src/silverstar_flp/plugins/api/algorithm.py
+M	src/silverstar_flp/ui/main_window.py
+M	src/silverstar_flp/ui/new_project.py
+M	src/silverstar_flp/ui/pages/export_settings.py
+M	src/silverstar_flp/ui/pages/replay.py
+A	tests/fixtures/kf6_outage_vectors.json
+M	tests/fixtures/parameter_contracts/kf6_fccg_1_2.json
+M	tests/parameter_fixtures.py
+M	tests/test_gui_smoke.py
+A	tests/test_kf6_field_analysis.py
+A	tests/test_kf6_outage.py
+A	tests/test_path_preferences.py
+M	tests/test_replay_page.py
+A	tools/kf6_field_analysis.py
+
+ README.md                                          |   3 +
+ docs/CXYL_Python_GUI_STYLE_GUIDE.md                |   4 +-
+ docs/GUI_STYLE_GUIDE.md                            |   4 +-
+ docs/KF6_FIELD_ANALYSIS.md                         |  86 ++++++++
+ src/silverstar_flp/core/path_preferences.py        |  82 +++++++
+ src/silverstar_flp/core/project.py                 |  23 +-
+ src/silverstar_flp/export/service.py               |   2 +
+ src/silverstar_flp/i18n/en_US.json                 |   9 +-
+ src/silverstar_flp/i18n/zh_CN.json                 |   9 +-
+ .../plugins/algorithms/kf6/field_analysis.py       | 244 +++++++++++++++++++++
+ .../plugins/algorithms/kf6/filter.py               |  77 ++++++-
+ .../plugins/algorithms/kf6/plugin.py               | 149 ++++++++++---
+ src/silverstar_flp/plugins/api/algorithm.py        |  13 +-
+ src/silverstar_flp/ui/main_window.py               |  59 ++++-
+ src/silverstar_flp/ui/new_project.py               |  26 ++-
+ src/silverstar_flp/ui/pages/export_settings.py     |  66 +++---
+ src/silverstar_flp/ui/pages/replay.py              |  82 +++----
+ tests/fixtures/kf6_outage_vectors.json             |   1 +
+ .../fixtures/parameter_contracts/kf6_fccg_1_2.json |  47 +++-
+ tests/parameter_fixtures.py                        |   5 +-
+ tests/test_gui_smoke.py                            |  14 +-
+ tests/test_kf6_field_analysis.py                   | 168 ++++++++++++++
+ tests/test_kf6_outage.py                           | 184 ++++++++++++++++
+ tests/test_path_preferences.py                     | 106 +++++++++
+ tests/test_replay_page.py                          |   4 +-
+ tools/kf6_field_analysis.py                        |  61 ++++++
+ 26 files changed, 1353 insertions(+), 175 deletions(-)
+```
+
+最终提交后的工作区状态另在交付消息核验。
+
+
 ## 2026-09-16 — GNSS NIS semantics and sparse PRE-FLIGHT closeout
 
 Clean initial source worktree at `f4b10f8`; user attachment explicitly authorized independent

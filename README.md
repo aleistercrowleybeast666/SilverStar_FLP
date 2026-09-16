@@ -11,6 +11,9 @@ Version: **v0.0.2**
 > stores one log reference, exact decoder/cache identity, replay settings, notes, and UI state; it
 > never embeds or rewrites either source.
 
+See [KF6 field analysis and project paths](docs/KF6_FIELD_ANALYSIS.md) for outage recovery,
+independent vertical velocity noise, default project roots and per-log result directories.
+
 ## Start here
 
 ### 1. Create the virtual environment

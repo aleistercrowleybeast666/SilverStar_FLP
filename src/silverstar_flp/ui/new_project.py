@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.core.path_preferences import ExistingDirectory_Get
 
 
 class NewProjectDialog(QDialog):
@@ -23,6 +24,8 @@ class NewProjectDialog(QDialog):
     def __init__(self, translator: Translator, directory: Path, parent=None) -> None:
         super().__init__(parent)
         self._translator = translator
+        self._default_root = ExistingDirectory_Get(directory)
+        self._directory_automatic = True
         self.setModal(True)
         self.setWindowTitle(translator.Text_Get("action.new_project"))
         self.setMinimumWidth(720)
@@ -59,6 +62,8 @@ class NewProjectDialog(QDialog):
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
+        self.name_edit.textChanged.connect(self._Directory_Derive)
+        self.directory_edit.textEdited.connect(self._Directory_Customize)
         self.name_edit.textChanged.connect(self._Completion_Refresh)
         self.directory_edit.textChanged.connect(self._Completion_Refresh)
         self._Completion_Refresh()
@@ -80,14 +85,31 @@ class NewProjectDialog(QDialog):
         valid = valid and stem.split(".")[0].upper() not in reserved
         valid = (
             valid
-            and Path(self.directory_edit.text().strip()).is_dir()
+            and (
+                not Path(self.directory_edit.text().strip()).exists()
+                or Path(self.directory_edit.text().strip()).is_dir()
+            )
             and bool(self.directory_edit.text().strip())
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(valid)
 
+    def _Directory_Customize(self) -> None:
+        self._directory_automatic = False
+
+    def _Directory_Derive(self) -> None:
+        if self._directory_automatic:
+            name = self.name_edit.text().strip()
+            if name.lower().endswith(".ssflp"):
+                name = name[:-6]
+            if name not in (".", "..") and not any(c in name for c in '<>:"/\\|?*'):
+                self.directory_edit.setText(str(self._default_root / name))
+
     def _Directory_Select(self) -> None:
         selected = QFileDialog.getExistingDirectory(
-            self, self._translator.Text_Get("dialog.new.directory"), self.directory_edit.text()
+            self,
+            self._translator.Text_Get("dialog.new.directory"),
+            str(ExistingDirectory_Get(Path(self.directory_edit.text()), self._default_root)),
         )
         if selected:
+            self._Directory_Customize()
             self.directory_edit.setText(selected)

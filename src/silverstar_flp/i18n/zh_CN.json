@@ -597,5 +597,12 @@
   "state.nis_u_soft_reference": "U 一维软门限参考",
   "state.nis_u_hard_reference": "U 一维硬门限参考",
   "state.nis_en_soft_reference": "EN 二维软门限参考",
-  "state.nis_en_hard_reference": "EN 二维硬门限参考"
+  "state.nis_en_hard_reference": "EN 二维硬门限参考",
+  "parameter.gnss_velocity_vertical_scale": "GNSS 垂直速度标准差倍率",
+  "parameter.tooltip.gnss_velocity_vertical_scale": "GNSS 垂直速度标准差倍率",
+  "parameter.gnss_reacquire_outage_ms": "GNSS 恢复失联门槛",
+  "parameter.tooltip.gnss_reacquire_outage_ms": "GNSS 恢复失联门槛",
+  "action.default_project_root": "默认工程根目录...",
+  "replay.warning.kf6_offline_field_analysis": "离线扫描：量测重采样或固定初值分析",
+  "replay.warning.kf6_reacquisition_policy_changed": "旧日志采用新的失联恢复策略，不能视为旧固件逐位复现"
 }

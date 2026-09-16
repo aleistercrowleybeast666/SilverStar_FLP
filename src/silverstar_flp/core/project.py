@@ -61,9 +61,8 @@ class ProjectDecoderProfile:
             ("project_semantics_hash_128", self.project_semantics_hash_128, 32),
         )
         for field_name, value, length in hash_fields:
-            if (
-                len(value) != length
-                or any(character not in "0123456789abcdef" for character in value)
+            if len(value) != length or any(
+                character not in "0123456789abcdef" for character in value
             ):
                 raise ValueError(f"project_{field_name}_invalid")
         if self.exact_match_mode != "exact_generation_profile":
@@ -187,10 +186,10 @@ def ReplayConfiguration_Validate(configuration: Any) -> None:
         plugin = builtin_registry().Algorithm_Get(configuration["algorithm_id"])
     except (KeyError, TypeError) as exc:
         raise ValueError("project_algorithm_unknown") from exc
-    if (
-        configuration["algorithm_version"] != plugin.metadata.version
-        or configuration["parameter_schema_identity"]
-        != plugin.metadata.ParameterSchemaIdentity_Get()
+    if configuration[
+        "algorithm_version"
+    ] != plugin.metadata.version or not plugin.ParameterSchemaCompatible_Is(
+        configuration["parameter_schema_identity"]
     ):
         raise ValueError("project_parameter_schema_mismatch")
     ReplayMode(configuration["mode"])
@@ -304,16 +303,10 @@ def Project_ToDict(document: ProjectDocument) -> dict[str, Any]:
     return {
         "log_reference": document.log_reference,
         "decoder_profile": (
-            document.decoder_profile.ToDict()
-            if document.decoder_profile is not None
-            else None
+            document.decoder_profile.ToDict() if document.decoder_profile is not None else None
         ),
         "replay_configurations": document.replay_configurations,
         "notes": document.notes,
         "ui_state": document.ui_state,
-        "project_path": (
-            str(document.project_path)
-            if document.project_path is not None
-            else None
-        ),
+        "project_path": (str(document.project_path) if document.project_path is not None else None),
     }

@@ -15,8 +15,8 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
 - The File menu is New Project, Open Project, Save Project, Save Project As, Import Log / Decoder,
   Export, and Exit, with separators between the three groups. There is no duplicate toolbar.
   Import and export remain modal option dialogs.
-- Export defaults to `<project-directory>/Result` for a saved/open project; without one, use
-  `<source-log-directory>/<source-log-stem>_Data`. The destination remains editable. After an
+- Export defaults to `<project-directory>/Result_<log-stem>` for a saved/open project; without one, use
+  `<source-log-directory>/Result_<log-stem>`. The destination remains editable. After an
   export completes, the dialog exposes the generated localized export manifest directly. Failed
   items are listed by localized name with toggleable exception details; any failure also triggers
   a best-effort standard-I/O `Export_Failures_ZH|EN.txt`.

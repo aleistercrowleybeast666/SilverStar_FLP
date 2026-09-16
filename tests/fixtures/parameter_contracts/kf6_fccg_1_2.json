@@ -21,7 +21,8 @@
       "description": {
         "en_US": "Navigation gravity subtraction only; calibration, alignment and sensor conversion retain their separate platform gravity.",
         "zh_CN": "仅用于导航重力扣除；校准、对准和传感器换算保留独立的平台重力配置。"
-      }
+      },
+      "shared_key": "navigation.gravity_mps2"
     },
     {
       "id": "p0_position_e",
@@ -464,6 +465,50 @@
       "description": {
         "en_US": "Actual dimensionless cap already used by soft gating; not a multiplier of a hidden default.",
         "zh_CN": "软门限已有的实际无量纲上限，不是隐藏默认值的倍率。"
+      }
+    },
+    {
+      "id": "gnss_velocity_vertical_scale",
+      "type": "float",
+      "default": 1.0,
+      "unit": "1",
+      "representation": "value",
+      "min": 1.0,
+      "max": 10.0,
+      "precision": 3,
+      "step": 0.05,
+      "group": "advanced",
+      "order": 22,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_VELOCITY_VERTICAL_SCALE",
+      "display_names": {
+        "zh_CN": "GNSS 垂直速度标准差倍率",
+        "en_US": "GNSS vertical velocity standard deviation scale"
+      },
+      "description": {
+        "zh_CN": "GNSS 垂直速度标准差倍率；失联恢复不由连续 NIS 拒绝单独触发。",
+        "en_US": "GNSS vertical velocity standard deviation scale; continuous NIS rejection alone never authorizes recovery."
+      }
+    },
+    {
+      "id": "gnss_reacquire_outage_ms",
+      "type": "integer",
+      "default": 300,
+      "unit": "ms",
+      "representation": "value",
+      "min": 100,
+      "max": 10000,
+      "precision": 0,
+      "step": 10,
+      "group": "advanced",
+      "order": 23,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_REACQUIRE_OUTAGE_MS",
+      "display_names": {
+        "zh_CN": "GNSS 恢复失联门槛",
+        "en_US": "GNSS reacquisition outage threshold"
+      },
+      "description": {
+        "zh_CN": "GNSS 恢复失联门槛；失联恢复不由连续 NIS 拒绝单独触发。",
+        "en_US": "GNSS reacquisition outage threshold; continuous NIS rejection alone never authorizes recovery."
       }
     }
   ]

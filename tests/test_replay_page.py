@@ -75,7 +75,7 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     assert page.parameters_group.title() == "假设参数"
     assert page.Fidelity_Text_Get(ReplayFidelity.EXACT) == "完整复现"
     assert page.Fidelity_Text_Get(ReplayFidelity.UNAVAILABLE) == "不可复算"
-    assert len(page._parameter_labels) == 21
+    assert len(page._parameter_labels) == 23
     assert page.parameter_group_combo.count() == 4
     assert page.parameter_group_combo.currentText() == "过程模型"
     assert page.parameters_form.rowCount() == 4
@@ -155,7 +155,7 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
     measurement_index = page.parameter_group_combo.findData("parameter_group.measurement_noise")
     page.parameter_group_combo.setCurrentIndex(measurement_index)
     application.processEvents()
-    assert page.parameters_form.rowCount() == 4
+    assert page.parameters_form.rowCount() == 5
     assert "Actual sigma floor" in page._parameter_labels["gnss_position_std_horizontal"].toolTip()
 
     page._parameter_widgets["process_accel_std_e"].setValue(8.25)

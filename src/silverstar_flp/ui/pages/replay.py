@@ -95,9 +95,7 @@ class ReplayPage(QWidget):
         self.analysis_source_group = QGroupBox()
         analysis_source_layout = QHBoxLayout(self.analysis_source_group)
         self.analysis_source_combo = StandardComboBox()
-        self.analysis_source_combo.currentIndexChanged.connect(
-            self._AnalysisSource_Selected
-        )
+        self.analysis_source_combo.currentIndexChanged.connect(self._AnalysisSource_Selected)
         self.active_source_label = QLabel("—")
         self.active_source_label.setObjectName("muted")
         self.active_source_label.setWordWrap(True)
@@ -110,9 +108,7 @@ class ReplayPage(QWidget):
         parameter_controls = QHBoxLayout()
         self.parameter_group_label = QLabel()
         self.parameter_group_combo = StandardComboBox()
-        self.parameter_group_combo.currentIndexChanged.connect(
-            self._ParameterForm_Refresh
-        )
+        self.parameter_group_combo.currentIndexChanged.connect(self._ParameterForm_Refresh)
         self.parameter_modified_label = QLabel()
         self.parameter_modified_label.setObjectName("warningLabel")
         self.parameter_reset_button = QPushButton()
@@ -155,23 +151,15 @@ class ReplayPage(QWidget):
         self.stored_results_table = QTableWidget(0, 8)
         TouchScroll_Enable(self.stored_results_table)
         self.stored_results_table.setMinimumHeight(220)
-        self.stored_results_table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )
-        self.stored_results_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
-        self.stored_results_table.setSelectionMode(
-            QTableWidget.SelectionMode.SingleSelection
-        )
+        self.stored_results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.stored_results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.stored_results_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.stored_results_table.verticalHeader().setVisible(False)
         self.stored_results_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
         self.stored_results_table.horizontalHeader().setStretchLastSection(True)
-        self.stored_results_table.itemSelectionChanged.connect(
-            self._StoredResult_Selected
-        )
+        self.stored_results_table.itemSelectionChanged.connect(self._StoredResult_Selected)
         stored_results_layout.addWidget(self.stored_results_table)
         content_layout.addWidget(self.stored_results_group)
 
@@ -245,7 +233,7 @@ class ReplayPage(QWidget):
         plugin = self._CurrentPlugin_Get()
         self._recorded_parameter_values = self._RecordedParameters_Get(plugin)
         self._offline_parameter_values = {
-            key: float(value)
+            key: value
             for key, value in plugin.OfflineParameters_Get().items()
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         }
@@ -258,7 +246,7 @@ class ReplayPage(QWidget):
                 offline_index = self.mode_combo.findData(ReplayMode.OFFLINE)
                 self.mode_combo.setCurrentIndex(max(offline_index, 0))
         for parameter in plugin.metadata.parameter_schema:
-            if parameter.kind != "float":
+            if parameter.kind not in ("float", "int"):
                 continue
             editor = QDoubleSpinBox(self.parameters_group)
             editor.setDecimals(parameter.precision)
@@ -299,11 +287,11 @@ class ReplayPage(QWidget):
         declared = {
             parameter.parameter_id
             for parameter in plugin.metadata.parameter_schema
-            if parameter.kind == "float"
+            if parameter.kind in ("float", "int")
         }
         for parameter_id in declared:
             try:
-                values[parameter_id] = float(recorded[parameter_id])
+                values[parameter_id] = recorded[parameter_id]
             except (KeyError, TypeError, ValueError):
                 continue
         return values
@@ -456,6 +444,9 @@ class ReplayPage(QWidget):
                 values[name] = actual
             else:
                 values[name] = editor.value()
+        for name in values:
+            if self._parameter_specs[name].kind == "int":
+                values[name] = int(values[name])
         return values
 
     def Configuration_Get(self) -> dict:
@@ -502,9 +493,7 @@ class ReplayPage(QWidget):
         return self._registry.Algorithm_Get(str(self.algorithm_combo.currentData()))
 
     def Fidelity_Text_Get(self, fidelity: ReplayFidelity) -> str:
-        return self._translator.Text_Get(
-            f"replay.fidelity.{fidelity.value.lower()}"
-        )
+        return self._translator.Text_Get(f"replay.fidelity.{fidelity.value.lower()}")
 
     def _Warning_Text_Get(self, warning_code: str) -> str:
         translation_key = f"replay.warning.{warning_code}"
@@ -590,9 +579,7 @@ class ReplayPage(QWidget):
             if self._store is None:
                 self._store = ReplayResultStore()
             plugin = self._registry.Algorithm_Get(result.algorithm_id)
-            entry = self._store.Result_Add(
-                result, algorithm_name=plugin.metadata.display_name
-            )
+            entry = self._store.Result_Add(result, algorithm_name=plugin.metadata.display_name)
         self._last_entry = entry
         self._last_result = entry.result
         provenance_codes = {
@@ -625,19 +612,13 @@ class ReplayPage(QWidget):
             coverage_text = self._translator.Text_Get("status.na")
         else:
             coverage_text = (
-                f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s "
-                f"({coverage[0]}–{coverage[1]} µs)"
+                f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s ({coverage[0]}–{coverage[1]} µs)"
             )
-        mode_code = (
-            "status.what_if"
-            if entry.mode == ReplayMode.WHAT_IF
-            else "status.recomputed"
-        )
+        mode_code = "status.what_if" if entry.mode == ReplayMode.WHAT_IF else "status.recomputed"
         input_text = self._InputSource_Text_Get(entry.input_source)
         plugin = self._registry.Algorithm_Get(entry.algorithm_id)
         specs = {
-            parameter.parameter_id: parameter
-            for parameter in plugin.metadata.parameter_schema
+            parameter.parameter_id: parameter for parameter in plugin.metadata.parameter_schema
         }
         parameter_items: list[str] = []
         for key, value in sorted(entry.parameters.items()):
@@ -649,24 +630,16 @@ class ReplayPage(QWidget):
         warnings = self._Warnings_Text_Get(entry.warnings)
         channels = ", ".join(sorted(entry.channels))
         lines = (
-            self._translator.Text_Get(
-                "replay.detail.algorithm", value=entry.algorithm_name
-            ),
+            self._translator.Text_Get("replay.detail.algorithm", value=entry.algorithm_name),
             self._translator.Text_Get(
                 "replay.detail.mode", value=self._translator.Text_Get(mode_code)
             ),
-            self._translator.Text_Get(
-                "replay.detail.input", value=input_text
-            ),
+            self._translator.Text_Get("replay.detail.input", value=input_text),
             self._translator.Text_Get(
                 "replay.detail.fidelity", value=self.Fidelity_Text_Get(entry.fidelity)
             ),
-            self._translator.Text_Get(
-                "replay.detail.coverage", value=coverage_text
-            ),
-            self._translator.Text_Get(
-                "replay.detail.samples", value=entry.sample_count
-            ),
+            self._translator.Text_Get("replay.detail.coverage", value=coverage_text),
+            self._translator.Text_Get("replay.detail.samples", value=entry.sample_count),
             self._translator.Text_Get(
                 "replay.detail.parameters",
                 value=parameters or self._translator.Text_Get("status.none"),
@@ -688,14 +661,10 @@ class ReplayPage(QWidget):
         for row, entry in enumerate(entries):
             coverage = entry.time_coverage_us
             coverage_text = (
-                f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s"
-                if coverage is not None
-                else "—"
+                f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s" if coverage is not None else "—"
             )
             mode = self._translator.Text_Get(
-                "status.what_if"
-                if entry.mode == ReplayMode.WHAT_IF
-                else "status.recomputed"
+                "status.what_if" if entry.mode == ReplayMode.WHAT_IF else "status.recomputed"
             )
             values = (
                 entry.result_id,
@@ -779,8 +748,7 @@ class ReplayPage(QWidget):
         if self._store is None:
             return
         source_id = str(
-            self.analysis_source_combo.currentData()
-            or ReplayResultStore.RECORDED_SOURCE_ID
+            self.analysis_source_combo.currentData() or ReplayResultStore.RECORDED_SOURCE_ID
         )
         if self._store.ActiveSource_Set(source_id):
             self.analysisSourceRequested.emit(source_id)
