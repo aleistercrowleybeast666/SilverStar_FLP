@@ -588,24 +588,17 @@ class StateEstimationPage(QWidget):
             prefix="NIS",
             width=1.8,
         )
-        self._NisThreshold_Plot(
-            series,
-            group.soft_threshold_parameter_id,
-            "state.nis_soft_threshold",
-            Qt.PenStyle.DashLine,
-            colors,
-        )
-        self._NisThreshold_Plot(
-            series,
-            group.hard_threshold_parameter_id,
-            "state.nis_hard_threshold",
-            Qt.PenStyle.DashDotLine,
-            colors,
-        )
+        for threshold in group.NisThresholds_Get():
+            self._NisThreshold_Plot(
+                series, threshold.parameter_id, threshold.label_key,
+                Qt.PenStyle.DashDotLine if threshold.hard else Qt.PenStyle.DashLine,
+                colors,
+            )
         label = self._translator.Text_Get(group.label_key)
-        self.nis_plot.setTitle(
-            f"{self._translator.Text_Get('chart.nis_full')} · {label}"
-        )
+        title = f"{self._translator.Text_Get('chart.nis_full')} · {label}"
+        if group.nis_description_key:
+            title += "<br>" + self._translator.Text_Get(group.nis_description_key)
+        self.nis_plot.setTitle(title)
         self.nis_plot.setLabel("left", "1")
 
     def _NisThreshold_Plot(

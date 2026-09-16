@@ -17,7 +17,9 @@ from tests.test_decoder_profiles import (
 )
 
 
-def NavigationPair_Open(directory: Path, overrides=None):
+def NavigationPair_Open(
+    directory: Path, overrides=None, *, preflight_us=0, flight_samples=1001, omit_imu=False
+):
     directory.mkdir(parents=True, exist_ok=True)
     fixtures = Path(__file__).parent / "fixtures/parameter_contracts"
     catalog = json.loads(
@@ -56,8 +58,10 @@ def NavigationPair_Open(directory: Path, overrides=None):
             payload.extend(struct.pack("<" + formats[kind] * count, *value))
         builder.Record_Add(int(record["id"], 0), bytes(payload), timestamp, valid_flags=flags)
 
-    start = START_TIMESTAMP_US
-    builder.Record_Add(0x1D, _DescriptorPayload_Build(hashes), start - 3)
+    start = START_TIMESTAMP_US + preflight_us
+    if preflight_us:
+        add("EVENT", START_TIMESTAMP_US - 4, {"event_id": 1})
+    builder.Record_Add(0x1D, _DescriptorPayload_Build(hashes), START_TIMESTAMP_US - 3)
     add(
         "CALIBRATION_RESULT",
         start - 2,
@@ -102,29 +106,30 @@ def NavigationPair_Open(directory: Path, overrides=None):
         {"q_nb": [1, 0, 0, 0], "p0_diagonal": p0, "barometer_origin_std_m": 0.2},
     )
     add("EVENT", start, {"event_id": 3})
-    for index in range(1001):
+    for index in range(flight_samples):
         timestamp = start + index * 10000
         t = index * 0.01
-        add(
-            "IMU_CORRECTED",
-            timestamp,
-            {
-                "sample_timestamp_us": timestamp,
-                "receive_timestamp_us": timestamp,
-                "sequence": index + 1,
-                "source_id": 1,
-                "virtual_imu_id": 1,
-                "valid_mask": 3,
-                "accel_b_mps2": [
-                    0.4 * math.cos(0.9 * t),
-                    0.3 * math.sin(0.7 * t),
-                    9.78 + 2 * math.sin(1.2 * t),
-                ],
-                "gyro_b_radps": [0, 0, 0.04 * math.cos(t)],
-                "correction_valid": 1,
-            },
-            3,
-        )
+        if not omit_imu:
+            add(
+                "IMU_CORRECTED",
+                timestamp,
+                {
+                    "sample_timestamp_us": timestamp,
+                    "receive_timestamp_us": timestamp,
+                    "sequence": index + 1,
+                    "source_id": 1,
+                    "virtual_imu_id": 1,
+                    "valid_mask": 3,
+                    "accel_b_mps2": [
+                        0.4 * math.cos(0.9 * t),
+                        0.3 * math.sin(0.7 * t),
+                        9.78 + 2 * math.sin(1.2 * t),
+                    ],
+                    "gyro_b_radps": [0, 0, 0.04 * math.cos(t)],
+                    "correction_valid": 1,
+                },
+                3,
+            )
         if index and index % 5 == 0:
             altitude = 2 / 1.2 * t - 2 / 1.2**2 * math.sin(1.2 * t)
             add(

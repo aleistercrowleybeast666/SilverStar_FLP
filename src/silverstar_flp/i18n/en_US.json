@@ -592,5 +592,10 @@
   "dialog.new.cancel": "Cancel",
   "explorer.sampling": "Samples: {count}; Measured rate: {rate}; Median period: {period}",
   "explorer.sampling_unavailable": "N/A",
-  "flight.comparison_sampling": "Recorded / comparison: {recorded_rate:.2f} Hz (recorded timestamps); full replay: {full_rate:.2f} Hz; missing exact matches: {missing}"
+  "flight.comparison_sampling": "Recorded / comparison: {recorded_rate:.2f} Hz (recorded timestamps); full replay: {full_rate:.2f} Hz; missing exact matches: {missing}",
+  "state.nis_group_max_description": "max(EN 2D, U 1D); group references only, no aggregate pass/fail gate",
+  "state.nis_u_soft_reference": "U 1D soft reference",
+  "state.nis_u_hard_reference": "U 1D hard reference",
+  "state.nis_en_soft_reference": "EN 2D soft reference",
+  "state.nis_en_hard_reference": "EN 2D hard reference"
 }

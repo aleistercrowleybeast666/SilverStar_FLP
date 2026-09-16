@@ -1908,20 +1908,10 @@ class FlightExporter:
     ) -> tuple[tuple[float, str, str], ...]:
         translator = Translator(language.value)
         thresholds: list[tuple[float, str, str]] = []
-        for parameter_id, label_key, style in (
-            (
-                group.soft_threshold_parameter_id,
-                "state.nis_soft_threshold",
-                "--",
-            ),
-            (
-                group.hard_threshold_parameter_id,
-                "state.nis_hard_threshold",
-                "-.",
-            ),
-        ):
-            if not parameter_id:
-                continue
+        for reference in group.NisThresholds_Get():
+            parameter_id = reference.parameter_id
+            label_key = reference.label_key
+            style = "-." if reference.hard else "--"
             try:
                 value = float(parameters[parameter_id])
             except (KeyError, TypeError, ValueError):
@@ -2375,6 +2365,8 @@ class FlightExporter:
                 f"{metadata.display_name} · {source_label} · "
                 f"{group_label} · {labels['nis_quantity']}"
             )
+            if group.nis_description_key:
+                nis_title += "\n" + Translator(language.value).Text_Get(group.nis_description_key)
             nis_path = directory / (
                 f"{algorithm_stem}_{source_stem}_NIS_"
                 f"{group_stem}{suffix}.png"

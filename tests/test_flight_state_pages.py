@@ -346,7 +346,7 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     assert page.measurement_group_combo.count() == 3
     assert len(page.covariance_plot.listDataItems()) == 3
     assert len(page.innovation_plot.listDataItems()) == 3
-    assert len(page.nis_plot.listDataItems()) == 3
+    assert len(page.nis_plot.listDataItems()) == 5
     assert len(page.measurement_uncertainty_plot.listDataItems()) == 3
     assert len(page.measurement_r_scale_plot.listDataItems()) == 1
     assert len(page.measurement_age_plot.listDataItems()) == 1

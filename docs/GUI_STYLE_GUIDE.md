@@ -104,3 +104,18 @@ Before field use, check finger swipes and taps on a CF-33: page scroll, nested t
 scroll and selection, popup selection, button taps, spinboxes, mouse wheel/scrollbars,
 stylus, plot pan/zoom, camera lock/rotation and replay time slider. Automated synthetic
 Qt touch tests do not certify the physical Windows touch driver.
+
+
+## NIS reference semantics and sparse preflight
+
+MeasurementGroupSpec owns NIS description and reference-line metadata, shared by the State
+Estimation page and exported PNGs. KF6 GNSS position/velocity are max(EN 2D, U 1D), so display
+four explicitly named U/1D and EN/2D soft/hard references and explain that they are not a single
+aggregate pass/fail gate. Never bind these aggregates to nis_3d_*; barometer retains 1D gates.
+Reference values come from the selected source's actual parameters. Do not infer group NIS
+from an aggregate, or add KF6-specific branches to the page/export renderer.
+
+A valid BOOT-to-START interval may contain only descriptors/configuration/events and snapshots.
+Absence of preflight continuous sensor records is not corruption or a record-sequence gap.
+Replay prerequisites still apply to the START/INITIAL_STATE mission interval; do not relax them
+to accept missing mission inputs. Existing timestamp and comparison-sampling contracts apply.

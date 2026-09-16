@@ -50,6 +50,15 @@ class StateGroupSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class NisThresholdSpec:
+    """A parameter-backed reference line; interpretation belongs to the group."""
+
+    parameter_id: str
+    label_key: str
+    hard: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class MeasurementGroupSpec:
     """Estimator measurement/update diagnostics for one semantic sensor group."""
 
@@ -77,6 +86,20 @@ class MeasurementGroupSpec:
     configuration_provider_indices: tuple[int, ...] = ()
     measurement_record_names: tuple[str, ...] = ()
     measurement_validity_channel: str = ""
+    nis_description_key: str = ""
+    nis_reference_thresholds: tuple[NisThresholdSpec, ...] = ()
+
+    def NisThresholds_Get(self) -> tuple[NisThresholdSpec, ...]:
+        if self.nis_reference_thresholds:
+            return self.nis_reference_thresholds
+        return tuple(
+            spec for spec in (
+                NisThresholdSpec(self.soft_threshold_parameter_id, "state.nis_soft_threshold"),
+                NisThresholdSpec(
+                    self.hard_threshold_parameter_id, "state.nis_hard_threshold", True
+                ),
+            ) if spec.parameter_id
+        )
 
     def __post_init__(self) -> None:
         if not self.measurement_group_id or not self.label_key:

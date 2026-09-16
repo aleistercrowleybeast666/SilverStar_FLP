@@ -592,5 +592,10 @@
   "dialog.new.cancel": "取消",
   "explorer.sampling": "样本数：{count}；实测频率：{rate}；中位采样周期：{period}",
   "explorer.sampling_unavailable": "不适用",
-  "flight.comparison_sampling": "飞控记录 / 对比显示：{recorded_rate:.2f} Hz（按记录时刻）；完整复算：{full_rate:.2f} Hz；缺失精确匹配：{missing}"
+  "flight.comparison_sampling": "飞控记录 / 对比显示：{recorded_rate:.2f} Hz（按记录时刻）；完整复算：{full_rate:.2f} Hz；缺失精确匹配：{missing}",
+  "state.nis_group_max_description": "max(EN 二维, U 一维)；各线仅作分组参考，不是聚合值的统一通过/拒绝门限",
+  "state.nis_u_soft_reference": "U 一维软门限参考",
+  "state.nis_u_hard_reference": "U 一维硬门限参考",
+  "state.nis_en_soft_reference": "EN 二维软门限参考",
+  "state.nis_en_hard_reference": "EN 二维硬门限参考"
 }

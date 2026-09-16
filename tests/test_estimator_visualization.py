@@ -591,10 +591,10 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
         assert message.startswith("No valid GNSS")
     assert len(
         calls["KF6_Recorded_NIS_GNSS_Position_EN.png"][2]
-    ) == 2
+    ) == 4
     assert len(
         calls["KF6_Recorded_NIS_GNSS_Velocity_EN.png"][2]
-    ) == 2
+    ) == 4
 
 
 def test_full_p_keyframes_use_plugin_metadata_for_15_state_estimator(
@@ -639,3 +639,41 @@ def test_full_p_keyframes_use_plugin_metadata_for_15_state_estimator(
     assert text.count("Full P matrix (15 x 15):") == 3
     assert "1.00000000000000000e+00" in text
     assert "3.12000000000000000e+03" in text
+
+
+def test_gnss_nis_group_references_are_shared_by_gui_and_export(tmp_path):
+    from tests.parameter_fixtures import SyntheticParameters_Attach
+    app = QApplication.instance() or QApplication([])
+    dataset = SyntheticParameters_Attach(
+        Sslog0ParserPlugin().parse(AnalysisFlight_Build(tmp_path / "nis.BIN")),
+        tmp_path / "parameters",
+    )
+    groups = Kf6AlgorithmPlugin.metadata.estimator_visualization.measurement_groups
+    expected = (6.635, 10.828, 9.210, 13.816)
+    for language in ("en_US", "zh_CN"):
+        page = StateEstimationPage(Translator(language))
+        page.Dataset_Set(dataset)
+        page.resize(1280, 800)
+        page.show()
+        for group in groups:
+            page.nis_measurement_combo.setCurrentIndex(
+                page.nis_measurement_combo.findData(group.measurement_group_id))
+            app.processEvents()
+            thresholds = FlightExporter._NisThresholds_Get(
+                group, {spec.parameter_id: spec.default
+                        for spec in Kf6AlgorithmPlugin.metadata.parameter_schema},
+                ExportLanguage.EN if language == "en_US" else ExportLanguage.ZH,
+            )
+            if group.measurement_group_id.startswith("gnss"):
+                assert not group.soft_threshold_parameter_id
+                assert not group.hard_threshold_parameter_id
+                assert all("nis_3d" not in line.parameter_id for line in group.NisThresholds_Get())
+                np.testing.assert_allclose([line[0] for line in thresholds], expected, rtol=1e-6)
+                title = page.nis_plot.getPlotItem().titleLabel.text
+                assert Translator(language).Text_Get(group.nis_description_key) in title
+                assert "max(" in page.nis_plot.getPlotItem().titleLabel.text
+            else:
+                np.testing.assert_allclose(
+                    [line[0] for line in thresholds], expected[:2], rtol=1e-6
+                )
+        page.close()
