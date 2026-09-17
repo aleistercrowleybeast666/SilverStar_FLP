@@ -32,6 +32,7 @@ class AnalysisSource:
     kind: AnalysisSourceKind
     algorithm_id: str | None = None
     result_id: str | None = None
+    analysis_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,10 @@ class ReplayStoredResult:
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
         object.__setattr__(self, "channels", MappingProxyType(dict(self.channels)))
         object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def analysis_only(self) -> bool:
+        return self.diagnostics.get("offline_diagnostics", {}).get("mode") == "analysis_only"
 
     @property
     def kind(self) -> AnalysisSourceKind:
@@ -103,7 +108,11 @@ class ReplayStoredResult:
         return min(starts), max(ends)
 
     def StableName_Get(self) -> str:
-        mode = "What-if" if self.mode == ReplayMode.WHAT_IF else "Recomputed"
+        mode = (
+            "Analysis-only"
+            if self.analysis_only
+            else ("What-if" if self.mode == ReplayMode.WHAT_IF else "Recomputed")
+        )
         return f"{self.algorithm_name} / {mode} #{self.run_index}"
 
 
@@ -188,6 +197,7 @@ class ReplayResultStore:
                 entry.kind,
                 entry.algorithm_id,
                 entry.result_id,
+                entry.analysis_only,
             )
             for entry in self._entries
             if entry.analysis_ready
@@ -201,7 +211,9 @@ class ReplayResultStore:
         if entry is None or not entry.analysis_ready:
             self._active_source_id = self.RECORDED_SOURCE_ID
             return AnalysisSource(self.RECORDED_SOURCE_ID, AnalysisSourceKind.RECORDED)
-        return AnalysisSource(entry.source_id, entry.kind, entry.algorithm_id, entry.result_id)
+        return AnalysisSource(
+            entry.source_id, entry.kind, entry.algorithm_id, entry.result_id, entry.analysis_only
+        )
 
     def ActiveSource_Set(self, source_id: str) -> bool:
         if source_id != self.RECORDED_SOURCE_ID:
@@ -358,7 +370,9 @@ class ChannelResolver:
                 ReplayResultStore.RECORDED_SOURCE_ID,
                 AnalysisSourceKind.RECORDED,
             )
-        return AnalysisSource(entry.source_id, entry.kind, entry.algorithm_id, entry.result_id)
+        return AnalysisSource(
+            entry.source_id, entry.kind, entry.algorithm_id, entry.result_id, entry.analysis_only
+        )
 
     def Series_Get(self, channel_id: str, source_id: str | None = None) -> TimeSeries | None:
         source = self.Source_Get(source_id)

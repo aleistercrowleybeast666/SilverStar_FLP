@@ -18,6 +18,12 @@ from silverstar_flp.core.mission import (
     MissionReplayBounds_Get,
     MissionReplayEndReason,
 )
+from silverstar_flp.plugins.algorithms.kf6.diagnostics import (
+    DiagnosticMetadata_Get,
+    DiagnosticSchedule_Apply,
+    Kf6DiagnosticOptions,
+    MeasurementWeights_Inspect,
+)
 from silverstar_flp.plugins.algorithms.kf6.filter import (
     Kf6Filter,
     Kf6GnssEpoch,
@@ -738,7 +744,14 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         velocity_shift_ms: int | None = None,
         analysis_legacy_reacquisition: bool = False,
         analysis_frozen_initial: bool = False,
+        analysis_options: Kf6DiagnosticOptions | None = None,
     ) -> AlgorithmResult:
+        if analysis_options is not None:
+            if not isinstance(analysis_options, Kf6DiagnosticOptions):
+                raise TypeError("kf6_diagnostic_options_invalid")
+            analysis_frozen_initial = True
+            if velocity_shift_ms is None and analysis_options.velocity_shift_ms:
+                velocity_shift_ms = analysis_options.velocity_shift_ms
         task_context = context or TaskContext()
         availability = self.availability(dataset, request.input_source)
         if not availability.available:
@@ -825,10 +838,31 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         schedule = self._MeasurementParameters_Apply(
             dataset, schedule, parameters, frozen_initial=analysis_frozen_initial
         )
+        firmware_schedule = schedule
+        schedule = DiagnosticSchedule_Apply(schedule, analysis_options)
+        filter_instance.analysis_position_vertical_disabled = bool(
+            analysis_options and analysis_options.gnss_position_vertical_disabled
+        )
         if velocity_shift_ms is not None:
             from silverstar_flp.plugins.algorithms.kf6.field_analysis import VelocitySchedule_Shift
 
             schedule = VelocitySchedule_Shift(schedule, velocity_shift_ms)
+        weights = MeasurementWeights_Inspect(
+            dataset, parameters, firmware_schedule, schedule, analysis_options
+        )
+        diagnostic_metadata = DiagnosticMetadata_Get(dataset, parameters, analysis_options, weights)
+        if (
+            velocity_shift_ms is not None
+            or analysis_legacy_reacquisition
+            or analysis_frozen_initial
+        ):
+            diagnostic_metadata["mode"] = "analysis_only"
+            diagnostic_metadata["analysis_only_overrides"]["velocity_shift_ms"] = (
+                velocity_shift_ms or 0
+            )
+            diagnostic_metadata["legacy_velocity_shift_ms"] = velocity_shift_ms
+            diagnostic_metadata["legacy_reacquisition"] = analysis_legacy_reacquisition
+            diagnostic_metadata["initial_state_frozen"] = analysis_frozen_initial
         task_context.Progress_Report(0.08, "replay.inputs")
         snapshots = self._Replay_Run(
             filter_instance,
@@ -875,6 +909,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             channels=channels,
             diagnostics={
                 **self.ParameterAudit_Get(dataset, request),
+                "offline_diagnostics": diagnostic_metadata,
                 "state_order": ("pE", "pN", "pU", "vE", "vN", "vU"),
                 "input_increment_count": len(increments),
                 "measurement_count": len(schedule),
@@ -914,7 +949,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 **source_diagnostics,
             },
             provenance=(
-                "What-if"
+                "Analysis-only"
+                if diagnostic_metadata["mode"] == "analysis_only"
+                else "What-if"
                 if request.mode == ReplayMode.WHAT_IF
                 else (
                     "Offline"
@@ -1223,6 +1260,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             epoch_mask |= 1 << int(Kf6GnssGroup.VELOCITY_HORIZONTAL)
             if velocity_mask & 0x04:
                 epoch_mask |= 1 << int(Kf6GnssGroup.VELOCITY_VERTICAL)
+        if filter_instance.analysis_position_vertical_disabled:
+            epoch_mask &= ~(1 << int(Kf6GnssGroup.POSITION_VERTICAL))
         filter_instance.Kf6_GnssEpochTrack(
             Kf6GnssEpoch(
                 timestamp_us=int(payload["sample_timestamp_us"]),
@@ -1240,15 +1279,18 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         if mask & 0x01:
             base = position_variance
             separated = filter_instance.Kf6_UpdateGnssPosition(position, base)
-            position_result = _Result_Aggregate(
-                separated.horizontal_result, separated.vertical_result
+            position_result = (
+                _Result_Aggregate(separated.horizontal_result, separated.vertical_result)
+                if separated.vertical_attempted
+                else int(separated.horizontal_result)
             )
             filter_instance.Kf6_GnssGroupResultProcess(
                 Kf6GnssGroup.POSITION_HORIZONTAL, separated.horizontal_result
             )
-            filter_instance.Kf6_GnssGroupResultProcess(
-                Kf6GnssGroup.POSITION_VERTICAL, separated.vertical_result
-            )
+            if separated.vertical_attempted:
+                filter_instance.Kf6_GnssGroupResultProcess(
+                    Kf6GnssGroup.POSITION_VERTICAL, separated.vertical_result
+                )
             ratios = np.divide(
                 filter_instance.last_position_effective_variance,
                 base,

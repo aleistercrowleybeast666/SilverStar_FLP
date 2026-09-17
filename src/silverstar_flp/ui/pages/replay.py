@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +29,7 @@ from silverstar_flp.core.analysis_source import (
 from silverstar_flp.core.comparison import Series_Compare
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.plugins.algorithms.kf6.diagnostics import Kf6DiagnosticRequest
 from silverstar_flp.plugins.api.algorithm import (
     AlgorithmResult,
     ParameterSpec,
@@ -36,6 +38,7 @@ from silverstar_flp.plugins.api.algorithm import (
     ReplayRequest,
 )
 from silverstar_flp.plugins.registry import PluginRegistry
+from silverstar_flp.ui.offline_diagnostics import OfflineDiagnosticsPanel
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
@@ -182,7 +185,14 @@ class ReplayPage(QWidget):
         content_layout.addStretch(1)
 
         self.scroll_area.setWidget(scroll_content)
-        page_layout.addWidget(self.scroll_area)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.scroll_area, "")
+        self.diagnostics_panel = OfflineDiagnosticsPanel(translator)
+        self.tabs.addTab(self.diagnostics_panel, "")
+        self.diagnostics_panel.requested.connect(self._Diagnostic_Request)
+        self._diagnostic_algorithm_id = None
+        self._diagnostic_parameter_signature = None
+        page_layout.addWidget(self.tabs)
 
         self.algorithm_combo.currentIndexChanged.connect(self._Algorithm_Refresh)
         self.mode_combo.currentIndexChanged.connect(self._Mode_Refresh)
@@ -194,6 +204,9 @@ class ReplayPage(QWidget):
         dataset: FlightDataset,
         results: ReplayResultStore | Mapping[str, AlgorithmResult] | None = None,
     ) -> None:
+        dataset_changed = self._dataset is not dataset
+        if dataset_changed:
+            self.diagnostics_panel.Context_Clear()
         self._dataset = dataset
         if isinstance(results, ReplayResultStore):
             self._store = results
@@ -202,7 +215,10 @@ class ReplayPage(QWidget):
         self._AlgorithmLabels_Refresh()
         self._AnalysisSources_Refresh()
         self._StoredResults_Refresh()
-        self._Algorithm_Refresh()
+        if dataset_changed:
+            self._Algorithm_Refresh()
+        else:
+            self._Availability_Refresh()
 
     def _AlgorithmLabels_Refresh(self) -> None:
         for index in range(self.algorithm_combo.count()):
@@ -224,6 +240,11 @@ class ReplayPage(QWidget):
             )
 
     def _Algorithm_Refresh(self) -> None:
+        algorithm_id = self.algorithm_combo.currentData()
+        if algorithm_id != self._diagnostic_algorithm_id:
+            self.diagnostics_panel.Context_Clear()
+            self._diagnostic_algorithm_id = algorithm_id
+        self.tabs.setTabEnabled(1, algorithm_id == "silverstar.algorithm.kf6")
         self._ParameterForm_Clear()
         for widget in (*self._parameter_labels.values(), *self._parameter_widgets.values()):
             widget.deleteLater()
@@ -353,6 +374,14 @@ class ReplayPage(QWidget):
         self._ParametersDirty_Refresh()
 
     def _ParametersDirty_Refresh(self, *_args: object) -> None:
+        signature = (
+            self.algorithm_combo.currentData(),
+            self.mode_combo.currentData(),
+            tuple(sorted(self._ActualValues_Get().items())),
+        )
+        if signature != self._diagnostic_parameter_signature:
+            self.diagnostics_panel.Scan_Clear()
+            self._diagnostic_parameter_signature = signature
         self._parameters_dirty = any(
             not math.isclose(
                 editor.value(),
@@ -555,8 +584,13 @@ class ReplayPage(QWidget):
             details += " · " + self._translator.Text_Get("replay.firmware_parameter_provenance")
             self.availability_label.setText(details)
         self.run_button.setEnabled(availability.available and mode_available)
+        self.diagnostics_panel.Available_Set(
+            availability.available
+            and mode_available
+            and self.algorithm_combo.currentData() == "silverstar.algorithm.kf6"
+        )
 
-    def _Replay_Request(self) -> None:
+    def _Request_Get(self) -> ReplayRequest:
         mode = self.mode_combo.currentData()
         parameters = (
             self._ActualValues_Get()
@@ -568,6 +602,21 @@ class ReplayPage(QWidget):
             input_source=ReplayRequest().input_source,
             parameters=parameters,
         )
+        return request
+
+    def _Diagnostic_Request(self, operation: str) -> None:
+        request = Kf6DiagnosticRequest(
+            self._Request_Get(), self.diagnostics_panel.Options_Get(), operation
+        )
+        self.replayRequested.emit(str(self.algorithm_combo.currentData()), request)
+
+    def _Replay_Request(self) -> None:
+        request = self._Request_Get()
+        if (
+            self.algorithm_combo.currentData() == "silverstar.algorithm.kf6"
+            and self.diagnostics_panel.Options_Get() is not None
+        ):
+            request = Kf6DiagnosticRequest(request, self.diagnostics_panel.Options_Get())
         self.run_button.setEnabled(False)
         self.result_label.setText(self._translator.Text_Get("replay.running"))
         self.replayRequested.emit(str(self.algorithm_combo.currentData()), request)
@@ -582,6 +631,7 @@ class ReplayPage(QWidget):
             entry = self._store.Result_Add(result, algorithm_name=plugin.metadata.display_name)
         self._last_entry = entry
         self._last_result = entry.result
+        self.diagnostics_panel.Result_Set(entry.result)
         provenance_codes = {
             "Recorded": "status.recorded",
             "Recomputed": "status.recomputed",
@@ -647,6 +697,8 @@ class ReplayPage(QWidget):
             self._translator.Text_Get("replay.detail.warnings", value=warnings),
             self._translator.Text_Get("replay.detail.channels", value=channels),
         )
+        if entry.analysis_only:
+            lines = (self._translator.Text_Get("diagnostic.analysis_notice"), *lines)
         self.result_information_label.setText("\n".join(lines))
         self.result_information_label.setToolTip("\n".join(entry.warnings))
 
@@ -666,6 +718,8 @@ class ReplayPage(QWidget):
             mode = self._translator.Text_Get(
                 "status.what_if" if entry.mode == ReplayMode.WHAT_IF else "status.recomputed"
             )
+            if entry.analysis_only:
+                mode = self._translator.Text_Get("diagnostic.analysis")
             values = (
                 entry.result_id,
                 entry.algorithm_name,
@@ -699,6 +753,7 @@ class ReplayPage(QWidget):
         if entry is not None:
             self._last_entry = entry
             self._last_result = entry.result
+            self.diagnostics_panel.Result_Set(entry.result)
             self._ResultInformation_Set(entry)
             self._Comparison_Set(entry.result)
 
@@ -710,6 +765,10 @@ class ReplayPage(QWidget):
             return None
         result_id = str(selected[0].data(Qt.ItemDataRole.UserRole))
         return self._store.Entry_Get(result_id)
+
+    def _EntryMode_Text(self, entry, mode_code):
+        key = "diagnostic.analysis" if entry.analysis_only else mode_code
+        return self._translator.Text_Get(key)
 
     def _AnalysisSources_Refresh(self) -> None:
         if self._store is None:
@@ -736,7 +795,7 @@ class ReplayPage(QWidget):
             )
             self.analysis_source_combo.addItem(
                 f"{entry.algorithm_name} · "
-                f"{self._translator.Text_Get(mode_code)} #{entry.run_index}",
+                f"{self._EntryMode_Text(entry, mode_code)} #{entry.run_index}",
                 entry.source_id,
             )
         index = self.analysis_source_combo.findData(active_source_id)
@@ -773,7 +832,7 @@ class ReplayPage(QWidget):
                 )
                 value = (
                     f"{entry.algorithm_name} · "
-                    f"{self._translator.Text_Get(mode_code)} #{entry.run_index}"
+                    f"{self._EntryMode_Text(entry, mode_code)} #{entry.run_index}"
                 )
         self.active_source_label.setText(
             self._translator.Text_Get("replay.active_source", value=value)
@@ -781,9 +840,19 @@ class ReplayPage(QWidget):
 
     def Result_Error(self, message: str) -> None:
         self.result_label.setText(message)
+        self.diagnostics_panel.Result_Error(message)
         self._Availability_Refresh()
 
+    def Task_Busy(self) -> None:
+        self.run_button.setEnabled(False)
+        self.controls_group.setEnabled(False)
+        self.parameters_group.setEnabled(False)
+        self.diagnostics_panel.Busy_Set(True)
+
     def Task_Finish(self) -> None:
+        self.controls_group.setEnabled(True)
+        self.parameters_group.setEnabled(True)
+        self.diagnostics_panel.Busy_Set(False)
         self._Availability_Refresh()
 
     def _Comparison_Set(self, result: AlgorithmResult) -> None:
@@ -870,6 +939,9 @@ class ReplayPage(QWidget):
             self._ActualValues_Get() if self.mode_combo.currentData() == ReplayMode.WHAT_IF else {}
         )
         self._translator = translator
+        self.tabs.setTabText(0, translator.Text_Get("replay.configuration"))
+        self.tabs.setTabText(1, translator.Text_Get("diagnostic.title"))
+        self.diagnostics_panel.Language_Apply(translator)
         self._ComboLabels_Refresh()
         self._AlgorithmLabels_Refresh()
         self.controls_group.setTitle(translator.Text_Get("replay.configuration"))

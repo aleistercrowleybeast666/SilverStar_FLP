@@ -1,5 +1,93 @@
 # Validation
 
+## 2026-09-17 — KF6 V2 真实日志诊断与 GUI
+
+本轮只修改 FLP。开始时 FLP/FCCG/GSHC 的 `git status --short` 均为空。
+FLP 起始 HEAD `07835302709c9dcdebfbb6641a76b469c5d18e2e`；没有 commit/push。
+FCCG HEAD `34e16ef282402e3800c20492b32255143c0da67b`、GSHC HEAD
+`62656da1fa035bff344165c8857a932e644ddbae` 与状态均保持不变。
+没有修改日志、decoder、工程 schema、固件、生产参数/门限、P0/Q/INS/姿态/部署/着陆。
+
+### 修改文件与行为
+
+- `plugins/algorithms/kf6/diagnostics.py`（位于 src/silverstar_flp，下同）：新增独立临时诊断选项、
+  请求包装、5组量测权重审计和专用JSON导出，未向参数/schema增加字段。
+- `plugins/algorithms/kf6/plugin.py`：复用正常resolver之后施加精确Baro R覆盖、速度时移及冻结初始化；
+  diagnostics/provenance明确Analysis-only。无覆盖的原路径保持不变。
+- `plugins/algorithms/kf6/filter.py`：分析开关真正跳过GNSS pU，E/N仍执行原更新。
+- `plugins/algorithms/kf6/field_analysis.py`：复用扫描，补充zero/best/improvement/采样谷宽和结果元数据，
+  子回放共享取消事件，避免嵌套进度倒退。
+- `ui/offline_diagnostics.py`：KF6子页、双语模式/结果摘要、量测表、后台操作入口、Reset Charts和JSON导出。
+- `ui/pages/replay.py`：仅增KF6子tab、请求分发、模式标签和忙状态；同一数据集完成复算后保留参数草稿。
+- `ui/main_window.py`：沿用FunctionWorker/QThreadPool、进度/取消/错误处理；工程保存不持久化分析结果配置。
+- `core/analysis_source.py`、`ui/pages/charts.py`：传递临时Analysis-only来源标签。
+- `export/service.py`：普通导出保留诊断元数据、来源及Full-P标签。
+- `i18n/en_US.json`、`i18n/zh_CN.json`：诊断文字、单位、时移方向和原点项/覆盖边界。
+- `tests/test_offline_diagnostics.py`：数值行为、隔离、合成时延、后台线程和四种语言主题组合回归。
+- `docs/KF6_FIELD_ANALYSIS.md`、`docs/GUI_STYLE_GUIDE.md`、本文件：行为契约及验收。
+
+GUI入口：复算→选择KF6→高级离线诊断；不增加第六个主页面。
+默认Firmware-faithful。自动扫描仅展示结果，Apply Best才应用到当前analysis并回放。
+手动shift=0保留完整原调度；自动扫描0档与其他shift共享内部窗口，二者评分窗口不同。
+Baro覆盖为精确sigma²，不叠加原点项；禁用pU不使用巨大R。
+Restore清除临时值/开关/scan，已经完成的Analysis-only结果继续保持原标签。
+正常项目参数草稿可保存，临时shift/Baro覆盖/pU禁用均不进入.ssflp或decoder。
+
+### 测试覆盖与限制
+
+新增测试含7个pytest case（其中4个为中英文×深浅色组合），覆盖提示词18项：
+
+| 要求 | 验证 |
+| --- | --- |
+| 默认模式/覆盖关闭/shift0（1–3） | GUI真实控件初始值 |
+| 手动真实平移/恢复（4–5） | KF6状态确实变化；去掉覆盖后与基线逐位相同 |
+| 合成已知latency（6） | +80ms信号恢复到−80ms±5ms；进度单调并完成 |
+| Apply Best隔离（7） | Scan不改选项；显式Apply后才发replay请求 |
+| Baro有效R/恢复（8–9） | native R25→分析R4；KF6实际通道R4；恢复原输出 |
+| pU跳过/E-N不变（10–11） | pU更新数和NIS样本数0；E/N状态逐位相同 |
+| 工程/decoder/Recorded隔离（12–14） | 真实_Project_Write、decoder SHA256、原日志SHA256、记录参数和原生variance未变 |
+| 导出标签（15） | JSON analysis_only字段及AlgorithmResult.provenance；拒绝覆盖已存在导出文件 |
+| GUI后台计算（16） | 线程ID与主线程不同、QTimer继续tick、禁重复、成功/异常/取消后恢复 |
+| 中英文/主题/布局（17–18） | Qt offscreen四组合，1000×700尺寸、无页面横向溢出，截图人工复核 |
+
+Windows offscreen QPA未自动发现字体，截图测试显式只读加载系统微软雅黑，并验证“中”字有字形；
+未改产品字体或系统字体配置。Qt offscreen不支持QOpenGLWidget，未宣称实体CF-33触摸或OpenGL硬件验收。
+初次compileall递归进入历史pytest产物，遇到清理测试故意写入的无效`preserve-or-clean`代码；
+未修改/删除这些产物，最终源码检查排除隐藏测试输出目录。
+
+完成检查：
+
+- `.venv/Scripts/python.exe -m pytest -q --basetemp=tests/.pytest-v2-final -o cache_dir=tests/.pytest-cache-v2`：
+  **287 passed, 8 skipped，110.54s**。8项分别为历史SS0000、SS0007、SS0014及SS_TEST_0手动数据gate，
+  未设置各自精确匹配环境变量，不能拿本轮同名SS0007或合成数据替代。
+- `.venv/Scripts/python.exe -m ruff check src tests tools`：通过。
+- `PYTHONPYCACHEPREFIX=tests/.compile-v2-cache`，
+  `.venv/Scripts/python.exe -m compileall -q -x '[\\/]\.' src tests tools`：通过。
+- `git diff --check`：通过。去掉无关格式变化时逐块验证AST完全一致，未整文件回退。
+
+### 真实日志V2证据
+
+输出仅在用户指定的新目录：
+`D:/stm32_project/SS_0_5_TEST_0/LOG/KF6_PARAMETER_OPTIMIZATION_V2/`。
+主报告`KF6_PARAMETER_OPTIMIZATION_V2.md`，交互报告`VU_LATENCY_INTERACTION.md`，
+冲击报告`SS0008_IMPACT_RECOVERY.md`，全部要求的CSV、逐日志JSON/NPZ/Markdown及8张PNG已生成。
+V1及输入共1994文件SHA256前后一致。未改原固件参考工程。
+
+- 四条真实日志SS0005–8，exact decoder 1.2配对，APPROXIMATE复算，不宣称旧固件bit-exact或Host Golden已验证。
+- 54位置配置×4日志=216回放；12组latency共684回放；3时序×7速度倍率×4日志=84回放。
+  另有4基线、24次气压floor等效性验证和同shift参照回放；主计数不冒充全部运行总次数。
+- native Baro variance25导致配置sigma1.5/2/2.5/3/4/5均等效，24次状态逐位相同。
+- 位置稳定区域选择GNSS pU2.5 / Baro有效sigma2.5；vU scale1、shift0下聚合分0.935264。
+- B位置候选最优shift分别−255/−375/−290/−220 ms；median−272.5、IQR65、MAD35、range155 ms，同号100%。
+  timing mismatch证据YES；固定固件补偿依据NO。common诊断shift−270ms。
+- 三时序最低分scale均2.0；唯一外场验证候选采用邻近稳定点1.75、GNSS pU2.5、Baro有效2.5、shift0、outage300。
+  完整候选**NOT CURRENTLY IMPLEMENTABLE**，因当前native floor5；不把离线覆盖包装成可下发字段。
+- SS0008候选末段vU RMS0.2997，相对基线0.2663增加12.6%，同时回高残差绝对值2.6797降至1.3167m。
+  最低总分不代表所有指标改善。单例报告不被普通日志平均掩盖。
+- GNSS最大epoch间隔46.975/46.203/47.240/47.986ms，无>300ms outage；基线/位置/速度扫描均无误inflation。
+  保持outage300不重新优化。
+- 一份当前默认固件足够用于下一轮采集/离线候选比较；不表示这个完整候选已可部署。机上六项默认不变。
+
 ## 2026-09-17 — 外场前工程默认根目录一致性收尾
 
 本节是本轮路径修改的验收；下方较早的 KF6 修改记录属于历史基线，不是本轮改动。

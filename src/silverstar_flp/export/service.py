@@ -995,6 +995,7 @@ class FlightExporter:
                     "provenance": entry.result.provenance,
                     "input_source": entry.input_source,
                     "actual_parameters": dict(entry.parameters),
+                    "offline_diagnostics": entry.diagnostics.get("offline_diagnostics"),
                     "parameter_schema_identity": entry.diagnostics.get("parameter_schema_identity"),
                     "parameter_metadata": entry.diagnostics.get("parameter_metadata", {}),
                     "config_source": entry.diagnostics.get("config_source"),
@@ -1408,7 +1409,10 @@ class FlightExporter:
         mission_bounds: MissionReplayBounds,
     ) -> None:
         labels = _LABELS[language]
-        source_label = labels[f"full_p_source_{source.kind.value}"]
+        source_label = (
+            self._SourceLabel_Get(source, language) if source.analysis_only
+            else labels[f"full_p_source_{source.kind.value}"]
+        )
         dimension = len(specification.state_symbols)
         landing_timestamp = _Event_Timestamp(dataset, _EVENT_LANDING)
         events = (
@@ -1595,6 +1599,8 @@ class FlightExporter:
         source: AnalysisSource,
         language: ExportLanguage,
     ) -> str:
+        if source.analysis_only:
+            return "仅离线诊断" if language == ExportLanguage.ZH else "Analysis-only"
         return _LABELS[language][f"source_{source.kind.value}"]
 
     @staticmethod

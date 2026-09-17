@@ -263,6 +263,8 @@ def _Source_Label(
         if entry.kind == AnalysisSourceKind.WHAT_IF
         else "status.recomputed"
     )
+    if entry.analysis_only:
+        mode_code = "diagnostic.analysis"
     return f"{entry.algorithm_name} · {translator.Text_Get(mode_code)} #{entry.run_index}"
 
 

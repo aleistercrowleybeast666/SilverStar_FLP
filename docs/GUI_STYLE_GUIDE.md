@@ -127,3 +127,13 @@ then existing Documents, Home, or cwd. Opening a project elsewhere never updates
 Save As keeps the current .ssflp filename (or flight.ssflp before first save) under that root;
 ordinary Save keeps the current project path. Dialog display does not create directories.
 Log import and Result_<log-stem> export retain their current project-relative rules.
+
+## KF6 advanced diagnostics
+
+Replay hosts an Advanced Offline Diagnostics child tab for KF6 only. Preserve the existing five
+main pages. Firmware-faithful is the default; transient Analysis-only overrides have a persistent
+banner and a separately labeled completed-result summary. Keep diagnostic controls in an internally
+scrollable form, the score plot outside that form, and Reset Charts directly available. All five
+measurement groups use a read-only table with min/median/max and rule tooltips. Background scan
+reuses the main worker/progress/cancel infrastructure. The normal parameter draft must survive
+refreshing the same dataset after a replay. See [diagnostic behavior](KF6_FIELD_ANALYSIS.md).

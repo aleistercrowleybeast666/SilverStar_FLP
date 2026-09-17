@@ -97,6 +97,7 @@ class Kf6Filter:
     _reacquire_groups: list[_ReacquireGroupState] = field(
         default_factory=lambda: [_ReacquireGroupState() for _ in range(4)]
     )
+    analysis_position_vertical_disabled: bool = False
     outage_required: bool = True
     inflation_counts: list[int] = field(default_factory=lambda: [0] * 4)
     gnss_nis_samples: list[list[float]] = field(default_factory=lambda: [[] for _ in range(4)])
@@ -209,6 +210,10 @@ class Kf6Filter:
             innovation_target=self.last_position_innovation,
             variance_target=self.last_position_effective_variance,
         )
+        if self.analysis_position_vertical_disabled:
+            self.last_position_nis = self.last_group_nis[0]
+            self._Counter_Update("position", horizontal)
+            return Kf6SeparatedResult(horizontal, Kf6UpdateResult.REJECTED_INVALID, False)
         position = np.asarray(position_enu_m, dtype=np.float32)
         variance = np.asarray(variance_m2, dtype=np.float32)
         vertical = self._Vector_Update(

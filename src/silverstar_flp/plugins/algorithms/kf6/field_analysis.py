@@ -134,6 +134,7 @@ def LatencySweep_Run(
     *,
     context: TaskContext | None = None,
     stationary_interval_us: tuple[int, int] | None = None,
+    analysis_options=None,
 ) -> dict[str, Any]:
     from silverstar_flp.plugins.algorithms.kf6.plugin import Kf6AlgorithmPlugin
 
@@ -143,7 +144,13 @@ def LatencySweep_Run(
 
     def evaluate(shift):
         task.Cancel_RaiseIfRequested()
-        result = plugin.run(dataset, request, velocity_shift_ms=shift)
+        result = plugin.run(
+            dataset,
+            request,
+            velocity_shift_ms=shift,
+            analysis_options=analysis_options,
+            context=TaskContext(cancellation_event=task.cancellation_event),
+        )
         summary = ResultSummary_Get(result, dataset, stationary_interval_us)
         groups = result.diagnostics["gnss_group_nis"]
         counts = result.diagnostics["gnss_group_results"]
@@ -174,8 +181,21 @@ def LatencySweep_Run(
         (item for item in runs.values() if item["score"] is not None),
         key=lambda item: (item["score"], abs(item["shift_ms"])),
     )
+    zero = runs[0]["score"]
+    near = [
+        item["shift_ms"]
+        for item in runs.values()
+        if item["score"] is not None and item["score"] <= best["score"] * 1.05
+    ]
     task.Progress_Report(1.0, "replay.complete")
     return {
+        "score_zero_ms": zero,
+        "score_best": best["score"],
+        "improvement_percent": 100 * (1 - best["score"] / zero) if zero else None,
+        "sampled_minimum_width_ms": max(near) - min(near),
+        "sampled_5percent_interval_ms": [min(near), max(near)],
+        "confidence": "diagnostic_association_not_fixed_firmware_delay",
+        "offline_diagnostics": runs[best["shift_ms"]]["diagnostics"].get("offline_diagnostics"),
         "method": (
             "velocity and receiver variance resampled on common interior GNSS epoch grid; "
             "positive shift delays velocity"

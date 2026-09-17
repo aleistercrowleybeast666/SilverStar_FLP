@@ -57,6 +57,8 @@ from silverstar_flp.log_open import (
     LogOpenResult,
     LogOpenSourceMode,
 )
+from silverstar_flp.plugins.algorithms.kf6.diagnostics import Kf6DiagnosticRequest
+from silverstar_flp.plugins.algorithms.kf6.field_analysis import LatencySweep_Run
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
 from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
 from silverstar_flp.plugins.registry import PluginRegistry
@@ -721,6 +723,30 @@ class MainWindow(QMainWindow):
             return
         plugin = self._registry.Algorithm_Get(algorithm_id)
         dataset = self._dataset
+        if isinstance(request, Kf6DiagnosticRequest):
+            if algorithm_id != "silverstar.algorithm.kf6":
+                self.replay_page.Result_Error("kf6_diagnostic_algorithm_required")
+                return
+            if request.operation == "scan":
+                worker = FunctionWorker(
+                    lambda context: LatencySweep_Run(
+                        dataset, request.replay, context=context, analysis_options=request.options
+                    )
+                )
+                callback = self.replay_page.diagnostics_panel.Scan_Set
+            else:
+                worker = FunctionWorker(
+                    lambda context: plugin.run(
+                        dataset, request.replay, context, analysis_options=request.options
+                    )
+                )
+                callback = (
+                    self.replay_page.diagnostics_panel.Result_Set
+                    if request.operation == "inspect"
+                    else self._Replay_ResultSet
+                )
+            self._Task_Start(worker, callback, self.replay_page.Result_Error)
+            return
         worker = FunctionWorker(lambda context: plugin.run(dataset, request, context))
         self._Task_Start(
             worker,
@@ -806,6 +832,7 @@ class MainWindow(QMainWindow):
             error_callback("another_background_task_is_running")
             return
         self._active_worker = worker
+        self.replay_page.Task_Busy()
         self._worker_error_callback = error_callback
         worker.signals.progress.connect(self._Task_Progress)
         worker.signals.result.connect(result_callback)
@@ -952,6 +979,8 @@ class MainWindow(QMainWindow):
             self._project.ui_state["page_index"] = self.navigation_list.currentRow()
             self._project.replay_configurations["draft"] = self.replay_page.Configuration_Get()
             for entry in self._replay_store.Entries_Get():
+                if entry.analysis_only:
+                    continue
                 self._project.replay_configurations[entry.result_id] = {
                     "algorithm_id": entry.algorithm_id,
                     "algorithm_version": entry.algorithm_version,
