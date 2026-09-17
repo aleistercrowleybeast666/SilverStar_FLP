@@ -119,3 +119,11 @@ A valid BOOT-to-START interval may contain only descriptors/configuration/events
 Absence of preflight continuous sensor records is not corruption or a record-sequence gap.
 Replay prerequisites still apply to the START/INITIAL_STATE mission interval; do not relax them
 to accept missing mission inputs. Existing timestamp and comparison-sampling contracts apply.
+
+## Default project directory
+
+New/Open/Save As use the existing PathPreferences effective root: a valid configured directory,
+then existing Documents, Home, or cwd. Opening a project elsewhere never updates the preference.
+Save As keeps the current .ssflp filename (or flight.ssflp before first save) under that root;
+ordinary Save keeps the current project path. Dialog display does not create directories.
+Log import and Result_<log-stem> export retain their current project-relative rules.

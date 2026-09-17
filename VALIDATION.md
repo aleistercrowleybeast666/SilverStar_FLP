@@ -1,5 +1,71 @@
 # Validation
 
+## 2026-09-17 — 外场前工程默认根目录一致性收尾
+
+本节是本轮路径修改的验收；下方较早的 KF6 修改记录属于历史基线，不是本轮改动。
+初始 HEAD：`98cc422`；初始 `git status --short` 为空。
+只改 FLP 工程文件对话框路径；没有 commit/push，没有删除、覆盖用户未提交内容。
+GSHC 无改动。与 FCCG 独立实现，不增加跨仓库依赖。
+
+### 文件与原因
+
+- `src/silverstar_flp/core/path_preferences.py`：给已有 PathPreferences 添加
+  `DefaultProjectRoot_EffectiveGet`，共享有效配置 → Documents → Home → cwd 的现存目录 fallback。
+  不增加设置系统、字段或 schema；读取不创建目录、不回写偏好。
+- `src/silverstar_flp/ui/main_window.py`：New/Open/Save As 与默认根目录选择入口复用 helper。
+  Open 不再固定 Home；Save As 不再沿用旧工程所在目录或 cwd，而是新 root + 原文件名。
+  首次 Save 补用已有 _Overwrite_Confirm，拒绝覆盖时不写文件；已有项目的普通 Save 不变。
+- `tests/test_path_preferences.py`：拦截 QFileDialog/NewProjectDialog，验证实际入口的建议路径、
+  Unicode、取消无副作用、缺失/损坏/空/相对/已删除/文件/缺失磁盘偏好。
+  比较工程序列化前后、偏好原始字节和既有工程内容，保持普通 Save、导入、导出规则。
+- `docs/GUI_STYLE_GUIDE.md`：补充工程路径规则。
+- `VALIDATION.md`：本轮验收记录。
+
+### 最终规则
+
+假设默认目录为 D:/SilverStarFlightLogs：
+New 保持 <root>/<name>/<name>.ssflp；Open 从 root 开始；
+旧路径 D:/Other/Flight_001.ssflp 的 Save As 建议为
+D:/SilverStarFlightLogs/Flight_001.ssflp，未保存工程建议 flight.ssflp。
+Unicode 文件名原样保留，用户仍可选择其他目标；普通 Save 写当前文件。
+Open/Save As 不静默修改默认目录。无效偏好只选择现存 fallback，不创建任何目录。
+新建工程在用户接受目标后创建目录的原有流程不变。
+
+日志导入仍优先当前/待建工程目录；结果仍按 ExportDirectory_Default 放在工程或日志旁的
+Result_<logstem>，不会集中到默认根目录顶层。既有覆盖确认、项目兼容校验、单日志引用均保留。
+
+### 检查结果
+
+- 定向：
+  `.venv/Scripts/python.exe -m pytest tests/test_path_preferences.py tests/test_project_export.py tests/test_gui_smoke.py -q --basetemp=tests/.pytest-root-focus-20260917 -o cache_dir=tests/.pytest-root-cache-20260917`：
+  **36 passed, 42.13 s**。
+- 全量：
+  `.venv/Scripts/python.exe -m pytest tests -q --ignore-glob='tests/.pytest-*' --basetemp=tests/.pytest-root-full-20260917 -o cache_dir=tests/.pytest-root-cache-20260917`：
+  **280 passed, 8 skipped, 75.27 s**，日志 `tests/.pytest-root-full-20260917.log`。
+  跳过：SS0000 一项、SS0007 三项、SS0014 一项、SS_TEST_0 三项，
+  均因指定的真实日志未提供；本轮未伪造实测验证。
+- 将无效盘符 fixture 加强为机器上实际缺失盘符后：
+  `.venv/Scripts/python.exe -m pytest tests/test_path_preferences.py -q --basetemp=tests/.pytest-root-drive-20260917 -o cache_dir=tests/.pytest-root-cache-20260917`：
+  **12 passed, 2.86 s**。随后为首次 Save 补充覆盖确认，最终重跑见下。
+- `.venv/Scripts/python.exe -m ruff check --no-cache src tests tools --exclude '.pytest-*' --output-format concise`：
+  **All checks passed**。仅修复新增测试的导入顺序与长行，没有批量格式化源代码。
+- `.venv/Scripts/python.exe -m compileall -q src`：通过；
+  PYTHONPYCACHEPREFIX 限 tests/.pytest-root-compile-20260917。
+- 最终完整运行（含首次 Save 覆盖确认）：
+  `.venv/Scripts/python.exe -m pytest tests -q --ignore-glob='tests/.pytest*' --basetemp=tests/.pytest-root-final-20260917 -o cache_dir=tests/.pytest-root-cache-20260917`：
+  **280 passed, 8 skipped, 68.91 s**；日志 `tests/.pytest-root-final-20260917.log`。
+  跳过原因同上。覆盖确认定向检查 **12 passed, 2.87 s**；最终 Ruff 通过。
+- `git diff --check`：通过。没有为本轮新增 mypy 等强制工具。
+- 所有对话框测试拦截 exec/静态选择方法，没有弹出真实文件选择框；不声明实体 GUI/硬件验收。
+
+### 未修改的问题与边界
+
+未修改 KF6/GNSS/INS、reacquisition、NIS、任何算法默认参数、
+.ssflp v3/schema、FCCG project/schema、protocol、日志格式或 decoder。
+GNSS CONFIG READ/SHOW 的既有差异没有在本轮诊断或修复，按提示词留待新固件外场复核。
+没有发现需要在本轮顺手修改的其他产品问题。最终工作区保留上述文件的未提交修改，不 push。
+
+
 ## 2026-09-17 — KF6 outage、独立 U 速度权重、离线扫描与工程工作流
 
 初始 HEAD：`2a301d8c6c0c7f37568998acc675a0c5d68b9d3c`；初始 `git status --short` 为空。

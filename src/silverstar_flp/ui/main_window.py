@@ -400,7 +400,7 @@ class MainWindow(QMainWindow):
         selected = QFileDialog.getExistingDirectory(
             self,
             self._translator.Text_Get("action.default_project_root"),
-            str(ExistingDirectory_Get(self._path_preferences.DefaultProjectRoot_Get())),
+            str(self._path_preferences.DefaultProjectRoot_EffectiveGet()),
         )
         if selected:
             try:
@@ -862,7 +862,7 @@ class MainWindow(QMainWindow):
         selected, _ = QFileDialog.getOpenFileName(
             self,
             self._translator.Text_Get("action.open_project"),
-            str(Path.home()),
+            str(self._path_preferences.DefaultProjectRoot_EffectiveGet()),
             "SilverStar project (*.ssflp)",
         )
         if not selected:
@@ -872,7 +872,7 @@ class MainWindow(QMainWindow):
     def _Project_New(self) -> None:
         if not self._ProjectChanges_Confirm():
             return
-        directory = ExistingDirectory_Get(self._path_preferences.DefaultProjectRoot_Get())
+        directory = self._path_preferences.DefaultProjectRoot_EffectiveGet()
         dialog = NewProjectDialog(self._translator, directory, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -922,6 +922,8 @@ class MainWindow(QMainWindow):
         path = self._project.project_path
         if path is None:
             path = self._ProjectPath_Select("action.save_project")
+            if path is not None and not self._Overwrite_Confirm(path):
+                return
         if path is not None:
             self._Project_Write(path)
 
@@ -931,7 +933,8 @@ class MainWindow(QMainWindow):
             self._Project_Write(path)
 
     def _ProjectPath_Select(self, title_key: str) -> Path | None:
-        suggested_path = self._project.project_path or Path.cwd() / "flight.ssflp"
+        filename = self._project.project_path.name if self._project.project_path else "flight.ssflp"
+        suggested_path = self._path_preferences.DefaultProjectRoot_EffectiveGet() / filename
         selected, _ = QFileDialog.getSaveFileName(
             self,
             self._translator.Text_Get(title_key),

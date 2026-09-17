@@ -39,6 +39,17 @@ class PathPreferences:
         except (OSError, ValueError, TypeError):
             return None
 
+    def DefaultProjectRoot_EffectiveGet(self) -> Path:
+        for directory in (
+            self.DefaultProjectRoot_Get(), Path.home() / "Documents", Path.home(), Path.cwd(),
+        ):
+            try:
+                if directory is not None and directory.is_dir():
+                    return directory
+            except OSError:
+                continue
+        return Path.cwd()
+
     def DefaultProjectRoot_Set(self, root: Path) -> None:
         root = Path(root).resolve(strict=True)
         if not root.is_dir():
