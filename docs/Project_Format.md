@@ -35,3 +35,9 @@ it for matching. The authoritative chain remains log Descriptor ↔ exact `.ssde
 
 The format remains **version 3**. These interactions add no fields and define no second project
 model.
+
+## Analysis source and range state
+
+Version 3 ui_state stores analysis_source and time_range (start/end/preset/custom_duration).
+The selected normal replay/What-if configuration is re-executed on reopen and retains its run ID.
+No result arrays are embedded; source log and decoder identity checks precede restoration.

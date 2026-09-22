@@ -90,7 +90,7 @@ def _Deploy_Replay(
         dataset,
         overrides,
         "attitude.q_nb",
-        ("pure_ins.recorded.attitude.q_nb",),
+        ("kf6.recorded.attitude.q_nb", "pure_ins.recorded.attitude.q_nb"),
     )
     trigger_mask = int(config.get("deploy_trigger_mask", 0))
     if start is None or trigger_mask == 0:
@@ -193,99 +193,9 @@ def _Regression_Get(timestamps: np.ndarray, values: np.ndarray) -> tuple[float, 
     return slope, span
 
 
-def _Landing_BaroImu(
-    dataset: FlightDataset,
-    config: Mapping[str, object],
-    recovery_start: int,
-) -> tuple[int | None, str, dict[str, float | int]]:
-    baro_records = [
-        record
-        for record in dataset.Records_Get("BARO_NATIVE")
-        if int(record.payload["sample_timestamp_us"]) >= recovery_start
-        and int(record.payload.get("valid_mask", 0)) != 0
-    ]
-    imu_records = [
-        record
-        for record in dataset.Records_Get("IMU_CORRECTED")
-        if int(record.payload["sample_timestamp_us"]) >= recovery_start
-        and bool(record.payload.get("correction_valid", 0))
-        and (int(record.payload.get("valid_mask", 0)) & 0x03) == 0x03
-    ]
-    if not baro_records or not imu_records:
-        return None, "barometer_or_corrected_imu_missing", {}
-    trigger_window_us = int(config.get("baro_trigger_window_ms", 0)) * 1000
-    trigger_min = int(config.get("baro_trigger_min_samples", 0))
-    trigger_rate = float(config.get("baro_trigger_rate_mps", 0.0))
-    duration_us = int(config.get("candidate_duration_ms", 0)) * 1000
-    confirm_rate = float(config.get("baro_confirm_rate_mps", 0.0))
-    max_span = float(config.get("baro_max_span_m", 0.0))
-    baro_min = int(config.get("candidate_baro_min_samples", 0))
-    imu_min = int(config.get("candidate_imu_min_samples", 0))
-    coverage_percent = int(config.get("candidate_min_coverage_percent", 0))
-    gyro_threshold = float(config.get("still_gyro_threshold_radps", 0.0))
-    accel_tolerance = float(config.get("still_accel_tolerance_mps2", 0.0))
-    gravity = float(dataset.header.get("gravity_mps2", 9.78))
-    baro_t = np.asarray(
-        [int(item.payload["sample_timestamp_us"]) for item in baro_records], dtype=np.uint64
-    )
-    baro_h = np.asarray([float(item.payload["altitude_m"]) for item in baro_records])
-    imu_t = np.asarray(
-        [int(item.payload["sample_timestamp_us"]) for item in imu_records], dtype=np.uint64
-    )
-    accel = np.asarray([item.payload["accel_b_mps2"] for item in imu_records], dtype=float)
-    gyro = np.asarray([item.payload["gyro_b_radps"] for item in imu_records], dtype=float)
-
-    for end_index in range(len(baro_t)):
-        window_start = int(baro_t[end_index]) - trigger_window_us
-        start_index = int(np.searchsorted(baro_t, window_start, side="left"))
-        if end_index - start_index + 1 < trigger_min:
-            continue
-        window_t = baro_t[start_index : end_index + 1]
-        if int(window_t[-1]) - int(window_t[0]) < trigger_window_us:
-            continue
-        slope, _ = _Regression_Get(window_t, baro_h[start_index : end_index + 1])
-        if not math.isfinite(slope) or abs(slope) >= trigger_rate:
-            continue
-        candidate_start = int(baro_t[end_index])
-        candidate_end = candidate_start + duration_us
-        baro_end = int(np.searchsorted(baro_t, candidate_end, side="right"))
-        imu_start = int(np.searchsorted(imu_t, candidate_start, side="right"))
-        imu_end = int(np.searchsorted(imu_t, candidate_end, side="right"))
-        candidate_baro_t = baro_t[end_index + 1 : baro_end]
-        candidate_baro_h = baro_h[end_index + 1 : baro_end]
-        candidate_imu_t = imu_t[imu_start:imu_end]
-        if len(candidate_baro_t) < baro_min or len(candidate_imu_t) < imu_min:
-            continue
-        synchronized_end = min(int(candidate_baro_t[-1]), int(candidate_imu_t[-1]))
-        if synchronized_end - candidate_start < duration_us:
-            continue
-        minimum_coverage = duration_us * coverage_percent / 100.0
-        if (
-            int(candidate_baro_t[-1]) - int(candidate_baro_t[0]) < minimum_coverage
-            or int(candidate_imu_t[-1]) - int(candidate_imu_t[0]) < minimum_coverage
-        ):
-            continue
-        candidate_slope, span = _Regression_Get(candidate_baro_t, candidate_baro_h)
-        maximum_gyro = float(np.max(np.linalg.norm(gyro[imu_start:imu_end], axis=1)))
-        maximum_gravity_error = float(
-            np.max(np.abs(np.linalg.norm(accel[imu_start:imu_end], axis=1) - gravity))
-        )
-        diagnostics = {
-            "baro_slope_mps": candidate_slope,
-            "baro_span_m": span,
-            "maximum_gyro_radps": maximum_gyro,
-            "maximum_gravity_error_mps2": maximum_gravity_error,
-            "baro_sample_count": len(candidate_baro_t),
-            "imu_sample_count": len(candidate_imu_t),
-        }
-        if (
-            abs(candidate_slope) < confirm_rate
-            and span < max_span
-            and maximum_gyro < gyro_threshold
-            and maximum_gravity_error < accel_tolerance
-        ):
-            return synchronized_end, "baro_imu_candidate_confirmed", diagnostics
-    return None, "no_landing_candidate_confirmed", {}
+def _Landing_BaroImu(dataset, config, recovery_start):
+    from silverstar_flp.analysis.landing_window import LandingWindow_Replay
+    return LandingWindow_Replay(dataset, config, recovery_start)
 
 
 def _Landing_Stillness(
@@ -301,7 +211,9 @@ def _Landing_Stillness(
         if int(record.payload["sample_timestamp_us"]) >= recovery_start
         and bool(record.payload.get("correction_valid", 0))
     ]
-    linear = dataset.Series_Get("pure_ins.recorded.navigation.linear_accel_enu")
+    linear = dataset.Series_Get("kf6.recorded.navigation.linear_accel_enu")
+    if linear is None:
+        linear = dataset.Series_Get("pure_ins.recorded.navigation.linear_accel_enu")
     if not imu or linear is None:
         return None, "corrected_imu_or_linear_acceleration_missing", {}
     confirm_us = int(config.get("landing_confirm_ms", 0)) * 1000
@@ -373,7 +285,7 @@ def _Landing_Replay(
         _Timestamp_DeltaMs(recorded, replayed),
         reason,
         0,
-        "EXACT",
+        "APPROXIMATE" if mode == 2 else "EXACT",
         diagnostics,
     )
 

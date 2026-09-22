@@ -67,6 +67,13 @@ def VelocitySchedule_Shift(schedule: tuple, shift_ms: int) -> tuple:
             )
         else:
             payload["velocity_valid_mask"] = 0
+        if 'valid_group_mask' in payload:
+            velocity_groups = (
+                (int(left["valid_group_mask"]) & int(right["valid_group_mask"]) & 12)
+                if usable
+                else 0
+            )
+            payload['valid_group_mask'] = (int(payload['valid_group_mask']) & 3) | velocity_groups
         flags = record.valid_flags if usable else record.valid_flags & ~2
         output.append(replace(item, record=replace(record, payload=payload, valid_flags=flags)))
     return tuple(output)

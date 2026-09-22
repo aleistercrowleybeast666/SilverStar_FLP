@@ -8,7 +8,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from contextlib import suppress
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -22,7 +22,7 @@ from silverstar_flp.core.analysis_source import (
     ChannelResolver,
     ReplayResultStore,
 )
-from silverstar_flp.core.context import TaskContext
+from silverstar_flp.core.context import TaskCancelledError, TaskContext
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector
@@ -31,6 +31,7 @@ from silverstar_flp.core.mission import (
     MissionReplayBounds_Get,
     MissionReplayEndReason,
 )
+from silverstar_flp.core.time_range import PlotArrays_Get
 from silverstar_flp.core.trajectory import (
     TimeSeriesGapSummary_Get,
     TrajectoryBounds,
@@ -56,6 +57,7 @@ from silverstar_flp.export.plot_metadata import (
     ChannelDisplayMetadata_Get,
     ComponentLabel_Get,
 )
+from silverstar_flp.export.ranges import ExportPages_Get, GifMetadata_Get, PlotDirectory
 from silverstar_flp.plugins.api.algorithm import (
     AlgorithmMetadata,
     AlgorithmResult,
@@ -92,11 +94,26 @@ class ExportOptions:
     include_trajectory_3d: bool = True
     include_attitude_gif: bool = True
     selected_channels: tuple[str, ...] = ()
+    page_mode: str = "30"
+    page_duration: float = 30.0
+    gif_range_mode: str = "Current View"
+    current_range: tuple[float, float] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "language", ExportLanguage(self.language))
         object.__setattr__(self, "theme", ExportTheme(self.theme))
         object.__setattr__(self, "ui_language", str(self.ui_language))
+        if self.page_mode not in ('5', '10', '30', '60', '120', 'Custom', 'Current View', 'Full'):
+            raise ValueError('export_page_mode_invalid')
+        if not np.isfinite(self.page_duration) or self.page_duration <= 0:
+            raise ValueError('export_page_duration_invalid')
+        if self.gif_range_mode not in ('Current View', 'Full'):
+            raise ValueError('export_gif_range_invalid')
+        if self.current_range is not None:
+            start, end = self.current_range
+            if not np.isfinite([start, end]).all() or start < 0 or end < start:
+                raise ValueError('export_current_range_invalid')
+
         object.__setattr__(
             self,
             "selected_channels",
@@ -488,6 +505,17 @@ class FlightExporter:
             else None
         )
         plot_directory = output / f"Plots{suffix}"
+        duration = (mission_bounds.end_timestamp_us - mission_bounds.start_timestamp_us) * 1e-6
+        pages = ExportPages_Get(duration, requested.page_mode, requested.page_duration,
+                                requested.current_range)
+        selected = ((0.0, duration) if requested.gif_range_mode == "Full" else
+                    requested.current_range or (0.0, min(duration, 30.0)))
+        gif_bounds = replace(mission_bounds,
+            start_timestamp_us=mission_bounds.start_timestamp_us + round(selected[0] * 1e6),
+            end_timestamp_us=mission_bounds.start_timestamp_us + round(selected[1] * 1e6))
+        gif_metadata = GifMetadata_Get(*selected)
+        gif_metadata["analysis_source"] = store.ActiveSource_Get().source_id
+
         standard_plot_units = (
             self._StandardPlotWorkUnitCount_Get(
                 dataset,
@@ -514,7 +542,7 @@ class FlightExporter:
         if gif_attitude is not None and gif_position is not None:
             deploy_timestamp = _Event_Timestamp(dataset, _EVENT_DEPLOY)
             landing_timestamp = (
-                mission_bounds.end_timestamp_us
+                gif_bounds.end_timestamp_us
                 if mission_bounds.end_reason == MissionReplayEndReason.LANDING
                 else None
             )
@@ -522,13 +550,13 @@ class FlightExporter:
                 self._ReplayFrameTimestamps_Get(
                     gif_attitude,
                     gif_position,
-                    mission_bounds.start_timestamp_us,
+                    gif_bounds.start_timestamp_us,
                     frames_per_second=_REPLAY_FRAMES_PER_SECOND,
-                    end_timestamp_us=mission_bounds.end_timestamp_us,
+                    end_timestamp_us=gif_bounds.end_timestamp_us,
                     key_event_timestamps=tuple(
                         timestamp
                         for timestamp in (
-                            mission_bounds.start_timestamp_us,
+                            gif_bounds.start_timestamp_us,
                             deploy_timestamp,
                             landing_timestamp,
                         )
@@ -547,7 +575,7 @@ class FlightExporter:
             + int(requested.include_events)
             + (len(channels) if requested.include_csv else 0)
             + int(full_covariance is not None)
-            + standard_plot_units
+            + standard_plot_units * len(pages)
             + int(requested.include_trajectory_3d)
             + gif_frame_units
             + int(requested.include_attitude_gif)
@@ -587,11 +615,14 @@ class FlightExporter:
             name = item_name(item_id, localized_name)
             try:
                 task_context.Cancel_RaiseIfRequested()
+                path.parent.mkdir(parents=True, exist_ok=True)
                 callback()
                 if not path.is_file():
                     raise FileNotFoundError(f"export_output_missing:{path.name}")
                 files.append(path)
                 generated.append(ExportGenerated(item_id, name, path))
+            except TaskCancelledError:
+                raise
             except Exception as exc:  # Each product must fail independently.
                 failure_add(item_id, name, exc)
             finally:
@@ -716,20 +747,19 @@ class FlightExporter:
                 )
 
         if requested.include_plots:
-            plot_directory.mkdir(exist_ok=True)
-            self._StandardPlots_Write(
-                dataset,
-                resolver,
-                plot_directory,
-                suffix,
-                language,
-                requested.theme,
-                attempt,
-                skip,
-            )
+            for page_start, page_end in pages:
+                task_context.Cancel_RaiseIfRequested()
+                self._plot_page_range = (page_start, page_end)
+                try:
+                    self._StandardPlots_Write(
+                        dataset, resolver, PlotDirectory(plot_directory, page_start, page_end),
+                        suffix, language, requested.theme, attempt, skip,
+                    )
+                finally:
+                    self._plot_page_range = None
 
         if requested.include_trajectory_3d:
-            path = output / f"Trajectory_3D{suffix}.png"
+            path = output / "Trajectory3D" / f"Trajectory_3D{suffix}.png"
             attempt(
                 "trajectory_3d",
                 path,
@@ -748,7 +778,7 @@ class FlightExporter:
                 item_name("trajectory_3d"),
             )
         if requested.include_attitude_gif:
-            path = output / f"Flight_Replay{suffix}.gif"
+            path = output / "GIF" / f"Flight_Replay{suffix}.gif"
             attempt(
                 "flight_replay_gif",
                 path,
@@ -766,11 +796,17 @@ class FlightExporter:
                     language,
                     requested.theme,
                     progress,
-                    mission_bounds=mission_bounds,
+                    mission_bounds=gif_bounds,
                     trajectory_bounds=trajectory_bounds,
                 ),
                 item_name("flight_replay_gif"),
             )
+
+            metadata_path = path.with_suffix(".json")
+            if path.is_file():
+                metadata_path.write_text(json.dumps(gif_metadata, indent=2), encoding="utf-8")
+                files.append(metadata_path)
+                generated.append(ExportGenerated("gif_metadata", "GIF", metadata_path))
 
         failure_report_ensure()
         manifest_path = output / f"Export_Manifest{suffix}.json"
@@ -1170,6 +1206,28 @@ class FlightExporter:
         start = dataset.start_timestamp_us or int(series.timestamp_us[0])
         return (series.timestamp_us.astype(np.float64) - start) * 1.0e-6
 
+    def _TimePage_Apply(self, figure) -> None:
+        interval = getattr(self, "_plot_page_range", None)
+        if interval is None:
+            return
+        for axis in figure.axes:
+            if getattr(axis, "name", "") == "3d":
+                continue
+            low, high = interval
+            for line in axis.lines:
+                if line.get_transform() != axis.transData:
+                    continue  # Threshold lines use blended axes coordinates.
+                x = np.asarray(line.get_xdata(), dtype=float)
+                y = np.asarray(line.get_ydata(), dtype=float)
+                if x.size != y.size:
+                    continue
+                keep = (x >= low) & (x <= high)
+                view_x, view_y = PlotArrays_Get(x[keep], y[keep])
+                line.set_data(view_x, view_y)
+            axis.relim()
+            axis.autoscale_view(scalex=False, scaley=True)
+            axis.set_xlim(low, max(high, low + .001))
+
     def _SeriesPlot_Write(
         self,
         dataset: FlightDataset,
@@ -1214,6 +1272,7 @@ class FlightExporter:
         unit = "" if series.unit in ("", "1", "enum", "bitmask") else f" [{series.unit}]"
         axis.set_ylabel(f"{quantity}{unit}", color=foreground)
         figure.tight_layout()
+        self._TimePage_Apply(figure)
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
@@ -1247,6 +1306,11 @@ class FlightExporter:
             values = values[:, None] if values.ndim == 1 else values
             values = values.copy()
             values[~cropped.valid, :] = np.nan
+            breaks = tuple(
+                (stamp - start) * 1e-6
+                for stamp in cropped.metadata.get("discontinuity_timestamps_us", ())
+            )
+            time, values = PlotArrays_Get(time, values, breaks=breaks, budget=max(len(time), 6000))
             for index in range(values.shape[1]):
                 component = cropped.columns[index] if cropped.columns else ""
                 component = ComponentLabel_Get(component, language.value)
@@ -1268,6 +1332,7 @@ class FlightExporter:
         axis.set_ylabel(ylabel, color=foreground)
         axis.legend(facecolor=background, labelcolor=foreground, framealpha=0.82, ncol=2)
         figure.tight_layout()
+        self._TimePage_Apply(figure)
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
@@ -1531,6 +1596,8 @@ class FlightExporter:
             if plugin.metadata.estimator_visualization is not None
         }
         sources = resolver.EstimatorSources_Get(tuple(metadata_by_id))
+        sources = tuple(source for source in sources
+                        if source.source_id == resolver.store.ActiveSource_Get().source_id)
         active_id = resolver.store.ActiveSource_Get().source_id
 
         def source_score(source: AnalysisSource) -> int:
@@ -1971,8 +2038,8 @@ class FlightExporter:
                     if not np.any(mask):
                         continue
                     axis.plot(
-                        time[mask],
-                        values[mask, index],
+                        time,
+                        np.where(mask, values[:, index], np.nan),
                         color=_PlotColor_Get(index),
                         linewidth=1.15,
                         label=ComponentLabel_Get(component, language.value),
@@ -2015,6 +2082,7 @@ class FlightExporter:
                 framealpha=0.82,
             )
         figure.tight_layout()
+        self._TimePage_Apply(figure)
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
@@ -2061,40 +2129,13 @@ class FlightExporter:
         mission_bounds = resolver.MissionReplayBounds_Get(active.source_id)
 
         def flight_layers(channel_id: str) -> tuple[tuple[TimeSeries, str, str], ...]:
-            recorded_solutions = resolver.RecordedSolutionLayers_Get(channel_id)
-            if active.kind == AnalysisSourceKind.RECORDED and recorded_solutions:
-                return tuple(
-                    (
-                        layer.series,
-                        labels.get(
-                            f"recorded_{layer.solution_id}",
-                            labels["recorded"],
-                        ),
-                        "-",
-                    )
-                    for layer in recorded_solutions
-                )
             series = self._Series_Require(resolver.Series_Get(channel_id), channel_id)
-            if active.kind == AnalysisSourceKind.RECORDED:
-                return ((series, labels["recorded"], "-"),)
-            layers = [(series, labels["active"], "-")]
-            if recorded_solutions:
-                layers.extend(
-                    (
-                        layer.series,
-                        labels.get(
-                            f"recorded_{layer.solution_id}",
-                            labels["recorded"],
-                        ),
-                        "--",
-                    )
-                    for layer in recorded_solutions
-                )
-            else:
-                recorded = resolver.RecordedSeries_Get(channel_id)
-                if recorded is not None:
-                    layers.append((recorded, labels["recorded"], "--"))
-            return tuple(layers)
+            label = (
+                labels["recorded"]
+                if active.kind == AnalysisSourceKind.RECORDED
+                else labels["active"]
+            )
+            return ((series, label, "-"),)
 
         standard_flight = (
             (
@@ -2667,6 +2708,7 @@ class FlightExporter:
                 )
         axes_array[-1].set_xlabel(f"{_LABELS[language]['time']} (s)", color=foreground)
         figure.tight_layout()
+        self._TimePage_Apply(figure)
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
@@ -2950,6 +2992,7 @@ class FlightExporter:
             title += f" · {_LABELS[language]['synthetic']}"
         axis.set_title(title, color=foreground)
         figure.tight_layout()
+        self._TimePage_Apply(figure)
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
@@ -3038,7 +3081,7 @@ class FlightExporter:
         duration_us = end - start
         main_frame_count = max(
             1,
-            int(np.ceil(duration_us * frames_per_second / 1_000_000.0)),
+            int(np.ceil(min(duration_us, 30_000_000) * frames_per_second / 1_000_000.0)),
         )
         targets = np.linspace(
             start,
@@ -3046,16 +3089,6 @@ class FlightExporter:
             main_frame_count,
             endpoint=False,
         ).round().astype(np.uint64)
-        for event_timestamp in sorted(set(key_event_timestamps)):
-            if event_timestamp < start or event_timestamp >= end:
-                continue
-            nearest = int(
-                np.argmin(
-                    np.abs(targets.astype(np.int64) - int(event_timestamp))
-                )
-            )
-            targets[nearest] = np.uint64(event_timestamp)
-        targets.sort()
         return targets
 
     @staticmethod
@@ -3344,7 +3377,7 @@ class FlightExporter:
         hold_frame_count: int = _REPLAY_FINAL_HOLD_FRAME_COUNT,
     ) -> list[int]:
         main = cls._FrameDurations_Distribute(
-            max(mission_duration_us, 0) * 1.0e-3,
+            min(max(mission_duration_us, 0), 30_000_000) * 1.0e-3,
             main_frame_count,
         )
         hold = cls._FrameDurations_Distribute(

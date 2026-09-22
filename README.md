@@ -1,5 +1,10 @@
 # SilverStar Flight Log Processor
 
+Current formal logging, fixed-lag replay, single Analysis Source, shared range and paged/GIF
+exports are defined in [Field Log Replay](docs/Field_Log_Replay.md). Exact validation is in
+[VALIDATION.md](VALIDATION.md). Historical test snapshots below do not supersede that contract.
+
+
 SilverStar_FLP is a Windows desktop application and command-line toolkit for SilverStar
 `SSLOG0` flight logs. It parses the current binary profile, reconstructs the complete Pure INS
 and KF6 navigation chains from `START`, compares recorded and recomputed results, visualizes the
@@ -65,7 +70,7 @@ Import and export use focused option dialogs. The five analysis pages are:
 3. Flight — START-cropped ENU velocity/position, corrected IMU, authoritative software attitude,
    and a themed 3D attitude/trajectory replay with its own playback controls. Before Deploy the
    path/current point are red; after Deploy they are blue; Deploy is one extent-scaled orange
-   world-space point. Recorded Pure INS and Recorded KF_6 remain separate, simultaneously visible
+   world-space point. Recorded Pure INS and Recorded KF_6 remain separately identified, with only the selected source visible
    curve layers.
 4. State Estimation — metadata-selected estimator state groups, covariance as 1-sigma or Pii,
    measurement-group innovations/NIS/noise/age, and generic sequential-update results. The page
@@ -198,7 +203,7 @@ truncated tails, sequence gaps, stationary Pure INS through both input chains, K
 NIS rejection, calibration/alignment/deploy summaries, replay-result coexistence, active-source
 readiness and return-to-Recorded behavior, Flight/State Estimation read-only source displays,
 dual Recorded navigation layers, unique plot colors, camera preservation, relative-origin 3D
-rendering, rocket PNG/GIF export, the <=60-frame combined GIF, partial export failures, project
+rendering, rocket PNG/GIF export, the 30 fps combined GIF, partial export failures, project
 immutability, and a headless five-page GUI smoke test. Dedicated decoder-profile tests cover ZIP
 limits and attacks, checksum/schema validation, the complete scalar whitelist, payload-size
 contracts, two IMU instances, canonical channels, same-physical-device capability linkage,

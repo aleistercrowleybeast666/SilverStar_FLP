@@ -2,7 +2,6 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
@@ -31,14 +30,13 @@ def test_kf_display_curves_use_common_timestamps_solid_lines_and_full_source(tmp
         curves = plot.listDataItems()
         active = curves[:3]
         recorded = [curve for curve in curves if curve.name().startswith("Recorded KF_6")]
-        assert len(active) == len(recorded) == 3
-        for recomputed, reference in zip(active, recorded, strict=True):
-            np.testing.assert_array_equal(recomputed.xData, reference.xData)
-            for curve in (recomputed, reference):
-                assert curve.opts["pen"].style() == Qt.PenStyle.SolidLine
-                assert curve.opts["pen"].widthF() == 1.9
-                assert curve.opts["symbol"] is None
-            assert recomputed.opts["pen"].color() != reference.opts["pen"].color()
+        assert len(curves) == len(active) == 3
+        assert recorded == []
+        for curve in active:
+            assert curve.opts['pen'].style() == Qt.PenStyle.SolidLine
+            assert curve.opts['pen'].widthF() == 1.7
+            assert curve.opts['symbol'] is None
+        assert all('Recomputed' in curve.name() for curve in active)
     assert page._position is full
     explorer = DataExplorerPage(Translator("en_US"))
     explorer.Dataset_Set(dataset, store)

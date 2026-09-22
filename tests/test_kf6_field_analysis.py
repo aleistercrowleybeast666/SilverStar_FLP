@@ -14,7 +14,7 @@ from silverstar_flp.plugins.algorithms.kf6.field_analysis import (
 from silverstar_flp.plugins.algorithms.kf6.plugin import Kf6AlgorithmPlugin, _ScheduledMeasurement
 from silverstar_flp.plugins.algorithms.pure_ins.plugin import PureInsAlgorithmPlugin
 from silverstar_flp.plugins.api.algorithm import ReplayRequest
-from tests.synthetic_parameter_navigation import NavigationPair_Open
+from tests.synthetic_parameter_navigation import NavigationPair_Open, SyntheticOperations_Attach
 
 
 def Measurement_Create(timestamp, sequence, velocity):
@@ -69,6 +69,7 @@ def test_actual_replay_latency_scan_and_missing_native_sweep_are_explicit(tmp_pa
         dataset,
         records={**dataset.records, "GNSS_MEASUREMENT": tuple(records), "BARO_MEASUREMENT": ()},
     )
+    dataset = SyntheticOperations_Attach(dataset)
     report = LatencySweep_Run(dataset, ReplayRequest())
     (tmp_path / "latency_synthetic.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     assert set(range(-500, 501, 20)) <= {run["shift_ms"] for run in report["runs"]}
@@ -81,6 +82,7 @@ def test_actual_replay_latency_scan_and_missing_native_sweep_are_explicit(tmp_pa
         != baseline.channels["navigation.velocity_enu"].values[-1].tolist()
     )
     assert hashlib.sha256(dataset.source_path.read_bytes()).hexdigest() == before
+    dataset = SyntheticOperations_Attach(dataset)
     field = FieldSweep_Run(dataset, include_latency=False)
     assert any("unavailable" in item for item in field["sweeps"]["gnss_velocity_vertical_scale"])
     assert field["baseline"]["stationary_velocity_rmse"] is None
@@ -143,6 +145,7 @@ def test_native_uncertainty_drives_independent_vertical_sweeps(tmp_path):
             "GNSS_NATIVE": tuple(native),
         },
     )
+    dataset = SyntheticOperations_Attach(dataset)
     report = FieldSweep_Run(dataset, include_latency=False)
     for rows in report["sweeps"].values():
         assert all("result" in row for row in rows)

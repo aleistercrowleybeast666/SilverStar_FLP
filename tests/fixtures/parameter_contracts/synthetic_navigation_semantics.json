@@ -11,15 +11,6 @@
     {
       "active_producers": [],
       "available": true,
-      "level": "optional",
-      "missing": [],
-      "producer_components": [],
-      "reason_code": "",
-      "record": "FLIGHT_LOG_RECORD_SAMPLE"
-    },
-    {
-      "active_producers": [],
-      "available": true,
       "level": "required",
       "missing": [],
       "producer_components": [],
@@ -56,15 +47,6 @@
       "producer_components": [],
       "reason_code": "",
       "record": "FLIGHT_LOG_RECORD_SYSTEM_CONFIG"
-    },
-    {
-      "active_producers": [],
-      "available": true,
-      "level": "optional",
-      "missing": [],
-      "producer_components": [],
-      "reason_code": "",
-      "record": "FLIGHT_LOG_RECORD_RAW_SENSOR"
     },
     {
       "active_producers": [],
@@ -140,15 +122,6 @@
       "missing": [],
       "producer_components": [],
       "reason_code": "",
-      "record": "FLIGHT_LOG_RECORD_IMU_NATIVE"
-    },
-    {
-      "active_producers": [],
-      "available": true,
-      "level": "recommended",
-      "missing": [],
-      "producer_components": [],
-      "reason_code": "",
       "record": "FLIGHT_LOG_RECORD_GNSS_NATIVE"
     },
     {
@@ -170,15 +143,6 @@
       "producer_components": [],
       "reason_code": "logging.unavailable.magnetometer_output_disabled",
       "record": "FLIGHT_LOG_RECORD_MAG_NATIVE"
-    },
-    {
-      "active_producers": [],
-      "available": true,
-      "level": "optional",
-      "missing": [],
-      "producer_components": [],
-      "reason_code": "",
-      "record": "FLIGHT_LOG_RECORD_HW_QUAT_NATIVE"
     },
     {
       "active_producers": [],
@@ -282,6 +246,33 @@
       "producer_components": [],
       "reason_code": "",
       "record": "FLIGHT_LOG_RECORD_DECODER_PROFILE_DESCRIPTOR"
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "level": "recommended",
+      "missing": [],
+      "producer_components": [],
+      "reason_code": "",
+      "record": "FLIGHT_LOG_RECORD_ESTIMATOR_STEP"
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "level": "recommended",
+      "missing": [],
+      "producer_components": [],
+      "reason_code": "",
+      "record": "FLIGHT_LOG_RECORD_GNSS_RECOVERY"
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "level": "recommended",
+      "missing": [],
+      "producer_components": [],
+      "reason_code": "",
+      "record": "FLIGHT_LOG_RECORD_LANDING_DIAGNOSTIC"
     }
   ],
   "canonical_channels": [
@@ -796,12 +787,12 @@
     },
     {
       "component": "silverstar.device.imu.jy901b",
-      "manifest_sha256": "c7985e157cf077efe0dd1e9a8941eea390a966a2605f01387f446b65916e200f",
+      "manifest_sha256": "db1d4f6aecc178e1c52c3943b99087ef1de58aee32a311e8c0f8ec4621875d4a",
       "version": "0.0.10"
     },
     {
       "component": "silverstar.device.gnss.neo_m9n",
-      "manifest_sha256": "3632525905352247caccb7bb7ce972b36c808bf7adb83244f02f53f74ecaad3c",
+      "manifest_sha256": "97c4dffcaec88f75ec5f841ae6697c607e57c79aee564150c80c56374a572107",
       "version": "0.0.10"
     },
     {
@@ -886,12 +877,12 @@
     },
     {
       "component": "silverstar.algorithm.estimator.kf6",
-      "manifest_sha256": "ea40ff31184a3c8ea06d3ba4d86f767c3b8b2c7adda98f7d8046821ea94d2128",
+      "manifest_sha256": "430185a6cd69596da4be995723c56f075368b7df67ff1d947bbd0663a367c5f2",
       "version": "0.0.10"
     },
     {
       "component": "silverstar.algorithm.ins.coning2_sculling2",
-      "manifest_sha256": "a54efaa6c629ea87e8d26512007c00b8671ffcb46b173a460b4ec6e4933bc3ba",
+      "manifest_sha256": "84cd94f41f40694d0bde6594d1aab884d17f09b0554797a669d658aa55bf8b62",
       "version": "0.0.10"
     },
     {
@@ -1374,6 +1365,238 @@
       }
     }
   },
+  "firmware_algorithm_parameters": [
+    {
+      "component": "silverstar.algorithm.ins.coning2_sculling2",
+      "manifest_sha256": "84cd94f41f40694d0bde6594d1aab884d17f09b0554797a669d658aa55bf8b62",
+      "parameters": [
+        {
+          "description": "Navigation gravity subtraction only; calibration, alignment and sensor conversion retain their separate platform gravity.",
+          "id": "gravity_mps2",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "m/s^2",
+          "value": 9.779999732971191
+        }
+      ],
+      "schema_id": "silverstar.algorithm-parameters/1.0"
+    },
+    {
+      "component": "silverstar.algorithm.estimator.kf6",
+      "manifest_sha256": "430185a6cd69596da4be995723c56f075368b7df67ff1d947bbd0663a367c5f2",
+      "parameters": [
+        {
+          "description": "Navigation gravity subtraction only; calibration, alignment and sensor conversion retain their separate platform gravity.",
+          "id": "gravity_mps2",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "m/s^2",
+          "value": 9.779999732971191
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_position_e",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2",
+          "value": 4.0
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_position_n",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2",
+          "value": 4.0
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_position_u",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2",
+          "value": 9.0
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_velocity_e",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2/s^2",
+          "value": 0.25
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_velocity_n",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2/s^2",
+          "value": 0.25
+        },
+        {
+          "description": "Initial covariance diagonal floor; GNSS-derived uncertainty may increase P0. No squaring of this value.",
+          "id": "p0_velocity_u",
+          "representation": "covariance_diagonal",
+          "storage_type": "float32",
+          "unit": "m^2/s^2",
+          "value": 0.25
+        },
+        {
+          "description": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+          "id": "process_accel_std_e",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m/s^2",
+          "value": 1.5
+        },
+        {
+          "description": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+          "id": "process_accel_std_n",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m/s^2",
+          "value": 1.5
+        },
+        {
+          "description": "Per-axis acceleration sigma; the existing prediction squares sigma and applies its unchanged time gains to Q.",
+          "id": "process_accel_std_u",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m/s^2",
+          "value": 2.0
+        },
+        {
+          "description": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+          "id": "gnss_position_std_horizontal",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m",
+          "value": 1.5
+        },
+        {
+          "description": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+          "id": "gnss_position_std_vertical",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m",
+          "value": 2.5
+        },
+        {
+          "description": "Actual sigma floor, not fixed R. Existing sigma=max(receiver sigma * 1.25, floor); R=sigma squared. Horizontal E/N share one floor; velocity E/N/U share one floor.",
+          "id": "gnss_velocity_std",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m/s",
+          "value": 0.15000000596046448
+        },
+        {
+          "description": "Configured altitude sigma; R = sigma squared. Provider recommendations never clamp this value.",
+          "id": "baro_std_m",
+          "representation": "sigma",
+          "storage_type": "float32",
+          "unit": "m",
+          "value": 2.5
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_1d_soft",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 6.635000228881836
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_1d_hard",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 10.82800006866455
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_2d_soft",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 9.210000038146973
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_2d_hard",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 13.815999984741211
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_3d_soft",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 11.345000267028809
+        },
+        {
+          "description": "Dimensionless actual NIS threshold. Hard must exceed soft after float32 rounding.",
+          "id": "nis_3d_hard",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 16.266000747680664
+        },
+        {
+          "description": "Actual dimensionless cap already used by soft gating; not a multiplier of a hidden default.",
+          "id": "nis_max_r_scale",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 10.0
+        },
+        {
+          "description": "GNSS vertical velocity standard deviation scale; continuous NIS rejection alone never authorizes recovery.",
+          "id": "gnss_velocity_vertical_scale",
+          "representation": "value",
+          "storage_type": "float32",
+          "unit": "1",
+          "value": 1.75
+        },
+        {
+          "description": "GNSS reacquisition outage threshold; continuous NIS rejection alone never authorizes recovery.",
+          "id": "gnss_reacquire_outage_ms",
+          "representation": "value",
+          "storage_type": "int32",
+          "unit": "ms",
+          "value": 300
+        },
+        {
+          "description": "Experimental fixed-lag delay. Receive-only timestamp fallback; trusted MCU sample epochs bypass this delay. Hard maximum reserves history scheduling margin.",
+          "id": "gnss_position_measurement_delay_ms",
+          "representation": "value",
+          "storage_type": "int32",
+          "unit": "ms",
+          "value": 0
+        },
+        {
+          "description": "Experimental fixed-lag delay. Receive-only timestamp fallback; trusted MCU sample epochs bypass this delay. Hard maximum reserves history scheduling margin.",
+          "id": "gnss_velocity_measurement_delay_ms",
+          "representation": "value",
+          "storage_type": "int32",
+          "unit": "ms",
+          "value": 270
+        },
+        {
+          "description": "Experimental fixed-lag delay. Receive-only timestamp fallback; trusted MCU sample epochs bypass this delay. Hard maximum reserves history scheduling margin.",
+          "id": "baro_measurement_delay_ms",
+          "representation": "value",
+          "storage_type": "int32",
+          "unit": "ms",
+          "value": 0
+        }
+      ],
+      "schema_id": "silverstar.algorithm-parameters/1.0"
+    }
+  ],
   "firmware_version": "0.0.10",
   "hardware": {
     "assignment_fingerprint": "",
@@ -1408,9 +1631,65 @@
     {
       "decimation_factor": 1,
       "enabled": true,
+      "period_us": 1000000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_STATS"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 40000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_ESTIMATOR"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
       "period_us": 0,
       "policy": "ONE_SHOT",
       "record": "FLIGHT_LOG_RECORD_SYSTEM_CONFIG"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 40000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_PURE_INS"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 40000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_KF6_DIAGNOSTIC"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 200000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_KF6_FULL_P"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 100000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_POWER"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 1000000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_HEALTH"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 1000000,
+      "policy": "PERIODIC",
+      "record": "FLIGHT_LOG_RECORD_TELEMETRY_DIAG"
     },
     {
       "decimation_factor": 1,
@@ -1423,8 +1702,36 @@
       "decimation_factor": 1,
       "enabled": true,
       "period_us": 0,
-      "policy": "DECIMATION",
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_GNSS_NATIVE"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
       "record": "FLIGHT_LOG_RECORD_BARO_NATIVE"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": false,
+      "period_us": 0,
+      "policy": "DECIMATION",
+      "record": "FLIGHT_LOG_RECORD_MAG_NATIVE"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_INERTIAL_INCREMENT"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_GNSS_MEASUREMENT"
     },
     {
       "decimation_factor": 1,
@@ -1437,7 +1744,7 @@
       "decimation_factor": 1,
       "enabled": true,
       "period_us": 0,
-      "policy": "DECIMATION",
+      "policy": "EVERY",
       "record": "FLIGHT_LOG_RECORD_IMU_CORRECTED"
     },
     {
@@ -1451,11 +1758,116 @@
       "decimation_factor": 1,
       "enabled": true,
       "period_us": 0,
+      "policy": "EVENT",
+      "record": "FLIGHT_LOG_RECORD_ALIGNMENT_RESULT"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "ONE_SHOT",
+      "record": "FLIGHT_LOG_RECORD_MISSION_CONFIG"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "ONE_SHOT",
+      "record": "FLIGHT_LOG_RECORD_DEVICE_DESCRIPTOR"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "ONE_SHOT",
+      "record": "FLIGHT_LOG_RECORD_ALGORITHM_DESCRIPTOR"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "ONE_SHOT",
+      "record": "FLIGHT_LOG_RECORD_LOG_STREAM_DESCRIPTOR"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
       "policy": "ONE_SHOT",
       "record": "FLIGHT_LOG_RECORD_DECODER_PROFILE_DESCRIPTOR"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_ESTIMATOR_STEP"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_GNSS_RECOVERY"
+    },
+    {
+      "decimation_factor": 1,
+      "enabled": true,
+      "period_us": 0,
+      "policy": "EVERY",
+      "record": "FLIGHT_LOG_RECORD_LANDING_DIAGNOSTIC"
     }
   ],
-  "metadata_declarations": {},
+  "metadata_declarations": {
+    "landing_diagnostics": {
+      "record": "LANDING_DIAGNOSTIC",
+      "reset_reasons": [
+        "NONE",
+        "IMU_INVALID",
+        "IMU_COVERAGE",
+        "IMU_CONTINUOUS_MOTION",
+        "BARO_INVALID",
+        "BARO_STALE",
+        "BARO_COVERAGE",
+        "BARO_SLOPE",
+        "BARO_SPAN",
+        "TIMESTAMP_DISCONTINUITY"
+      ],
+      "transitions": {
+        "1": "CANDIDATE_START",
+        "2": "CANDIDATE_RESET",
+        "3": "LANDED"
+      }
+    },
+    "navigation_replay": {
+      "clock": "MCU monotonic microseconds",
+      "corrected_imu": "Calibrated SI inputs. Do not calibrate again. Verify grouping and coning/sculling against every INERTIAL_INCREMENT interval.",
+      "fidelity": "Requires complete inputs and C golden validation; never infer operation timing from receive time.",
+      "group_order": [
+        "Pos EN",
+        "Pos U",
+        "Vel EN",
+        "Vel U"
+      ],
+      "initial_state": "INITIAL_STATE; P0 diagonal and initial velocity; attitude shared with chosen navigation algorithm",
+      "measurement_timestamps": "Resolved on the firmware MCU axis. Never subtract configured delay again. Position and velocity times are independent.",
+      "operation_order": "Sort ESTIMATOR_STEP.operation_sequence, GNSS_MEASUREMENT.receive_operation_sequence/position_operation_sequence/velocity_operation_sequence, and BARO_MEASUREMENT.operation_sequence within replay_epoch. Zero means not executed. Equal position/velocity operation IDs mean one combined insert.",
+      "prediction": "ESTIMATOR_STEP references INERTIAL_INCREMENT.sequence; record order is not execution order across logger queues.",
+      "reanchor": "Qualified availability outage only; consistent returning observations at least 1 second, minimum sample count, exhausted bounded normal/inflation attempts; replace only selected state block, variance diagonal from actual R, affected cross covariance zero; apply at measurement time then replay forward.",
+      "replay_generation": "Number of successful rewind/replay transactions after this operation or packet.",
+      "replay_results": [
+        "OK",
+        "INVALID",
+        "HISTORY_MISS",
+        "OVERFLOW",
+        "EPOCH_MISMATCH",
+        "DISCONTINUITY",
+        "NUMERIC_ERROR",
+        "WORK_LIMIT"
+      ],
+      "revision": 2
+    }
+  },
   "mode_parameters": {
     "deployment": {
       "ApogeeVerticalVelocity": {
@@ -1470,10 +1882,7 @@
     }
   },
   "modes": {
-    "calibration": [
-      "OneFace",
-      "SixFace"
-    ],
+    "calibration": [],
     "deployment": [
       "ApogeeVerticalVelocity",
       "Tilt"
@@ -1721,8 +2130,8 @@
       "vendor": "SilverStar"
     }
   ],
-  "project": "SYNTHETIC_PARAMETER_NAVIGATION",
-  "project_digest": "3d89b29e",
+  "project": "JointContract",
+  "project_digest": "e9874532",
   "protocol_bindings": [
     {
       "binding": "flight_log_sink",
@@ -1827,6 +2236,100 @@
       "validity": {}
     },
     {
+      "active_producers": [
+        "silverstar.core.device_task"
+      ],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "imu_queue_overflow_count",
+        "logger_queue_overflow_count",
+        "ins_update_count",
+        "health_flags"
+      ],
+      "display_names": {
+        "en_US": "Log Statistics",
+        "zh_CN": "日志统计"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 1000000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 16,
+      "producer_components": [
+        "silverstar.core.device_task"
+      ],
+      "record": "FLIGHT_LOG_RECORD_STATS",
+      "record_type": "0x03",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "position_enu_m",
+        "velocity_enu_mps",
+        "covariance_diagonal",
+        "gnss_position_enu_m",
+        "gnss_velocity_enu_mps",
+        "baro_relative_altitude_m",
+        "last_position_nis",
+        "last_velocity_nis",
+        "last_baro_nis",
+        "measurement_result_flags",
+        "health_flags",
+        "prediction_queue_overflow_count",
+        "gnss_sequence",
+        "baro_sequence",
+        "gnss_timestamp_us",
+        "baro_timestamp_us",
+        "gnss_measurement_age_us",
+        "baro_measurement_age_us",
+        "gnss_origin_valid",
+        "baro_origin_valid",
+        "initialized",
+        "mission_running",
+        "q_nb",
+        "acceleration_enu_mps2",
+        "operation_sequence",
+        "replay_epoch"
+      ],
+      "display_names": {
+        "en_US": "Estimator State",
+        "zh_CN": "状态估计"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 40000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 172,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_ESTIMATOR",
+      "record_type": "0x04",
+      "record_version": 1,
+      "validity": {}
+    },
+    {
       "active_producers": [],
       "available": true,
       "cadence": {
@@ -1886,6 +2389,252 @@
       "available": true,
       "cadence": {
         "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "update_sequence",
+        "q_nb",
+        "velocity_enu_mps",
+        "position_enu_m",
+        "accel_enu_mps2",
+        "dt_s",
+        "health_flags",
+        "alignment_valid",
+        "ins_valid"
+      ],
+      "display_names": {
+        "en_US": "Pure INS",
+        "zh_CN": "纯惯导"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 40000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 68,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_PURE_INS",
+      "record_type": "0x07",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "position_innovation",
+        "velocity_innovation",
+        "baro_innovation",
+        "position_variance_r",
+        "velocity_variance_r",
+        "baro_variance_r",
+        "position_nis",
+        "velocity_nis",
+        "baro_nis",
+        "position_r_scale",
+        "velocity_r_scale",
+        "baro_r_scale",
+        "process_accel_std_mps2",
+        "gnss_velocity_valid_mask",
+        "velocity_update_dimension",
+        "position_update_result",
+        "velocity_update_result",
+        "baro_update_result"
+      ],
+      "display_names": {
+        "en_US": "KF6 Diagnostic",
+        "zh_CN": "KF6 诊断"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 40000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 104,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_KF6_DIAGNOSTIC",
+      "record_type": "0x08",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "covariance_upper_triangle"
+      ],
+      "display_names": {
+        "en_US": "KF6 Full Covariance",
+        "zh_CN": "KF6 完整协方差"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 200000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 84,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_KF6_FULL_P",
+      "record_type": "0x09",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "source_descriptor_id",
+        "instance_id",
+        "reserved",
+        "sample_timestamp_us",
+        "receive_timestamp_us",
+        "sequence",
+        "voltage_v",
+        "current_a",
+        "power_w",
+        "state_of_charge_percent",
+        "temperature_c",
+        "valid_mask"
+      ],
+      "display_names": {
+        "en_US": "Power State (Input Voltage)",
+        "zh_CN": "电源状态（输入电压）"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 100000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [
+        "source_descriptor_id",
+        "instance_id"
+      ],
+      "payload_size": 48,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_POWER",
+      "record_type": "0x0A",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "timestamp_us",
+        "compiled_mask",
+        "enabled_mask",
+        "present_mask",
+        "healthy_mask",
+        "start_blocking_mask",
+        "warning_mask",
+        "sequence",
+        "ready"
+      ],
+      "display_names": {
+        "en_US": "Health State",
+        "zh_CN": "健康状态"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 1000000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 40,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_HEALTH",
+      "record_type": "0x0B",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [
+        "silverstar.core.telemetry_task"
+      ],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "periodic",
+        "source": ""
+      },
+      "columns": [
+        "last_transmit_timestamp_us",
+        "last_receive_timestamp_us",
+        "transmit_packet_count",
+        "receive_packet_count",
+        "transmit_error_count",
+        "receive_error_count",
+        "integrity_error_count",
+        "last_rssi_dbm",
+        "last_snr_q4",
+        "online"
+      ],
+      "display_names": {
+        "en_US": "Telemetry Diagnostic",
+        "zh_CN": "遥测诊断"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 1000000,
+        "policy": "PERIODIC"
+      },
+      "partition_by": [],
+      "payload_size": 48,
+      "producer_components": [
+        "silverstar.core.telemetry_task"
+      ],
+      "record": "FLIGHT_LOG_RECORD_TELEMETRY_DIAG",
+      "record_type": "0x0C",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
         "kind": "one_shot",
         "source": ""
       },
@@ -1937,6 +2686,69 @@
       "available": true,
       "cadence": {
         "display_names": {
+          "en_US": "Follows GNSS updates",
+          "zh_CN": "取决于GNSS数据更新"
+        },
+        "kind": "source",
+        "source": "gnss"
+      },
+      "columns": [
+        "source_descriptor_id",
+        "instance_id",
+        "reserved",
+        "sample_timestamp_us",
+        "receive_timestamp_us",
+        "sequence",
+        "latitude_e7",
+        "longitude_e7",
+        "ellipsoid_height_mm",
+        "msl_height_mm",
+        "velocity_enu_mps",
+        "velocity_variance_m2ps2",
+        "horizontal_accuracy_m",
+        "vertical_accuracy_m",
+        "speed_accuracy_mps",
+        "velocity_valid_mask",
+        "fix_type",
+        "position_usable",
+        "course_usable",
+        "online",
+        "fix_ok",
+        "satellite_count",
+        "valid_group_mask",
+        "measurement_timestamp_trusted",
+        "supported_fields",
+        "valid_fields",
+        "group_reject_mask"
+      ],
+      "display_names": {
+        "en_US": "Native GNSS Data",
+        "zh_CN": "GNSS 原始数据"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [
+        "source_descriptor_id",
+        "instance_id"
+      ],
+      "payload_size": 112,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_GNSS_NATIVE",
+      "record_type": "0x0F",
+      "record_version": 1,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {
           "en_US": "Follows barometer updates",
           "zh_CN": "取决于气压计数据更新"
         },
@@ -1950,12 +2762,15 @@
         "sample_timestamp_us",
         "receive_timestamp_us",
         "sequence",
-        "pressure_raw_pa",
-        "altitude_raw_cm",
         "pressure_pa",
         "altitude_m",
         "altitude_variance_m2",
-        "valid_mask"
+        "valid_mask",
+        "supported_fields",
+        "valid_fields",
+        "healthy",
+        "measurement_timestamp_trusted",
+        "reserved_quality"
       ],
       "display_names": {
         "en_US": "Native Barometer Data",
@@ -1967,17 +2782,161 @@
         "decimation_factor": 1,
         "enabled": true,
         "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [
+        "source_descriptor_id",
+        "instance_id"
+      ],
+      "payload_size": 52,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_BARO_NATIVE",
+      "record_type": "0x10",
+      "record_version": 1,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": false,
+      "cadence": {
+        "display_names": {
+          "en_US": "Follows magnetometer updates",
+          "zh_CN": "取决于磁力计数据更新"
+        },
+        "kind": "source",
+        "source": "magnetometer"
+      },
+      "columns": [
+        "source_descriptor_id",
+        "instance_id",
+        "reserved",
+        "sample_timestamp_us",
+        "receive_timestamp_us",
+        "sequence",
+        "raw",
+        "magnetic_field_b_uT",
+        "temperature_c",
+        "valid_mask",
+        "calibration_valid"
+      ],
+      "display_names": {
+        "en_US": "Native Magnetometer Data",
+        "zh_CN": "磁力计原始数据"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": false,
+        "period_us": 0,
         "policy": "DECIMATION"
       },
       "partition_by": [
         "source_descriptor_id",
         "instance_id"
       ],
-      "payload_size": 48,
+      "payload_size": 60,
       "producer_components": [],
-      "record": "FLIGHT_LOG_RECORD_BARO_NATIVE",
-      "record_type": "0x10",
+      "record": "FLIGHT_LOG_RECORD_MAG_NATIVE",
+      "record_type": "0x11",
       "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {
+          "en_US": "Follows inertial mechanization output",
+          "zh_CN": "取决于惯导机械化输出"
+        },
+        "kind": "algorithm_output",
+        "source": "inertial_mechanization"
+      },
+      "columns": [
+        "interval_start_timestamp_us",
+        "interval_end_timestamp_us",
+        "sequence",
+        "dt_s",
+        "delta_theta_b_corrected",
+        "delta_velocity_b_sculling_corrected",
+        "health_flags"
+      ],
+      "display_names": {
+        "en_US": "Inertial Increment",
+        "zh_CN": "惯性增量"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [],
+      "payload_size": 52,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_INERTIAL_INCREMENT",
+      "record_type": "0x13",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "measurement",
+        "source": ""
+      },
+      "columns": [
+        "sample_timestamp_us",
+        "receive_timestamp_us",
+        "sequence",
+        "position_enu_m",
+        "velocity_enu_mps",
+        "position_variance_m2",
+        "velocity_variance_m2ps2",
+        "velocity_valid_mask",
+        "position_usable",
+        "fusion_allowed",
+        "reserved",
+        "position_measurement_timestamp_us",
+        "velocity_measurement_timestamp_us",
+        "estimator_present_timestamp_us",
+        "receive_operation_sequence",
+        "position_operation_sequence",
+        "velocity_operation_sequence",
+        "replay_epoch",
+        "replay_generation",
+        "valid_group_mask",
+        "position_replay_result",
+        "velocity_replay_result",
+        "receive_result",
+        "group_update_result",
+        "group_nis",
+        "position_innovation_m",
+        "velocity_innovation_mps"
+      ],
+      "display_names": {
+        "en_US": "GNSS Measurement",
+        "zh_CN": "GNSS 量测"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [],
+      "payload_size": 164,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_GNSS_MEASUREMENT",
+      "record_type": "0x14",
+      "record_version": 1,
       "validity": {}
     },
     {
@@ -1994,7 +2953,18 @@
         "sequence",
         "relative_altitude_m",
         "variance_m2",
-        "valid_mask"
+        "valid_mask",
+        "measurement_timestamp_us",
+        "estimator_present_timestamp_us",
+        "operation_sequence",
+        "replay_epoch",
+        "replay_generation",
+        "update_result",
+        "replay_result",
+        "measurement_timestamp_trusted",
+        "reserved",
+        "innovation_m",
+        "nis"
       ],
       "display_names": {
         "en_US": "Barometer Measurement",
@@ -2009,11 +2979,11 @@
         "policy": "EVERY"
       },
       "partition_by": [],
-      "payload_size": 32,
+      "payload_size": 72,
       "producer_components": [],
       "record": "FLIGHT_LOG_RECORD_BARO_MEASUREMENT",
       "record_type": "0x15",
-      "record_version": 0,
+      "record_version": 1,
       "validity": {}
     },
     {
@@ -2051,7 +3021,7 @@
         "decimation_factor": 1,
         "enabled": true,
         "period_us": 0,
-        "policy": "DECIMATION"
+        "policy": "EVERY"
       },
       "partition_by": [],
       "payload_size": 60,
@@ -2114,6 +3084,239 @@
       "available": true,
       "cadence": {
         "display_names": {},
+        "kind": "event",
+        "source": ""
+      },
+      "columns": [
+        "capability_mask",
+        "selected_mask",
+        "required_mask",
+        "ready_mask",
+        "unavailable_mask",
+        "missing_adapter_mask",
+        "start_sequence",
+        "state",
+        "config_result",
+        "ready",
+        "source_count",
+        "attitude_timestamp_us",
+        "q_nb",
+        "gnss_origin_lat_e7",
+        "gnss_origin_lon_e7",
+        "gnss_origin_height_mm",
+        "gnss_sample_count",
+        "gnss_horizontal_accuracy_m",
+        "gnss_vertical_accuracy_m",
+        "barometer_sample_count",
+        "barometer_origin_pressure_pa",
+        "barometer_origin_altitude_m",
+        "attitude_state",
+        "gnss_state",
+        "barometer_state",
+        "attitude_source"
+      ],
+      "display_names": {
+        "en_US": "Alignment Result",
+        "zh_CN": "对准结果"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVENT"
+      },
+      "partition_by": [],
+      "payload_size": 96,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_ALIGNMENT_RESULT",
+      "record_type": "0x18",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "one_shot",
+        "source": ""
+      },
+      "columns": [
+        "alignment_algorithm",
+        "rocket_longitudinal_axis",
+        "deploy_trigger_mask",
+        "tilt_reference",
+        "landing_enable",
+        "landing_mode",
+        "impact_capable",
+        "known_yaw_deg",
+        "magnetic_declination_deg",
+        "tilt_threshold_deg",
+        "apogee_vz_threshold_mps",
+        "deploy_confirm_ms",
+        "deploy_delay_ms",
+        "baro_trigger_window_ms",
+        "baro_trigger_min_samples",
+        "baro_trigger_rate_mps",
+        "candidate_duration_ms",
+        "baro_confirm_rate_mps",
+        "baro_max_span_m",
+        "candidate_baro_min_samples",
+        "candidate_imu_min_samples",
+        "candidate_min_coverage_percent",
+        "impact_inhibit_ms",
+        "impact_threshold_mps2",
+        "still_gyro_threshold_radps",
+        "still_accel_tolerance_mps2",
+        "landing_confirm_ms",
+        "landing_sample_max_age_ms"
+      ],
+      "display_names": {
+        "en_US": "Mission Configuration",
+        "zh_CN": "任务配置"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "ONE_SHOT"
+      },
+      "partition_by": [],
+      "payload_size": 91,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_MISSION_CONFIG",
+      "record_type": "0x19",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "one_shot",
+        "source": ""
+      },
+      "columns": [
+        "descriptor_id",
+        "physical_device_id",
+        "device_class",
+        "instance_id",
+        "driver_id",
+        "flags",
+        "capability_mask",
+        "configured_rate_hz",
+        "driver_name_hash",
+        "model_name_hash"
+      ],
+      "display_names": {
+        "en_US": "Device Descriptor",
+        "zh_CN": "设备描述"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "ONE_SHOT"
+      },
+      "partition_by": [
+        "instance_id",
+        "physical_device_id"
+      ],
+      "payload_size": 26,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_DEVICE_DESCRIPTOR",
+      "record_type": "0x1A",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "one_shot",
+        "source": ""
+      },
+      "columns": [
+        "descriptor_id",
+        "algorithm_class",
+        "instance_id",
+        "algorithm_id",
+        "flags",
+        "config_digest",
+        "name_hash"
+      ],
+      "display_names": {
+        "en_US": "Algorithm Descriptor",
+        "zh_CN": "算法描述"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "ONE_SHOT"
+      },
+      "partition_by": [
+        "instance_id"
+      ],
+      "payload_size": 16,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_ALGORITHM_DESCRIPTOR",
+      "record_type": "0x1B",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "one_shot",
+        "source": ""
+      },
+      "columns": [
+        "record_type",
+        "record_version",
+        "enabled",
+        "policy",
+        "decimation",
+        "reserved",
+        "period_us"
+      ],
+      "display_names": {
+        "en_US": "Log Stream Descriptor",
+        "zh_CN": "日志流描述"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "ONE_SHOT"
+      },
+      "partition_by": [],
+      "payload_size": 12,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_LOG_STREAM_DESCRIPTOR",
+      "record_type": "0x1C",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
         "kind": "one_shot",
         "source": ""
       },
@@ -2144,6 +3347,133 @@
       "producer_components": [],
       "record": "FLIGHT_LOG_RECORD_DECODER_PROFILE_DESCRIPTOR",
       "record_type": "0x1D",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "measurement",
+        "source": ""
+      },
+      "columns": [
+        "estimator_present_timestamp_us",
+        "interval_end_timestamp_us",
+        "operation_sequence",
+        "source_sequence",
+        "replay_epoch",
+        "replay_generation",
+        "replay_result",
+        "attitude_result",
+        "reserved"
+      ],
+      "display_names": {
+        "en_US": "Estimator Step",
+        "zh_CN": "估计器执行时序"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [],
+      "payload_size": 36,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_ESTIMATOR_STEP",
+      "record_type": "0x1E",
+      "record_version": 0,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "measurement",
+        "source": ""
+      },
+      "columns": [
+        "estimator_present_timestamp_us",
+        "source_sequence",
+        "replay_epoch",
+        "quality_reject_mask",
+        "consistency_count",
+        "inflation_attempt_count",
+        "reanchor_count",
+        "inflation_factor",
+        "valid",
+        "update_result",
+        "outage",
+        "recovery_active",
+        "reanchor_reason",
+        "operation_sequence",
+        "replay_generation"
+      ],
+      "display_names": {
+        "en_US": "Gnss Recovery",
+        "zh_CN": "GNSS 分组恢复"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [],
+      "payload_size": 124,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_GNSS_RECOVERY",
+      "record_type": "0x1F",
+      "record_version": 1,
+      "validity": {}
+    },
+    {
+      "active_producers": [],
+      "available": true,
+      "cadence": {
+        "display_names": {},
+        "kind": "event",
+        "source": ""
+      },
+      "columns": [
+        "evaluation_timestamp_us",
+        "candidate_start_timestamp_us",
+        "sequence",
+        "candidate_elapsed_us",
+        "valid_coverage",
+        "still_ratio",
+        "maximum_bad_duration_us",
+        "baro_slope_mps",
+        "baro_span_m",
+        "baro_coverage",
+        "transition",
+        "reset_reason",
+        "reserved"
+      ],
+      "display_names": {
+        "en_US": "Landing Diagnostic",
+        "zh_CN": "着陆候选诊断"
+      },
+      "enums": {},
+      "events": {},
+      "logging": {
+        "decimation_factor": 1,
+        "enabled": true,
+        "period_us": 0,
+        "policy": "EVERY"
+      },
+      "partition_by": [],
+      "payload_size": 52,
+      "producer_components": [],
+      "record": "FLIGHT_LOG_RECORD_LANDING_DIAGNOSTIC",
+      "record_type": "0x20",
       "record_version": 0,
       "validity": {}
     }
@@ -2377,7 +3707,5 @@
     "ins": "silverstar.algorithm.ins.coning2_sculling2",
     "landing": "silverstar.flight_logic.landing.baro_imu_window_strategy"
   },
-  "target": "SilverStar_F407",
-  "schema_version": 65538,
-  "firmware_algorithm_parameters": []
+  "target": "SilverStar_F407"
 }

@@ -1,16 +1,10 @@
 # Replay semantics
 
-The GUI has one fixed replay input: **Corrected IMU**. It rebuilds subinterval increments,
-coning/sculling compensation, software quaternion, ENU acceleration, velocity, and position from
-START. There is no GUI input-source selector.
-
-The algorithm API and CLI retain **Recorded Inertial Increment** for validation and advanced
-workflows. It skips IMU preprocessing and re-runs mechanization from START. Neither path silently
-falls back to the other when required data is absent.
-
-KF6 consumes an independently propagated attitude/mechanization prediction plus logged GNSS and
-barometer measurements, restored P0/Q/R/NIS configuration, and optional What-if overrides.
-Recorded algorithm outputs are comparison targets, never replay inputs.
+The current formal input and execution contract is [Field Log Replay](Field_Log_Replay.md).
+KF6 always uses recorded increments plus recorded estimator operation ordering for faithful replay;
+the Corrected IMU GUI request also runs independent mechanization verification. It never replaces
+faithful inputs with rebuilt increments. Pure INS may run corrected-IMU navigation independently.
+Missing formal operation inputs are not inferred. Calibration is not applied a second time.
 
 GNSS is optional according to the KF_6 input contract. A receiver may be configured and online
 while reporting no fix, no usable position/velocity, and no `GNSS_MEASUREMENT` Records. Replay
@@ -84,11 +78,10 @@ The Replay page owns the only editable **Analysis Data Source** selector:
    global analysis source.
 
 Flight and State Estimation display the active source read-only. Flight and export resolve it
-through `ChannelResolver`. Recorded Pure INS and Recorded KF_6 navigation stay separate layers;
-when a replay source is active, both recorded layers are dashed references. State Estimation uses
-only compatible estimator diagnostics declared by that algorithm's visualization metadata and
-never invents per-axis sequential updates. Data Explorer exposes every run under a unique
-human-readable prefix. No source selection copies or overwrites the immutable recorded dataset.
+through `ChannelResolver`. Exactly the selected result supplies navigation, attitude, state
+diagnostics, 3D and exports. Recorded KF6/Pure INS are identified distinctly but never overlaid
+automatically. Explicit comparisons remain separate. Data Explorer exposes every run under a
+unique prefix; selection does not copy or overwrite recorded data.
 
 ## Display-only event points
 

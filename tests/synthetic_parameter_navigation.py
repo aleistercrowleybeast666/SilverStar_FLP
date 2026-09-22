@@ -5,8 +5,12 @@ import math
 import struct
 from pathlib import Path
 
+from silverstar_flp.core.dataset import DecodedRecord
 from silverstar_flp.decoder_profiles.discovery import DecoderProfileCache
 from silverstar_flp.log_open import LogOpenCoordinator, LogOpenRequest
+from silverstar_flp.plugins.algorithms.pure_ins.mechanization import (
+    InertialIncrement_BuildFromCorrectedImu,
+)
 from silverstar_flp.plugins.registry import builtin_registry
 from tests.parameter_fixtures import FirmwareSets_Build
 from tests.sslog_synthetic import START_TIMESTAMP_US, SyntheticSslogBuilder
@@ -34,6 +38,8 @@ def NavigationPair_Open(
     records = {r["name"]: r for r in catalog["records"]}
     builder = SyntheticSslogBuilder()
 
+    corrected = []
+
     def add(name, timestamp, values, flags=0):
         record = records[name]
         payload = bytearray()
@@ -56,7 +62,11 @@ def NavigationPair_Open(
             if count == 1:
                 value = [value]
             payload.extend(struct.pack("<" + formats[kind] * count, *value))
-        builder.Record_Add(int(record["id"], 0), bytes(payload), timestamp, valid_flags=flags)
+        builder.Record_Add(int(record["id"], 0), bytes(payload), timestamp, valid_flags=flags,
+                           record_version=record['version'])
+        if name == 'IMU_CORRECTED':
+            corrected.append(DecodedRecord(int(record['id'], 0), name, record['version'],
+                len(payload), len(corrected)+1, timestamp, flags, values, 0))
 
     start = START_TIMESTAMP_US + preflight_us
     if preflight_us:
@@ -106,6 +116,8 @@ def NavigationPair_Open(
         {"q_nb": [1, 0, 0, 0], "p0_diagonal": p0, "barometer_origin_std_m": 0.2},
     )
     add("EVENT", start, {"event_id": 3})
+    operation = 0
+    present = 0
     for index in range(flight_samples):
         timestamp = start + index * 10000
         t = index * 0.01
@@ -130,6 +142,23 @@ def NavigationPair_Open(
                 },
                 3,
             )
+        if not omit_imu and index and index % 2 == 0:
+            increments, _ = InertialIncrement_BuildFromCorrectedImu(
+                tuple(corrected[-3:]), start_timestamp_us=start)
+            increment = increments[0]
+            sequence = index // 2
+            add('INERTIAL_INCREMENT', timestamp, dict(
+                interval_start_timestamp_us=increment.interval_start_timestamp_us,
+                interval_end_timestamp_us=timestamp, sequence=sequence,
+                source_sequence=index+1, dt_s=increment.dt_s,
+                delta_theta_b_corrected=increment.delta_theta_b,
+                delta_velocity_b_sculling_corrected=increment.delta_velocity_b,
+                subsample_count=2))
+            operation += 1
+            present = timestamp
+            add('ESTIMATOR_STEP', timestamp, dict(interval_end_timestamp_us=timestamp,
+                estimator_present_timestamp_us=present, operation_sequence=operation,
+                source_sequence=sequence, replay_epoch=1, attitude_result=1))
         if index and index % 5 == 0:
             altitude = 2 / 1.2 * t - 2 / 1.2**2 * math.sin(1.2 * t)
             add(
@@ -142,10 +171,12 @@ def NavigationPair_Open(
                     "sequence": index,
                     "altitude_m": altitude,
                     "altitude_variance_m2": 16,
+                    "healthy": 1,
                     "valid_mask": 1,
                 },
                 4,
             )
+            operation += 1
             add(
                 "BARO_MEASUREMENT",
                 timestamp,
@@ -154,6 +185,11 @@ def NavigationPair_Open(
                     "receive_timestamp_us": timestamp,
                     "sequence": index,
                     "relative_altitude_m": altitude,
+                    "measurement_timestamp_us": present,
+                    "estimator_present_timestamp_us": present,
+                    "operation_sequence": operation,
+                    "replay_epoch": 1,
+                    "measurement_timestamp_trusted": 0,
                     "variance_m2": max(16, kf["baro_std_m"] ** 2) + 0.04,
                     "valid_mask": 1,
                 },
@@ -163,3 +199,40 @@ def NavigationPair_Open(
     return LogOpenCoordinator(
         builtin_registry(), cache=DecoderProfileCache(directory / "cache")
     ).Open(LogOpenRequest(log_path=log, decoder_package_path=package))
+
+
+def SyntheticOperations_Attach(dataset):
+    from dataclasses import replace
+    timeline = []
+    for name, rank in (('ESTIMATOR_STEP', 0), ('GNSS_MEASUREMENT', 1), ('BARO_MEASUREMENT', 2)):
+        timeline.extend((record.timestamp_us, rank, record) for record in dataset.Records_Get(name))
+    timeline.sort(key=lambda item: item[:2])
+    records = {name:list(items) for name, items in dataset.records.items()}
+    for name in ('ESTIMATOR_STEP', 'GNSS_MEASUREMENT', 'BARO_MEASUREMENT'):
+        records[name] = []
+    operation, present = 0, 0
+    for ordinal, (_, rank, record) in enumerate(timeline, 1):
+        payload = dict(record.payload)
+        if rank == 0:
+            operation += 1
+            present = record.timestamp_us
+            payload['interval_end_timestamp_us'] = present
+            payload['operation_sequence'] = operation
+        elif rank == 1:
+            payload['receive_operation_sequence'] = operation + 1
+            payload['position_operation_sequence'] = operation + 2
+            payload['velocity_operation_sequence'] = operation + 2
+            operation += 2
+            payload.update(receive_result=0, position_replay_result=0, velocity_replay_result=0,
+                           position_measurement_timestamp_us=present,
+                           velocity_measurement_timestamp_us=present,
+                           valid_group_mask=(3 if payload.get('position_usable') else 0) |
+                                            (12 if payload.get('velocity_valid_mask', 0) else 0))
+        else:
+            operation += 1
+            payload.update(operation_sequence=operation, replay_result=0,
+                           measurement_timestamp_us=present, measurement_timestamp_trusted=0)
+        payload.update(estimator_present_timestamp_us=present, replay_epoch=1, replay_generation=0)
+        records[record.record_name].append(replace(record, record_sequence=ordinal,
+                                                   payload=payload))
+    return replace(dataset, records=records)

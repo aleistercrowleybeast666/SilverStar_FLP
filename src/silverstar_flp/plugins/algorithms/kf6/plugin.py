@@ -489,6 +489,54 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 group_key="parameter_group.consistency_gating",
                 tooltip_key="parameter.tooltip.nis_max_r_scale",
             ),
+            ParameterSpec(
+                "gnss_position_measurement_delay_ms",
+                "int",
+                0,
+                0,
+                550,
+                "ms",
+                representation="value",
+                precision=0,
+                order=24,
+                step=5,
+                label_key="parameter.gnss_position_measurement_delay_ms",
+                group_key="parameter_group.measurement_noise",
+                tooltip_key="parameter.tooltip.gnss_position_measurement_delay_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_velocity_measurement_delay_ms",
+                "int",
+                270,
+                0,
+                550,
+                "ms",
+                representation="value",
+                precision=0,
+                order=25,
+                step=5,
+                label_key="parameter.gnss_velocity_measurement_delay_ms",
+                group_key="parameter_group.measurement_noise",
+                tooltip_key="parameter.tooltip.gnss_velocity_measurement_delay_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "baro_measurement_delay_ms",
+                "int",
+                0,
+                0,
+                550,
+                "ms",
+                representation="value",
+                precision=0,
+                order=26,
+                step=5,
+                label_key="parameter.baro_measurement_delay_ms",
+                group_key="parameter_group.measurement_noise",
+                tooltip_key="parameter.tooltip.baro_measurement_delay_ms",
+                required=False,
+            ),
         ),
         standard_outputs=(
             "attitude.q_nb",
@@ -707,6 +755,14 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             missing.append(f"unsupported_input_source:{source}")
         if config["subsample_count"] != 2:
             missing.append("mechanization_subsample_count=2")
+        if (
+            dataset.semantic_context is not None
+            and dataset.semantic_context.FirmwareVersion_Get() == "0.0.10"
+        ):
+            if not dataset.Records_Get("ESTIMATOR_STEP"):
+                missing.append("ESTIMATOR_STEP")
+            if not dataset.Records_Get("INERTIAL_INCREMENT"):
+                missing.append("INERTIAL_INCREMENT")
         if missing:
             return AlgorithmAvailability(
                 False,
@@ -792,6 +848,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 end_timestamp_us=replay_input_end,
             )
             source_diagnostics = {}
+        if dataset.Records_Get("ESTIMATOR_STEP"):
+            from silverstar_flp.plugins.algorithms.kf6.mechanization_verification import (
+                Mechanization_Verify,
+            )
+
+            source_diagnostics["mechanization_verification"] = Mechanization_Verify(
+                dataset, start_timestamp, replay_input_end
+            )
+            increments = InertialIncrement_ReadRecorded(dataset.Records_Get("INERTIAL_INCREMENT"),
+                start_timestamp_us=start_timestamp, end_timestamp_us=replay_input_end)
         if not increments:
             raise ValueError("replay_no_valid_inertial_increment")
         if mission_bounds.end_reason == MissionReplayEndReason.SOURCE_END:
@@ -864,14 +930,31 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             diagnostic_metadata["legacy_reacquisition"] = analysis_legacy_reacquisition
             diagnostic_metadata["initial_state_frozen"] = analysis_frozen_initial
         task_context.Progress_Report(0.08, "replay.inputs")
-        snapshots = self._Replay_Run(
-            filter_instance,
-            q_nb,
-            increments,
-            schedule,
-            parameters,
-            task_context,
-        )
+        if dataset.Records_Get("ESTIMATOR_STEP"):
+            from silverstar_flp.plugins.algorithms.kf6.fixed_lag import Faithful_Run
+            from silverstar_flp.plugins.algorithms.kf6.measurement_time import (
+                MeasurementDelays_Apply,
+            )
+            schedule = MeasurementDelays_Apply(dataset, schedule, parameters,
+                                               self.recorded_parameters(dataset))
+            replaced_records = dict(dataset.records)
+            for kind in ("GNSS_MEASUREMENT", "BARO_MEASUREMENT"):
+                replaced_records[kind] = tuple(
+                    item.record for item in schedule if item.record.record_name == kind
+                )
+            replay_dataset = replace(dataset, records=replaced_records)
+            snapshots, filter_instance, timing_diagnostics = Faithful_Run(
+                replay_dataset, filter_instance, q_nb, increments, parameters, task_context)
+            source_diagnostics.update(timing_diagnostics)
+        else:
+            snapshots = self._Replay_Run(
+                filter_instance,
+                q_nb,
+                increments,
+                schedule,
+                parameters,
+                task_context,
+            )
         if not snapshots:
             raise ValueError("replay_no_valid_kf6_output")
         warnings = list(availability.warnings)
@@ -897,11 +980,30 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_reacquisition_policy_changed")
         channels = self._Channels_Build(snapshots)
+        for channel_id in ("navigation.position_enu", "navigation.velocity_enu"):
+            series = channels[channel_id]
+            channels[channel_id] = replace(
+                series,
+                metadata={
+                    **series.metadata,
+                    "discontinuity_timestamps_us": source_diagnostics.get(
+                        "reanchor_timestamps_us", ()
+                    ),
+                },
+            )
         task_context.Progress_Report(1.0, "replay.complete")
+        if dataset.Records_Get("ESTIMATOR_STEP"):
+            # Numerical Golden coverage is reported explicitly, not inferred from version.
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("fixed_lag_cross_validation_scope_limited")
         return AlgorithmResult(
             algorithm_id=self.metadata.plugin_id,
             algorithm_version=self.metadata.version,
-            input_source=request.input_source,
+            input_source=(
+                SOURCE_RECORDED_INCREMENT
+                if dataset.Records_Get("ESTIMATOR_STEP")
+                else request.input_source
+            ),
             parameters=parameters,
             fidelity=fidelity,
             missing_inputs=(),
@@ -1119,6 +1221,25 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
     ) -> tuple[tuple[_ScheduledMeasurement, ...], bool]:
         if not increments:
             return (), False
+        if dataset.Records_Get("ESTIMATOR_STEP"):
+            exact = tuple(
+                _ScheduledMeasurement(
+                    int(record.payload["estimator_present_timestamp_us"]),
+                    int(
+                        record.payload[
+                            "receive_operation_sequence" if kind == "gnss" else "operation_sequence"
+                        ]
+                    ),
+                    kind,
+                    record,
+                    False,
+                )
+                for kind, name in (("gnss", "GNSS_MEASUREMENT"), ("baro", "BARO_MEASUREMENT"))
+                for record in dataset.Records_Get(name)
+                if int(record.payload["estimator_present_timestamp_us"])
+                <= increments[-1].interval_end_timestamp_us
+            )
+            return tuple(sorted(exact, key=lambda item: item.source_order)), False
         increment_timestamps = [item.interval_end_timestamp_us for item in increments]
         scheduled: list[_ScheduledMeasurement] = []
         for kind, records in (

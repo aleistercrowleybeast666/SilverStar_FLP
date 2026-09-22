@@ -32,6 +32,7 @@ from silverstar_flp.plugins.api.algorithm import (
     StateGroupSpec,
 )
 from silverstar_flp.plugins.registry import PluginRegistry, builtin_registry
+from silverstar_flp.ui.navigation_diagnostics import NavigationDiagnostics
 from silverstar_flp.ui.pages.charts import (
     TraceColorAllocator,
     _NearestIndex,
@@ -132,6 +133,11 @@ class StateEstimationPage(QWidget):
         self._NisTab_Build()
         self._UpdatesTab_Build()
         self._MeasurementsTab_Build()
+        self.navigation_diagnostics = {}
+        for kind in ("gnss", "landing", "mechanization"):
+            panel = NavigationDiagnostics(kind, translator)
+            self.navigation_diagnostics[kind] = panel
+            self.tabs.addTab(panel, translator.Text_Get("diagnostic." + kind))
         layout.addWidget(self.tabs)
         self.Language_Apply(translator)
 
@@ -254,6 +260,8 @@ class StateEstimationPage(QWidget):
         self._dataset = dataset
         self._resolver = resolver or ChannelResolver(dataset, ReplayResultStore())
         self._Estimator_Select()
+        for panel in self.navigation_diagnostics.values():
+            panel.Dataset_Set(dataset, self._resolver)
 
     def _Estimator_Select(self) -> None:
         if self._dataset is None or self._resolver is None:
@@ -267,19 +275,8 @@ class StateEstimationPage(QWidget):
         sources = self._resolver.EstimatorSources_Get(algorithm_ids)
         active = self._resolver.store.ActiveSource_Get()
         selected = next(
-            (
-                source
-                for source in sources
-                if active.kind != AnalysisSourceKind.RECORDED
-                and source.source_id == active.source_id
-            ),
-            None,
+            (source for source in sources if source.source_id == active.source_id), None
         )
-        if selected is None:
-            recorded = [
-                source for source in sources if source.kind == AnalysisSourceKind.RECORDED
-            ]
-            selected = max(recorded, key=self._SourceScore_Get, default=None)
         if selected is None:
             self._Content_Clear()
             self._FirmwareEstimatorDiagnostic_Append()
@@ -808,6 +805,16 @@ class StateEstimationPage(QWidget):
             _Plot_Prepare(plot, theme)
 
     def Language_Apply(self, translator: Translator) -> None:
+        for kind, panel in self.navigation_diagnostics.items():
+            panel.translator = translator
+            panel.model.translator = translator
+            if hasattr(panel, '_dataset'):
+                panel.Dataset_Set(panel._dataset, panel._resolver)
+            self.tabs.setTabText(
+                self.tabs.indexOf(panel), translator.Text_Get("diagnostic." + kind)
+            )
+            if kind == "landing":
+                panel.recompute_button.setText(translator.Text_Get("diagnostic.recompute_landing"))
         self._translator = translator
         self.source_label.setText(translator.Text_Get("label.estimator_source"))
         self.reset_charts_button.setText(translator.Text_Get("action.reset_charts"))

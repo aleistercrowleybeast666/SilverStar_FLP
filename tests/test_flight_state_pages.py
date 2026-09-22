@@ -81,12 +81,12 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
     assert page._attitude is result.channels["attitude.q_nb"]
     assert not hasattr(page, "source_combo")
     assert "Pure INS" in page.source_value_label.text()
-    assert len(page.velocity_plot.listDataItems()) == 9
-    assert len(page.position_plot.listDataItems()) == 9
+    assert len(page.velocity_plot.listDataItems()) == 3
+    assert len(page.position_plot.listDataItems()) == 3
     assert len(page.acceleration_plot.listDataItems()) == 3
     assert len(page.angular_rate_plot.listDataItems()) == 3
-    assert len(page.quaternion_plot.listDataItems()) == 8
-    assert len(page.euler_plot.listDataItems()) == 6
+    assert len(page.quaternion_plot.listDataItems()) == 4
+    assert len(page.euler_plot.listDataItems()) == 3
     assert page._deploy_timestamp_us == START_TIMESTAMP_US + 110_000
     assert page._end_timestamp_us == START_TIMESTAMP_US + 160_100
     assert page.playback_slider.parent() is not None
@@ -103,8 +103,8 @@ def test_flight_tabs_start_crop_complete_vectors_and_active_source(
         (30.0, 30.0),
     )
     velocity_names = {item.name() for item in page.velocity_plot.listDataItems() if item.name()}
-    assert any("Recorded Pure INS" in name for name in velocity_names)
-    assert any("Recorded KF_6" in name for name in velocity_names)
+    assert not any("Recorded Pure INS" in name for name in velocity_names)
+    assert not any("Recorded KF_6" in name for name in velocity_names)
     velocity_colors = [
         item.opts["pen"].color().name() for item in page.velocity_plot.listDataItems()
     ]
@@ -337,7 +337,7 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     page.show()
     application.processEvents()
 
-    assert page.tabs.count() == 5
+    assert page.tabs.count() == 8
     assert not hasattr(page, "source_combo")
     assert "Recorded" in page.source_value_label.text()
     assert page.state_group_combo.count() == 2

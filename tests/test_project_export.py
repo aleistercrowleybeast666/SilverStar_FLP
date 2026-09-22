@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -36,6 +37,21 @@ from silverstar_flp.export.service import (
 )
 from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from tests.sslog_synthetic import AnalysisFlight_Build, StationaryFlight_Build
+
+
+def _PlotBaseName_Get(path):
+    return re.sub(r'_\d{6}\.\d{3}-\d{6}\.\d{3}(?=\.png$)', '', path.name)
+
+
+def _DisplayDataset_Parse(path):
+    dataset = Sslog0ParserPlugin().parse(path)
+    series = dict(dataset.series)
+    position = series.get("kf6.recorded.navigation.position_enu")
+    if position is not None:
+        series["kf6.recorded.attitude.q_nb"] = TimeSeries(
+            position.timestamp_us, np.tile([1., 0., 0., 0.], (position.count, 1)),
+            "1", "quaternion", "synthetic KF attitude", position.valid, ("W", "X", "Y", "Z"))
+    return replace(dataset, series=series)
 
 
 def _ProjectDocument_Build(
@@ -145,7 +161,7 @@ def test_export_keeps_independent_channel_timestamps_and_language_suffix(
     tmp_path: Path,
 ) -> None:
     log_path = StationaryFlight_Build(tmp_path / "SYNTHETIC_export_source.BIN")
-    dataset = Sslog0ParserPlugin().parse(log_path)
+    dataset = _DisplayDataset_Parse(log_path)
     before = hashlib.sha256(log_path.read_bytes()).hexdigest()
     manifest = FlightExporter().export(
         dataset,
@@ -171,7 +187,7 @@ def test_export_keeps_independent_channel_timestamps_and_language_suffix(
 def test_follow_ui_exports_standard_plot_set_segmented_trajectory_and_combined_gif(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_export_analysis.BIN")
     )
     progress_updates: list[tuple[float, str]] = []
@@ -199,7 +215,7 @@ def test_follow_ui_exports_standard_plot_set_segmented_trajectory_and_combined_g
     assert manifest.language == ExportLanguage.ZH
     assert manifest.theme == ExportTheme.DARK
     assert not manifest.failures
-    names = {path.name for path in manifest.files}
+    names = {_PlotBaseName_Get(path) for path in manifest.files}
     assert {
         "Flight_Velocity_ENU_ZH.png",
         "Flight_Position_ENU_ZH.png",
@@ -298,7 +314,7 @@ def test_follow_ui_exports_standard_plot_set_segmented_trajectory_and_combined_g
 def test_light_replay_gif_keeps_mission_time_and_equal_csv_frame_units(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_light_replay.BIN")
     )
     progress_updates: list[tuple[float, str]] = []
@@ -325,7 +341,7 @@ def test_light_replay_gif_keeps_mission_time_and_equal_csv_frame_units(
         ),
     )
     assert not manifest.failures
-    gif_path = tmp_path / "light_replay_export" / "Flight_Replay_EN.gif"
+    gif_path = tmp_path / "light_replay_export" / "GIF" / "Flight_Replay_EN.gif"
     with Image.open(gif_path) as image:
         frame_count = image.n_frames
         assert frame_count > 30
@@ -350,7 +366,7 @@ def test_light_replay_gif_keeps_mission_time_and_equal_csv_frame_units(
 
 
 def test_plot_metadata_has_language_specific_titles(tmp_path: Path) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_plot_metadata.BIN")
     )
     series = dataset.Series_Get("kf6.recorded.navigation.velocity_enu")
@@ -374,7 +390,7 @@ def test_export_3d_uses_unique_colors_rocket_mesh_and_mission_relative_points(
     colors = [_PlotColor_Get(index) for index in range(32)]
     assert len(colors) == len(set(colors))
 
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_export_3d_rules.BIN")
     )
     position = dataset.Series_Get("kf6.recorded.navigation.position_enu")
@@ -530,7 +546,7 @@ def test_export_records_individual_failure_and_continues(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         StationaryFlight_Build(tmp_path / "SYNTHETIC_partial_export.BIN")
     )
     exporter = FlightExporter()
@@ -587,7 +603,7 @@ def test_manifest_failure_still_writes_plain_text_fallback(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_failure_fallback.BIN")
     )
     exporter = FlightExporter()
@@ -644,7 +660,7 @@ def test_manifest_failure_still_writes_plain_text_fallback(
 def test_bulk_export_keeps_selected_channel_csv_without_channel_png(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_pre_start_plot.BIN")
     )
     channel_id = "alignment.result.q_nb"
@@ -691,7 +707,7 @@ def test_bulk_export_keeps_selected_channel_csv_without_channel_png(
 def test_full_p_keyframes_replace_upper_triangle_plot_and_keep_csv(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(
             tmp_path / "SYNTHETIC_full_p_keyframes.BIN",
             include_full_p=True,
@@ -772,7 +788,7 @@ def test_full_p_keyframes_replace_upper_triangle_plot_and_keep_csv(
 def test_full_p_keyframes_use_analysis_end_when_landing_is_absent(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(
             tmp_path / "SYNTHETIC_full_p_without_landing.BIN",
             include_full_p=True,
@@ -807,7 +823,7 @@ def test_full_p_keyframes_use_analysis_end_when_landing_is_absent(
     assert "实际采用的 P 时间戳 [us]: 1160000" in text
 
 
-def test_gif_uses_30_fps_mission_time_with_key_event_representatives() -> None:
+def test_gif_uses_constant_speed_without_key_event_time_warp() -> None:
     timestamps = np.asarray(
         [1_000_000 + index * index * 1_000 for index in range(100)],
         dtype=np.uint64,
@@ -870,7 +886,7 @@ def test_gif_uses_30_fps_mission_time_with_key_event_representatives() -> None:
         key_event_timestamps=(1_000_000, deploy_timestamp, int(timestamps[-1])),
     )
     assert keyed_targets.size == expected_count
-    assert np.uint64(deploy_timestamp) in keyed_targets
+    np.testing.assert_array_equal(keyed_targets, targets)
     render_targets = np.append(keyed_targets, timestamps[-1])
     event_indices = FlightExporter._ReplayEventFrameIndices_Get(
         render_targets,

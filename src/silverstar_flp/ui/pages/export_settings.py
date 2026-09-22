@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -297,6 +298,33 @@ class ExportDialog(QDialog):
         self.export_theme_label = QLabel()
         self.export_theme_combo = StandardComboBox()
         form.addRow(self.export_theme_label, self.export_theme_combo)
+        self.page_mode_label = QLabel()
+        self.page_mode = StandardComboBox()
+        for value in ("5", "10", "30", "60", "120", "Custom", "Current View", "Full"):
+            self.page_mode.addItem(value, value)
+        self.page_mode.setCurrentIndex(2)
+        self.page_duration_label = QLabel()
+        self.page_duration = QDoubleSpinBox()
+        self.page_duration.setRange(.001, 8640000)
+        self.page_duration.setDecimals(3)
+        self.page_duration.setSuffix(" s")
+        self.page_duration.setValue(30)
+        self.page_duration.setVisible(False)
+        self.page_duration_label.setVisible(False)
+        self.page_mode.currentIndexChanged.connect(self._PageMode_Changed)
+        form.addRow(self.page_mode_label, self.page_mode)
+        form.addRow(self.page_duration_label, self.page_duration)
+        self.gif_range_label = QLabel()
+        self.gif_range = StandardComboBox()
+        self.gif_range.addItem("Current View", "Current View")
+        self.gif_range.addItem("Full", "Full")
+        self.gif_range.currentIndexChanged.connect(self._GifMetadata_Refresh)
+        form.addRow(self.gif_range_label, self.gif_range)
+        self.gif_metadata = QLabel()
+        self.gif_metadata.setWordWrap(True)
+        form.addRow(self.gif_metadata)
+        self._current_range = (0.0, 0.0)
+        self._mission_duration = 0.0
         layout.addWidget(self.destination_group)
 
         self.items_group = QGroupBox()
@@ -368,6 +396,27 @@ class ExportDialog(QDialog):
         layout.addLayout(button_row)
         self.Language_Apply(translator)
 
+    def Range_Set(self, current, duration):
+        self._current_range, self._mission_duration = current, duration
+        self._GifMetadata_Refresh()
+
+    def _GifMetadata_Refresh(self):
+        from silverstar_flp.export.ranges import GifMetadata_Get
+
+        interval = (
+            (0.0, self._mission_duration)
+            if self.gif_range.currentData() == "Full"
+            else self._current_range
+        )
+        self.gif_metadata.setText(
+            self._translator.Text_Get("export.gif_metadata", **GifMetadata_Get(*interval))
+        )
+
+    def _PageMode_Changed(self):
+        custom = self.page_mode.currentData() == "Custom"
+        self.page_duration.setVisible(custom)
+        self.page_duration_label.setVisible(custom)
+
     def _Folder_Browse(self) -> None:
         selected = QFileDialog.getExistingDirectory(
             self,
@@ -395,6 +444,9 @@ class ExportDialog(QDialog):
             include_plots=self.plots_check.isChecked(),
             include_trajectory_3d=self.trajectory_check.isChecked(),
             include_attitude_gif=self.gif_check.isChecked(),
+            page_mode=self.page_mode.currentData(),
+            page_duration=self.page_duration.value(),
+            gif_range_mode=self.gif_range.currentData(),
         )
         self._ManifestPath_Set(None)
         self.export_button.setEnabled(False)
@@ -547,6 +599,17 @@ class ExportDialog(QDialog):
         self.export_theme_combo.blockSignals(False)
 
         self.setWindowTitle(translator.Text_Get("dialog.export.title"))
+        self.gif_range_label.setText(translator.Text_Get("export.gif_range"))
+        for key in ("Current View", "Full"):
+            self.gif_range.setItemText(
+                self.gif_range.findData(key), translator.Text_Get("export.range." + key)
+            )
+        self._GifMetadata_Refresh()
+        self.page_mode_label.setText(translator.Text_Get("export.page_mode"))
+        self.page_duration_label.setText(translator.Text_Get("range.duration"))
+        for key in ("Custom", "Current View", "Full"):
+            self.page_mode.setItemText(self.page_mode.findData(key),
+                translator.Text_Get("export.range." + key))
         self.destination_group.setTitle(translator.Text_Get("dialog.export.destination"))
         self.folder_label.setText(translator.Text_Get("label.output_folder"))
         self.browse_button.setText(translator.Text_Get("action.browse"))

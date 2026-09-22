@@ -115,7 +115,14 @@ def TrajectoryPhaseSegments_Build(
             previous = None
             continue
         timestamp = int(times[i])
-        if previous is None or not (0 < timestamp - int(times[previous]) <= threshold):
+        reanchored = previous is not None and any(
+            int(times[previous]) < event <= timestamp
+            for event in series.metadata.get("discontinuity_timestamps_us", ()))
+        if (
+            previous is None
+            or reanchored
+            or not (0 < timestamp - int(times[previous]) <= threshold)
+        ):
             flush()
             phase = int(np.searchsorted(events, timestamp, side="right"))
             run_times.append(timestamp)

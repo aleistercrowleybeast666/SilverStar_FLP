@@ -1,5 +1,70 @@
 # Validation
 
+## 2026-09-22 — 联合新日志、fixed-lag 与时间输出
+
+起始/当前 HEAD `26abf3033f92b1dac7b607ae722eefff2ecee9bc`，初始工作区干净；
+本轮没有 commit、push、tag 或 Release。当前文件清单由 FCCG 联合报告的 Git 快照记录。
+新契约见 [Field Log Replay](docs/Field_Log_Replay.md)。历史验收段落仅适用于其日期。
+
+### 实施与输入边界
+
+- 正式输入为 FCCG decoder 1.2 的 corrected IMU、inertial increment、实际 estimator
+  operation/present/epoch、GNSS/Barometer observation/measurement、恢复及 landing 诊断。
+  退役的 IMU_NATIVE/HW_QUAT_NATIVE 不再作为新契约输入，KF6 不依赖 Pure INS 旁路。
+- GNSS/Barometer 共用有界 replay：600 ms、144 IMU、48 GNSS、160 BARO、208 总量测、
+  8 checkpoints、560 propagation steps；历史 clone 覆盖 x/P/内部滤波状态，receive 证据只计一次。
+  重复操作拒绝、缺失操作诊断、跨 epoch 需要可关联的初始 state/P，不能用当前 P 冒充历史 P。
+- faithful 路径消费实际增量/操作；独立 corrected-IMU mechanization 核对 dt、增量、
+  区间和首个分歧，不重复校准。四组 GNSS 更新、inflation 和 group re-anchor 与 C 对照。
+- Recorded / Replay / What-if 统一 Analysis Source；项目保存配置、结果编号和时间范围，
+  重开后台重算并恢复。显式 Compare 仍独立。临时 analysis-only 诊断不写入生产参数。
+- 共享双柄时间条覆盖五页、表格、轨迹和导出；5/10/30/60/120/Full/Custom 与 Start/End/
+  Duration 一致。默认短于等于 30 s 为 Full，否则前 30 s。显示保留峰值、缺测和重锚断点。
+- PNG 默认整段按 30 s 分页、类别目录；GIF 当前范围或 Full、30 fps、最多 30 s 匀速运动、
+  精确源终点及 30 个物理末尾帧，逐帧进度/取消；CSV 保留完整数据。
+
+### 实际验证
+
+- 完整 pytest：**329 passed, 8 skipped in 279.39 s**，日志
+  `D:/python_software/SilverStar_FCCG/tests/artifacts/joint/flp-full28.log`。
+  8 skip 为未提供 hash 锁定的 SS0000/SS0007/SS0014/SS_TEST_0 历史真实日志。
+  本轮实际生成 C golden 通过环境变量接入，未跳过。
+- 全 src/tests Ruff：All checks passed，`flp-ruff-all.log`。
+- 中英/Light/Dark/1000×700、范围控件和项目恢复：完整 suite 已覆盖；200% DPI 独立
+  **5 passed in 19.13 s**，`flp-dpi27.log`。offscreen 显式加载系统字体，已审阅可读截图。
+  Qt offscreen 不支持真实 OpenGL，不能据此宣称实际 GPU/触屏硬件通过。
+- 后台扫描测试用工作线程与 GUI 定时器 Event 握手，验证 UI 工作发生在任务进行期间；
+  修复原先短任务先于首个 10 ms tick 完成的测试竞态，不改变生产调度。
+- 61 s PNG 为 0–30 / 30–60 / 60–61；实际 GIF 编码验证帧数与视觉一致 hold；
+  10/30/31/60/300 s 计划、取消、目录、表格完整导出与断点均有回归。
+- delayed BARO 与准时到达 reference 的 x/P 一致；“只改 timestamp + 当前 x/P 更新”负例
+  明确不通过；GNSS/BARO 不同延迟排序、native/configured delay 不重复补偿都有覆盖。
+
+### FCCG C → decoder → FLP 数值链
+
+使用真实生成工程 SS_TEST_19 / SS_TEST_20、真实 C codec 和 generated descriptor，
+不是 Python 手工拼 wire。三组质量 clean，operation/result/generation mismatches 均为空，
+mechanization 验证全部通过；q 的最大误差均为 0。
+
+| C 场景 | 对照数 | position max error (m) | velocity max error (m/s) | covariance max error |
+|---|---:|---:|---:|---:|
+| 常规 | 400 | 2.24e-8 | 9.43e-8 | 1.20e-7 |
+| pos 40 / vel 270 / baro 100 ms | 400 | 3.73e-8 | 9.45e-8 | 3.58e-7 |
+| 长 outage / 公里漂移重锚 | 2000 | 5.59e-9 | 1.40e-9 | 1.20e-7 |
+
+重锚计数 [1,0,1,0]，最大位置 5607.916 m，最终重跑结果见 `reanchor19/flp-comparison.json`。
+文件均位于上述 FCCG `tests/artifacts/joint`；golden/decoder SHA256 在 FCCG 根 VALIDATION。
+当前仍标注 **APPROXIMATE**：这些有限场景不是任意日志、多 epoch、多硬件的普遍 EXACT 证明。
+离线 landing 的真实 FlightTask tick 未完整记录，重算明确近似；物理门限来自实际配置。
+
+### Existing Time Synchronization vs Fixed-Lag Replay
+
+固件已有 SystemTime 负责统一时间坐标及 wrap/offset/mission 转换；FLP 直接使用日志中
+resolved measurement time、receive 和 operation present，不建立平行时钟系统。
+可信 native 时间直接使用；没有可信 sample epoch 时按 receive - configured delay，
+不对已经转换好的时间再减一次。replay 则恢复历史 x/P/内部状态、按量测时间 update、
+重放后续事件到 present。时间同步与历史状态重放是上下游关系。
+
 ## 2026-09-17 — KF6 V2 真实日志诊断与 GUI
 
 本轮只修改 FLP。开始时 FLP/FCCG/GSHC 的 `git status --short` 均为空。

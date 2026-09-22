@@ -243,8 +243,17 @@ def test_matching_dynamic_package_replay_and_actual_baro_export(tmp_path):
             name = plugin.metadata.plugin_id.rsplit(".", 1)[-1]
             result = plugin.run(dataset, ReplayRequest())
             results[name] = result
-            for channel, series in result.channels.items():
-                np.testing.assert_array_equal(series.values, baseline[name + "." + channel])
+            if name == 'pure_ins':
+                for channel, series in result.channels.items():
+                    np.testing.assert_array_equal(series.values, baseline[name + '.' + channel])
+            else:
+                # The former KF baseline guessed arrival times. The new numerical
+                # authority is the separately tested generated C golden.
+                assert result.diagnostics['measurement_timing_inferred'] is False
+                assert result.diagnostics['mechanization_verification']['passed']
+                assert all(
+                    np.isfinite(channel.values).all() for channel in result.channels.values()
+                )
     kf = builtin_registry().Algorithm_Get("silverstar.algorithm.kf6")
     changed = kf.run(dataset, ReplayRequest(mode=ReplayMode.WHAT_IF, parameters={"baro_std_m": 6}))
     np.testing.assert_array_equal(

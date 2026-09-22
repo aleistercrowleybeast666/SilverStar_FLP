@@ -46,6 +46,8 @@ class Kf6GnssEpoch:
 
 @dataclass(slots=True)
 class _ReacquireGroupState:
+    consistency_start_us: int = 0
+    generation: int = 0
     availability_timestamp_us: int = 0
     outage: bool = False
     loss_latched: bool = False
@@ -103,6 +105,7 @@ class Kf6Filter:
     gnss_nis_samples: list[list[float]] = field(default_factory=lambda: [[] for _ in range(4)])
     gnss_result_counts: list[list[int]] = field(default_factory=lambda: [[0] * 5 for _ in range(4)])
     gnss_reacquire_outage_ms: int = 300
+    reanchor_counts: list[int] = field(default_factory=lambda: [0] * 4)
     reacquire_count: int = 0
     reacquire_active_mask: int = 0
     last_inflation_group: int = -1
@@ -333,7 +336,9 @@ class Kf6Filter:
         epoch = replace(epoch, valid_group_mask=current_mask)
         previous = self._previous_epoch
         if previous is not None and epoch.timestamp_us <= previous.timestamp_us:
-            self._reacquire_groups = [_ReacquireGroupState() for _ in range(4)]
+            self._reacquire_groups = [
+                _ReacquireGroupState(generation=g.generation + 1) for g in self._reacquire_groups
+            ]
             self.reacquire_active_mask = 0
             self._previous_epoch = replace(epoch, valid_group_mask=0)
             return
@@ -348,7 +353,10 @@ class Kf6Filter:
                 and not state.loss_latched
             ):
                 state = _ReacquireGroupState(
-                    availability_timestamp_us=anchor, outage=True, loss_latched=True
+                    availability_timestamp_us=anchor,
+                    outage=True,
+                    loss_latched=True,
+                    generation=state.generation + 1,
                 )
                 self._reacquire_groups[int(group)] = state
                 self.reacquire_active_mask &= ~bit
@@ -357,15 +365,18 @@ class Kf6Filter:
                 state.availability_timestamp_us = epoch.timestamp_us
             else:
                 state.reject_streak = state.accepted_streak = state.consistent_count = 0
+                state.consistency_start_us = 0
         if previous is None:
             for state in self._reacquire_groups:
                 state.consistent_count = 0
+                state.consistency_start_us = 0
             self._previous_epoch = epoch
             return
         dt_s = (epoch.timestamp_us - previous.timestamp_us) * 1.0e-6
         if dt_s < 0.010 or dt_s > 1.0:
             for state in self._reacquire_groups:
                 state.consistent_count = 0
+                state.consistency_start_us = 0
             self._previous_epoch = epoch
             return
         for group in Kf6GnssGroup:
@@ -381,6 +392,10 @@ class Kf6Filter:
             ) == required:
                 consistent = self._EpochGroup_IsConsistent(previous, epoch, group, dt_s)
             state = self._reacquire_groups[int(group)]
+            if consistent and state.consistent_count == 0:
+                state.consistency_start_us = previous.timestamp_us
+            if not consistent:
+                state.consistency_start_us = 0
             state.consistent_count = state.consistent_count + 1 if consistent else 0
         self._previous_epoch = epoch
 
@@ -437,6 +452,60 @@ class Kf6Filter:
             return
         state.reject_streak = 0
         state.accepted_streak = 0
+
+    def Kf6_GroupUpdate(self, group: Kf6GnssGroup, observation, variance) -> Kf6UpdateResult:
+        """One independently qualified group; unrelated NaNs never reject it."""
+        g = int(group)
+        vertical = g % 2 == 1
+        axis = 2 if vertical else 0
+        offset = axis + (3 if g >= 2 else 0)
+        innovation = self.last_position_innovation if g < 2 else self.last_velocity_innovation
+        effective = (
+            self.last_position_effective_variance
+            if g < 2
+            else self.last_velocity_effective_variance
+        )
+        return self._Vector_Update(np.asarray(observation)[axis:], np.asarray(variance)[axis:],
+            dimension=1 if vertical else 2, state_offset=offset, group=group,
+            innovation_target=innovation[axis:], variance_target=effective[axis:])
+
+    def Kf6_GroupRecover(self, group, result, observation, variance, receive_us):
+        self.Kf6_GnssGroupResultProcess(group, result)
+        state = self._reacquire_groups[int(group)]
+        if not (result == Kf6UpdateResult.REJECTED_NIS and state.outage and state.active
+                and not state.loss_latched and state.consistency_start_us > 0
+                and receive_us - state.consistency_start_us >= 1_000_000
+                and state.consistent_count >= 3 and state.inflation_attempt_count >= 8
+                and state.epochs_since_inflation >= 5):
+            return result
+        g = int(group)
+        indices = ((0, 1), (2,), (3, 4), (5,))[g]
+        if not np.isfinite(self.state).all() or not np.isfinite(self.covariance).all():
+            return Kf6UpdateResult.NUMERIC_ERROR
+        if not np.array_equal(self.covariance, self.covariance.T):
+            return Kf6UpdateResult.NUMERIC_ERROR
+        try:
+            np.linalg.cholesky(self.covariance)
+        except np.linalg.LinAlgError:
+            return Kf6UpdateResult.NUMERIC_ERROR
+        for index in indices:
+            axis = index % 3
+            if (
+                not np.isfinite(observation[axis])
+                or not np.isfinite(variance[axis])
+                or variance[axis] <= 0
+            ):
+                return Kf6UpdateResult.NUMERIC_ERROR
+        for index in indices:
+            self.state[index] = observation[index % 3]
+            self.covariance[index, :] = 0
+            self.covariance[:, index] = 0
+            self.covariance[index, index] = max(variance[index % 3], P_DIAGONAL_MIN)
+        self.reanchor_counts[g] += 1
+        state.active = state.outage = False
+        state.reject_streak = state.accepted_streak = 0
+        self.reacquire_active_mask &= ~(1 << g)
+        return Kf6UpdateResult.ACCEPTED
 
     def _Vector_Update(
         self,

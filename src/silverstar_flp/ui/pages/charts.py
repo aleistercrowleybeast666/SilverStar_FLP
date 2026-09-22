@@ -24,11 +24,11 @@ from silverstar_flp.core.analysis_source import (
     ChannelResolver,
     ReplayResultStore,
 )
-from silverstar_flp.core.comparison import Series_ComparisonView
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector, Quaternion_ToEulerEnuDeg
 from silverstar_flp.core.mission import MissionReplayBounds
+from silverstar_flp.core.time_range import DisplayIndices_Get
 from silverstar_flp.core.trajectory import (
     TimeSeriesGapSummary_Get,
     TrajectoryBounds,
@@ -184,7 +184,22 @@ def _Series_Plot(
     selected = np.flatnonzero(selected_mask)
     if selected.size == 0:
         return
-    selected = selected[:: max(1, selected.size // 6000)]
+    full_t = series.timestamp_us[selected].astype(np.int64)
+    full_v = series.valid[selected]
+    cadence = np.diff(full_t)
+    positive = cadence[cadence > 0]
+    threshold = 3 * np.median(positive) if positive.size else np.inf
+    broken = np.zeros(selected.size, dtype=bool)
+    broken[:-1] = (~full_v[:-1]) | (~full_v[1:]) | (cadence > threshold)
+    for stamp in series.metadata.get("discontinuity_timestamps_us", ()):
+        index = int(np.searchsorted(full_t, stamp)) - 1
+        if 0 <= index < broken.size:
+            broken[index] = True
+    envelope = DisplayIndices_Get(full_t, series.values[selected], full_v)
+    counts = np.r_[0, np.cumsum(broken)]
+    connections = np.zeros(envelope.size, dtype=bool)
+    connections[:-1] = counts[envelope[1:]] == counts[envelope[:-1]]
+    selected = selected[envelope]
     time = (
         series.timestamp_us[selected].astype(np.float64) - float(start_timestamp_us)
     ) * 1.0e-6
@@ -196,6 +211,7 @@ def _Series_Plot(
         plot.plot(
             time,
             values,
+            connect=connections,
             pen=pg.mkPen(colors.Color_Next(), width=width, style=style),
             name=prefix or series.quantity,
         )
@@ -206,6 +222,7 @@ def _Series_Plot(
         plot.plot(
             time,
             values[:, index],
+            connect=connections,
             pen=pg.mkPen(colors.Color_Next(), width=width, style=style),
             name=f"{prefix}{column}",
         )
@@ -254,7 +271,9 @@ def _Source_Label(
 ) -> str:
     source = resolver.Source_Get(source_id)
     if source.kind == AnalysisSourceKind.RECORDED:
-        return translator.Text_Get("status.recorded")
+        return (
+            translator.Text_Get("status.recorded") + " · " + resolver.RecordedNavigationSource_Get()
+        )
     entry = resolver.store.SourceEntry_Get(source.source_id)
     if entry is None:
         return translator.Text_Get("status.recorded")
@@ -668,60 +687,11 @@ class FlightPage(QWidget):
         attitude = self._resolver.Series_Get("attitude.q_nb", source_id)
         self._mission_bounds = self._resolver.MissionReplayBounds_Get(source_id)
         end = self._mission_bounds.end_timestamp_us
-        if source.kind == AnalysisSourceKind.RECORDED:
-            for channel_id, plot in (
-                ("navigation.velocity_enu", self.velocity_plot),
-                ("navigation.position_enu", self.position_plot),
-            ):
-                for layer in self._resolver.RecordedSolutionLayers_Get(channel_id):
-                    _Series_Plot(
-                        plot,
-                        layer.series,
-                        start,
-                        end_timestamp_us=end,
-                        colors=color_allocators[plot],
-                        prefix=f"{_RecordedSolution_Label(self._translator, layer.solution_id)} · ",
-                        width=1.7,
-                    )
-        else:
-            active_prefix = f"{_Source_Label(self._translator, self._resolver, source_id)} · "
-            kf_comparison = source.algorithm_id == "silverstar.algorithm.kf6"
-            for channel_id, plot, full_series in (
-                ("navigation.velocity_enu", self.velocity_plot, velocity),
-                ("navigation.position_enu", self.position_plot, position),
-            ):
-                layers = self._resolver.RecordedSolutionLayers_Get(channel_id)
-                recorded_kf = next(
-                    (layer.series for layer in layers if layer.solution_id == "kf6"), None
-                )
-                display_series = full_series
-                if kf_comparison and recorded_kf is not None and full_series is not None:
-                    display_series = Series_ComparisonView(recorded_kf, full_series)
-                    if channel_id == "navigation.position_enu":
-                        detail = self._translator.Text_Get(
-                            "flight.comparison_sampling",
-                            recorded_rate=display_series.metadata["display_rate_hz"] or 0.0,
-                            full_rate=display_series.metadata["source_rate_hz"] or 0.0,
-                            missing=display_series.metadata["missing_exact_match_count"],
-                        )
-                        self.source_detail_label.setText(
-                            self.source_detail_label.text() + "\n" + detail
-                        )
-                        self.source_detail_label.setToolTip(
-                            str(display_series.metadata["missing_timestamp_us"])
-                        )
-                _Series_Plot(
-                    plot, display_series, start, end_timestamp_us=end,
-                    colors=color_allocators[plot], prefix=active_prefix, width=1.9,
-                )
-                for layer in layers:
-                    matched_kf = kf_comparison and layer.solution_id == "kf6"
-                    _Series_Plot(
-                        plot, layer.series, start, end_timestamp_us=end,
-                        colors=color_allocators[plot],
-                        prefix=f"{_RecordedSolution_Label(self._translator, layer.solution_id)} · ",
-                        reference=not matched_kf, width=1.9 if matched_kf else 1.4,
-                    )
+        for series, plot in ((velocity, self.velocity_plot), (position, self.position_plot)):
+            _Series_Plot(plot, series, start, end_timestamp_us=end,
+                         colors=color_allocators[plot],
+                         prefix=f"{_Source_Label(self._translator, self._resolver, source_id)} · ",
+                         width=1.7)
         attitude_prefix = (
             f"{self._translator.Text_Get('status.recorded')} · "
             if source.kind == AnalysisSourceKind.RECORDED
@@ -746,27 +716,6 @@ class FlightPage(QWidget):
                 prefix=attitude_prefix,
                 width=1.7,
             )
-        if source.kind != AnalysisSourceKind.RECORDED:
-            recorded_attitude = self._resolver.RecordedSeries_Get("attitude.q_nb")
-            _Series_Plot(
-                self.quaternion_plot,
-                recorded_attitude,
-                start,
-                end_timestamp_us=end,
-                colors=color_allocators[self.quaternion_plot],
-                prefix=f"{self._translator.Text_Get('flight.recorded_reference')} · ",
-                reference=True,
-            )
-            if recorded_attitude is not None:
-                _Series_Plot(
-                    self.euler_plot,
-                    _EulerSeries_Create(recorded_attitude),
-                    start,
-                    end_timestamp_us=end,
-                    colors=color_allocators[self.euler_plot],
-                    prefix=f"{self._translator.Text_Get('flight.recorded_reference')} · ",
-                    reference=True,
-                )
         _Series_Plot(
             self.acceleration_plot,
             self._resolver.RecordedSeries_Get("imu.corrected.accel_b"),
@@ -799,6 +748,14 @@ class FlightPage(QWidget):
         self.playback_slider.setValue(0)
         self.playback_slider.blockSignals(False)
         self._Trajectory3d_Prepare(reset_camera=reset_camera)
+        self._ThreeD_Refresh(0)
+
+    def TimeRange_Set(self, start_us: int, end_us: int) -> None:
+        self._start_timestamp_us = start_us
+        self._end_timestamp_us = end_us
+        self._playback_time_us = start_us
+        self.playback_slider.setValue(0)
+        self._Trajectory3d_Prepare(reset_camera=False)
         self._ThreeD_Refresh(0)
 
     def _CameraLock_Toggled(self, unlocked: bool) -> None:
@@ -946,7 +903,14 @@ class FlightPage(QWidget):
                 / 10000
             )
         self._playback_time_us = timestamp_us
-        mission_time = (timestamp_us - self._start_timestamp_us) * 1.0e-6
+        mission_time = (
+            timestamp_us
+            - (
+                self._mission_bounds.start_timestamp_us
+                if self._mission_bounds
+                else self._start_timestamp_us
+            )
+        ) * 1.0e-6
         self.playback_time_label.setText(
             self._translator.Text_Get("flight.mission_time", value=mission_time)
         )

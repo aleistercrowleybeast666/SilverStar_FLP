@@ -24,6 +24,7 @@ from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultSto
 from silverstar_flp.core.comparison import Series_SamplingGet
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
+from silverstar_flp.core.time_range import DisplayIndices_Get
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
@@ -34,6 +35,7 @@ class DataExplorerPage(QWidget):
         super().__init__()
         self._translator = translator
         self._dataset: FlightDataset | None = None
+        self._time_range = None
         self._channels: dict[str, TimeSeries] = {}
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
@@ -244,6 +246,11 @@ class DataExplorerPage(QWidget):
             ).casefold()
             item.setHidden(not group_matches or bool(needle and needle not in searchable))
 
+    def TimeRange_Set(self, start, end):
+        self._time_range = (start, end)
+        self._Channel_Show(self.channel_list.currentItem())
+        self._Records_Show()
+
     def _Channel_Show(self, current: QListWidgetItem | None) -> None:
         if current is None:
             return
@@ -298,11 +305,16 @@ class DataExplorerPage(QWidget):
         headers = ["timestamp_us", "time_s", *value_columns, "valid"]
         self.channel_table.setColumnCount(len(headers))
         self.channel_table.setHorizontalHeaderLabels(headers)
-        indices = np.unique(
-            np.linspace(0, max(series.count - 1, 0), min(series.count, 5000)).astype(int)
-        )
+        origin = (self._dataset.start_timestamp_us or 0) if self._dataset else 0
+        indices = np.arange(series.count)
+        if self._time_range is not None:
+            low, high = self._time_range
+            times = (series.timestamp_us.astype(float) - origin) * 1e-6
+            indices = indices[(times >= low) & (times <= high)]
+        if indices.size:
+            indices = indices[DisplayIndices_Get(series.timestamp_us[indices], values[indices],
+                                                 series.valid[indices], 5000)]
         self.channel_table.setRowCount(len(indices))
-        origin = int(series.timestamp_us[0]) if series.count else 0
         for row, sample_index in enumerate(indices):
             sample = values[sample_index]
             sample_values = sample.tolist() if values.ndim == 2 else [sample.item()]
@@ -326,6 +338,12 @@ class DataExplorerPage(QWidget):
             return
         record_name = self.record_combo.currentText()
         records = self._dataset.Records_Get(record_name)
+        fields = sorted({field for record in records for field in record.payload})
+        if self._time_range is not None:
+            low, high = self._time_range
+            origin = self._dataset.start_timestamp_us or 0
+            records = tuple(record for record in records
+                            if low <= (record.timestamp_us-origin)*1e-6 <= high)
         semantic_context = self._dataset.semantic_context
         if semantic_context is None:
             self.record_metadata.setText("—")
@@ -337,10 +355,6 @@ class DataExplorerPage(QWidget):
             self.record_metadata.setText(
                 json.dumps(metadata, ensure_ascii=False, indent=2, default=str)
             )
-        if not records:
-            self.record_table.setRowCount(0)
-            return
-        fields = sorted({field for record in records for field in record.payload})
         headers = [
             "file_offset",
             "timestamp_us",

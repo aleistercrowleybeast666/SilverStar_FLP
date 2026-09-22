@@ -677,12 +677,11 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     event = result.dataset.Records_Get("EVENT")[0]
     assert event.payload["event_name"] == "MISSION_START"
     assert event.payload["event_semantics"]["arg0"] == "synthetic typed argument"
-    raw_channel_id = context.StableRole_Get("imu.native.accel_b")
-    assert raw_channel_id == "IMU_NATIVE:1:0.accel_b_mps2"
-    assert result.dataset.Series_Get("imu.native.accel_b") is result.dataset.Series_Get(
-        raw_channel_id
-    )
-    assert not result.dataset.Series_Get("imu.native.accel_b").values.flags.writeable
+    # Generic arbitrary catalog data survives; retired native IMU has no stable alias.
+    raw_channel_id = 'IMU_NATIVE:1:0.accel_b_mps2'
+    assert context.StableRole_Get('imu.native.accel_b') is None
+    assert result.dataset.Series_Get('imu.native.accel_b') is None
+    assert not result.dataset.Series_Get(raw_channel_id).values.flags.writeable
     assert package_path.read_bytes() == source_bytes
     assert result.cache_reference.package_sha256 == result.package.package_sha256
     kf6 = builtin_registry().Algorithm_Get("silverstar.algorithm.kf6")
@@ -715,7 +714,7 @@ def test_log_open_coordinator_builds_immutable_semantics_and_none_calibration(
     assert audit["decoder_profile"]["match_mode"] == "exact_generation_profile"
     assert audit["firmware"]["algorithm_components"] == ["silverstar.algorithm.estimator.kf6"]
     assert audit["calibration"]["identity_model"] is True
-    assert audit["stable_aliases"]["imu.native.accel_b"] == raw_channel_id
+    assert "imu.native.accel_b" not in audit["stable_aliases"]
 
 
 def test_none_identity_is_legal_with_six_face_config_and_nonzero_start_sequence(

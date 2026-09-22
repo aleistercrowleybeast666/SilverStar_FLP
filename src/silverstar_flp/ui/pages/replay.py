@@ -770,6 +770,17 @@ class ReplayPage(QWidget):
         key = "diagnostic.analysis" if entry.analysis_only else mode_code
         return self._translator.Text_Get(key)
 
+    def _RecordedSourceLabel_Get(self):
+        label = self._translator.Text_Get("status.recorded")
+        if self._dataset is not None and self._store is not None:
+            solution = (
+                "KF_6"
+                if self._dataset.Series_Get("kf6.recorded.navigation.position_enu") is not None
+                else "Pure INS"
+            )
+            label += ' · ' + solution
+        return label
+
     def _AnalysisSources_Refresh(self) -> None:
         if self._store is None:
             self.analysis_source_combo.clear()
@@ -779,7 +790,7 @@ class ReplayPage(QWidget):
         self.analysis_source_combo.blockSignals(True)
         self.analysis_source_combo.clear()
         self.analysis_source_combo.addItem(
-            self._translator.Text_Get("replay.source.recorded_data"),
+            self._RecordedSourceLabel_Get(),
             ReplayResultStore.RECORDED_SOURCE_ID,
         )
         for source in self._store.Sources_Get():
@@ -819,11 +830,11 @@ class ReplayPage(QWidget):
             return
         source = self._store.ActiveSource_Get()
         if source.kind.value == "recorded":
-            value = self._translator.Text_Get("status.recorded")
+            value = self._RecordedSourceLabel_Get()
         else:
             entry = self._store.SourceEntry_Get(source.source_id)
             if entry is None:
-                value = self._translator.Text_Get("status.recorded")
+                value = self._RecordedSourceLabel_Get()
             else:
                 mode_code = (
                     "status.what_if"

@@ -52,7 +52,7 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     assert not hasattr(page, "source_combo")
     assert page.analysis_source_combo.count() == 1
     assert page.analysis_source_combo.itemData(0) == ReplayResultStore.RECORDED_SOURCE_ID
-    assert page.analysis_source_combo.itemText(0) == "Recorded Data"
+    assert page.analysis_source_combo.itemText(0) == "Recorded (flight controller) · Pure INS"
 
     requested: list[ReplayRequest] = []
     page.replayRequested.connect(lambda _algorithm_id, request: requested.append(request))
@@ -75,7 +75,7 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     assert page.parameters_group.title() == "假设参数"
     assert page.Fidelity_Text_Get(ReplayFidelity.EXACT) == "完整复现"
     assert page.Fidelity_Text_Get(ReplayFidelity.UNAVAILABLE) == "不可复算"
-    assert len(page._parameter_labels) == 23
+    assert len(page._parameter_labels) == 26
     assert page.parameter_group_combo.count() == 4
     assert page.parameter_group_combo.currentText() == "过程模型"
     assert page.parameters_form.rowCount() == 4
@@ -155,7 +155,7 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
     measurement_index = page.parameter_group_combo.findData("parameter_group.measurement_noise")
     page.parameter_group_combo.setCurrentIndex(measurement_index)
     application.processEvents()
-    assert page.parameters_form.rowCount() == 5
+    assert page.parameters_form.rowCount() == 8
     assert "Actual sigma floor" in page._parameter_labels["gnss_position_std_horizontal"].toolTip()
 
     page._parameter_widgets["process_accel_std_e"].setValue(8.25)
@@ -328,6 +328,6 @@ def test_replay_is_the_only_global_source_selector_and_can_return_to_recorded(
     assert selected[-1] == ReplayResultStore.RECORDED_SOURCE_ID
 
     page.Language_Apply(Translator("zh_CN"))
-    assert page.analysis_source_combo.itemText(0) == "飞控记录"
+    assert page.analysis_source_combo.itemText(0) == "飞控记录 · Pure INS"
     assert "固件构建版本" in page.result_information_label.text()
     page.close()

@@ -36,8 +36,8 @@ SilverStar_FLP 0.0.2 fixes these project invariants:
 - Replay has no input selector and always requests `corrected_imu`. Replay owns the only editable
   Analysis Data Source selector; Recorded is first, and only complete successful runs are listed.
   Flight and State Estimation display the source read-only.
-- Recorded Pure INS and Recorded KF_6 remain distinct visible layers. A plot refresh never reuses a
-  color; after the base sixteen colors, generate additional HSV colors.
+- Recorded navigation identifies KF_6 or Pure INS; only the selected Analysis Source is drawn.
+  Do not add automatic reference layers; explicit Compare remains separate.
 - Attitude uses the shared GSHC-proportion and GSHC face-color rocket mesh plus the existing WXYZ
   Body-to-ENU quaternion helper. Trajectory coordinates are relative to mission START. Pre-deploy
   path/current are red, post-deploy path/current are blue, and Deploy is one small opaque orange
@@ -80,14 +80,10 @@ All three dialogs follow the active Light/Dark theme and interface language.
 
 ## KF6 comparison sampling
 
-Flight position/velocity overlays sample the active KF6 replay exactly at Recorded KF6 timestamps.
-Both KF6 layers use distinct colors, normal-width solid lines and no markers. Unmatched samples
-are invalid display gaps; the detail label reports missing matches and its tooltip lists timestamps.
-Pure INS/reference styling elsewhere is unchanged. Full replay arrays, Data Explorer, CSV exports
-and 3D trajectories retain full resolution. Data Explorer reports sample count and measured rate
-from the median positive interval between valid timestamps; insufficient intervals display N/A.
-Series_Compare reports exact versus interpolated mode so interpolation is never presented as exact
-reproduction. Display comparison sampling itself never interpolates.
+Flight position/velocity draw only the selected source. Shared TimeRange controls all time plots;
+min/max envelope preserves peaks and gaps. Export PNGs default to categorized 30 s pages; GIF
+uses the full selected interval at constant speed capped to 30 s motion plus 1 s hold. See
+[Field Log Replay](Field_Log_Replay.md).
 
 
 ## Touch scrolling
@@ -137,3 +133,9 @@ scrollable form, the score plot outside that form, and Reset Charts directly ava
 measurement groups use a read-only table with min/median/max and rule tooltips. Background scan
 reuses the main worker/progress/cancel infrastructure. The normal parameter draft must survive
 refreshing the same dataset after a replay. See [diagnostic behavior](KF6_FIELD_ANALYSIS.md).
+
+## Shared TimeRange and diagnostics
+
+The shared range bar has two handles plus presets/Start/End/Duration, above the five normal pages.
+State Estimation adds read-only GNSS/Landing/Mechanization child tabs. Landing recompute uses the
+existing worker. Persist source/range in .ssflp; do not change raw/replay/CSV data for display.

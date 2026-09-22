@@ -74,6 +74,7 @@ from silverstar_flp.ui.pages import (
 )
 from silverstar_flp.ui.plugin_manager import AboutDialog, PluginManagerDialog
 from silverstar_flp.ui.theme import Theme_Apply, WindowCaption_Apply
+from silverstar_flp.ui.time_range import TimeRangeBar
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 from silverstar_flp.ui.workers import FunctionWorker
@@ -129,6 +130,8 @@ class MainWindow(QMainWindow):
         self._channel_resolver: ChannelResolver | None = None
         self._project = ProjectDocument()
         self._project_dirty = False
+        self._source_restore_pending = None
+        self._source_restore_index = None
         self._pending_new_project_path: Path | None = None
         self._suspend_dirty = False
         self._thread_pool = QThreadPool.globalInstance()
@@ -138,7 +141,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self.setWindowTitle(PRODUCT_NAME)
         self.resize(1480, 920)
-        self.setMinimumSize(1080, 700)
+        self.setMinimumSize(1000, 700)
         self._Ui_Build()
         self._Menu_Build()
         self.Language_Apply(language)
@@ -226,6 +229,9 @@ class MainWindow(QMainWindow):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
+        self.time_range = TimeRangeBar(self._translator)
+        self.time_range.rangeChanged.connect(self._TimeRange_Changed)
+        content_layout.addWidget(self.time_range)
         self.pages = QStackedWidget()
         self.overview_page = OverviewPage(self._translator)
         self.replay_page = ReplayPage(self._translator, self._registry)
@@ -234,6 +240,7 @@ class MainWindow(QMainWindow):
             self._translator,
             self._registry,
         )
+        self.state_estimation_page.navigation_diagnostics["landing"].recomputeRequested.connect(self._LandingReplay_Start)
         self.explorer_page = DataExplorerPage(self._translator)
         self._page_widgets = (
             self.overview_page,
@@ -428,6 +435,8 @@ class MainWindow(QMainWindow):
             return
         self.export_dialog.OutputDirectory_Set(self._ExportDirectory_Default())
         self.export_dialog.Result_Clear()
+        model = self.time_range.controller.model
+        self.export_dialog.Range_Set((model.start, model.end), model.mission_duration)
         self.export_dialog.open()
 
     def _ExportDirectory_Default(self) -> Path:
@@ -667,6 +676,14 @@ class MainWindow(QMainWindow):
                     self.replay_page.Configuration_Set(project.replay_configurations["draft"])
                 except ValueError as exc:
                     self._Error_Show(str(exc))
+            if "time_range" in project.ui_state:
+                self.time_range.State_Restore(project.ui_state["time_range"])
+            selected_source = project.ui_state.get("analysis_source", "recorded")
+            if isinstance(selected_source, str) and selected_source.startswith("replay:"):
+                key = selected_source.removeprefix("replay:")
+                configuration = project.replay_configurations.get(key)
+                if configuration is not None:
+                    self._source_restore_pending = (key, configuration)
             page_index = project.ui_state.get("page_index")
             if isinstance(page_index, int) and 0 <= page_index < self.pages.count():
                 self.navigation_list.setCurrentRow(page_index)
@@ -679,8 +696,12 @@ class MainWindow(QMainWindow):
         was_suspended = self._suspend_dirty
         self._suspend_dirty = True
         self._dataset = dataset
+        self._source_restore_pending = None
+        self._source_restore_index = None
         self._replay_store.Clear()
         self._channel_resolver = ChannelResolver(dataset, self._replay_store)
+        bounds = self._channel_resolver.MissionReplayBounds_Get()
+        self.time_range.Mission_Set((bounds.end_timestamp_us - bounds.start_timestamp_us) * 1e-6)
         self.export_action.setEnabled(True)
         self.status_label.setText(self._DatasetStatus_TextGet(dataset))
         try:
@@ -716,6 +737,37 @@ class MainWindow(QMainWindow):
         self.flight_page.Dataset_Set(self._dataset, self._channel_resolver)
         self.state_estimation_page.Dataset_Set(self._dataset, self._channel_resolver)
         self.explorer_page.Dataset_Set(self._dataset, self._replay_store)
+        self._TimeRange_Changed(self.time_range.controller.model)
+
+    def _TimeRange_Changed(self, model) -> None:
+        import pyqtgraph as pg
+        if self._dataset is None or not hasattr(self, "pages"):
+            return
+        for plot in self.pages.findChildren(pg.PlotWidget):
+            plot.setLimits(xMin=model.start, xMax=max(model.end, model.start + .001))
+            plot.setXRange(model.start, max(model.end, model.start + .001), padding=0)
+        if self._channel_resolver is not None:
+            origin = self._channel_resolver.MissionReplayBounds_Get().start_timestamp_us
+            self.flight_page.TimeRange_Set(origin + round(model.start * 1e6),
+                                           origin + round(model.end * 1e6))
+        self.explorer_page.TimeRange_Set(model.start, model.end)
+        for panel in self.state_estimation_page.navigation_diagnostics.values():
+            panel.TimeRange_Set(model.start, model.end)
+        self._Project_MarkDirty()
+
+    def _LandingReplay_Start(self):
+        if self._dataset is None:
+            return
+        from silverstar_flp.analysis.landing_window import LandingReplay_Run
+        dataset = self._dataset
+        def complete(result):
+            panel = self.state_estimation_page.navigation_diagnostics["landing"]
+            panel.Recomputed_Set(dataset, result["transitions"])
+            panel.Dataset_Set(dataset, self._channel_resolver)
+            panel.note.setText(self._translator.Text_Get("diagnostic.landing_note") + "\n" +
+                               self._translator.Text_Get("diagnostic." + result["reason"]))
+        self._Task_Start(FunctionWorker(lambda context: LandingReplay_Run(dataset, context)),
+                         complete, self._Error_Show)
 
     def _Replay_Start(self, algorithm_id: str, request: ReplayRequest) -> None:
         if self._dataset is None:
@@ -756,7 +808,12 @@ class MainWindow(QMainWindow):
 
     def _Replay_ResultSet(self, result: AlgorithmResult) -> None:
         display_name = self._registry.Algorithm_Get(result.algorithm_id).metadata.display_name
-        entry = self._replay_store.Result_Add(result, algorithm_name=display_name)
+        restore_index = self._source_restore_index
+        self._source_restore_index = None
+        entry = self._replay_store.Result_Add(result, algorithm_name=display_name,
+                                              restored_run_index=restore_index)
+        if restore_index is not None:
+            self._replay_store.ActiveSource_Set(entry.source_id)
         self.replay_page.Result_Set(entry)
         self._Pages_Refresh()
         self.status_label.setText(
@@ -772,6 +829,7 @@ class MainWindow(QMainWindow):
         if not self._replay_store.ActiveSource_Set(source_id):
             return
         self._Pages_Refresh()
+        self._Project_MarkDirty()
         if self._channel_resolver is not None:
             source = self._channel_resolver.Source_Get(source_id)
             self.status_label.setText(
@@ -786,7 +844,9 @@ class MainWindow(QMainWindow):
             self.export_dialog.Result_Error(self._translator.Text_Get("status.no_data"))
             return
         selected = self.explorer_page.ExportChannels_Get()
-        options = replace(options, selected_channels=selected)
+        options = replace(options, selected_channels=selected,
+                          current_range=(self.time_range.controller.model.start,
+                                         self.time_range.controller.model.end))
         dataset = self._dataset
         exporter = FlightExporter(self._registry)
         worker = FunctionWorker(
@@ -865,6 +925,7 @@ class MainWindow(QMainWindow):
             self._Error_Show(message)
 
     def _Task_Finish(self) -> None:
+        self._source_restore_index = None
         self.progress_bar.setVisible(False)
         self.cancel_button.setVisible(False)
         self.import_action.setEnabled(True)
@@ -877,6 +938,27 @@ class MainWindow(QMainWindow):
         self.replay_page.Task_Finish()
         self._active_worker = None
         self._worker_error_callback = None
+        if self._source_restore_pending is not None:
+            QTimer.singleShot(0, self._AnalysisSource_Restore)
+
+    def _AnalysisSource_Restore(self):
+        pending = self._source_restore_pending
+        self._source_restore_pending = None
+        if pending is None or self._dataset is None:
+            return
+        key, configuration = pending
+        try:
+            self.replay_page.Configuration_Set(configuration)
+            self._source_restore_index = int(key.rsplit(":", 1)[1])
+            request = ReplayRequest(
+                mode=configuration["mode"],
+                input_source=configuration["input_source"],
+                parameters=configuration["actual_values"],
+            )
+            self._Replay_Start(configuration["algorithm_id"], request)
+        except (ValueError, KeyError) as exc:
+            self._source_restore_index = None
+            self._Error_Show(str(exc))
 
     def _Task_Cancel(self) -> None:
         if self._active_worker is not None:
@@ -977,6 +1059,10 @@ class MainWindow(QMainWindow):
     def _Project_Write(self, path: Path) -> None:
         try:
             self._project.ui_state["page_index"] = self.navigation_list.currentRow()
+            self._project.ui_state["time_range"] = self.time_range.controller.model.State_Get()
+            self._project.ui_state["analysis_source"] = (
+                self._replay_store.ActiveSource_Get().source_id
+            )
             self._project.replay_configurations["draft"] = self.replay_page.Configuration_Get()
             for entry in self._replay_store.Entries_Get():
                 if entry.analysis_only:
@@ -1051,6 +1137,7 @@ class MainWindow(QMainWindow):
             self._translator.Language_Set(language)
         except ValueError:
             return
+        self.time_range.Language_Apply()
         self._settings.setValue("language", language)
         language_index = self.language_combo.findData(language)
         if language_index >= 0:

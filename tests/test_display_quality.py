@@ -267,10 +267,10 @@ def test_local_document_links_resolve():
 
 def test_gif_event_marker_does_not_interpolate_through_an_invalid_sample(tmp_path, monkeypatch):
     from silverstar_flp.export.service import ExportOptions
-    from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
     from tests.sslog_synthetic import AnalysisFlight_Build
+    from tests.test_project_export import _DisplayDataset_Parse
 
-    dataset = Sslog0ParserPlugin().parse(AnalysisFlight_Build(tmp_path / "SYNTHETIC_gap.BIN"))
+    dataset = _DisplayDataset_Parse(AnalysisFlight_Build(tmp_path / "SYNTHETIC_gap.BIN"))
     channel_id = "kf6.recorded.navigation.position_enu"
     position = dataset.Series_Get(channel_id)
     deploy = next(

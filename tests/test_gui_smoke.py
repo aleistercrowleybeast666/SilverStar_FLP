@@ -23,11 +23,11 @@ from silverstar_flp.export.service import (
     ExportTheme,
 )
 from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
-from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.widgets import StandardComboBox
 from tests.sslog_synthetic import AnalysisFlight_Build
+from tests.test_project_export import _DisplayDataset_Parse
 
 
 def _ProjectIdentity_Set(window: MainWindow, source_path: Path, root: Path) -> None:
@@ -71,7 +71,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     monkeypatch,
 ) -> None:
     application = QApplication.instance() or QApplication([])
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_gui_source.BIN")
     )
     window = MainWindow(builtin_registry())
@@ -92,7 +92,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert not hasattr(window, "attitude_page")
     assert not hasattr(window, "navigation_page")
     assert window.flight_page.tabs.count() == 6
-    assert window.state_estimation_page.tabs.count() == 5
+    assert window.state_estimation_page.tabs.count() == 8
     assert window.explorer_page.tabs.count() == 3
     assert (
         window.overview_page.calibration_group.geometry().top()
@@ -296,7 +296,7 @@ def test_export_dialog_uses_project_or_source_default_and_opens_manifest(
     monkeypatch,
 ) -> None:
     application = QApplication.instance() or QApplication([])
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_default_export.BIN")
     )
     window = MainWindow(builtin_registry())
@@ -367,7 +367,7 @@ def test_plugin_install_rejects_unsupported_algorithm_and_refresh_preserves_runt
     _application = QApplication.instance() or QApplication([])
     manager = TrustedContainerPluginManager(tmp_path / "installed")
     window = MainWindow(builtin_registry(), plugin_manager=manager)
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_plugin_refresh.BIN")
     )
     window._Dataset_Set(dataset)
@@ -490,7 +490,7 @@ def test_export_dialog_runs_gif_and_manifest_through_real_qthreadpool_worker(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_gui_worker_export.BIN")
     )
     window = MainWindow(builtin_registry())
@@ -525,7 +525,7 @@ def test_export_dialog_runs_gif_and_manifest_through_real_qthreadpool_worker(
     assert not timed_out
     assert not errors
     assert window._active_worker is None
-    assert (output / "Flight_Replay_ZH.gif").is_file()
+    assert (output / "GIF" / "Flight_Replay_ZH.gif").is_file()
     assert (output / "Export_Manifest_ZH.json").is_file()
     assert not (output / "Export_Failures_ZH.txt").exists()
     assert dialog._result_manifest is not None

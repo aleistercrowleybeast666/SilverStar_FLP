@@ -68,6 +68,8 @@ _EVENT_NAMES = {
 # These are semantic field-role bindings only. Binary offsets and sizes remain
 # exclusively owned by the package record catalog.
 _STABLE_ALIAS_SPECS = (
+    ("kf6.recorded.attitude.q_nb", "ESTIMATOR", "q_nb", None),
+    ("kf6.recorded.navigation.linear_accel_enu", "ESTIMATOR", "acceleration_enu_mps2", None),
     ("pure_ins.recorded.attitude.q_nb", "PURE_INS", "q_nb", None),
     (
         "pure_ins.recorded.navigation.velocity_enu",
@@ -205,9 +207,6 @@ _STABLE_ALIAS_SPECS = (
         "p0_diagonal",
         None,
     ),
-    ("imu.native.accel_b", "IMU_NATIVE", "accel_b_mps2", 1),
-    ("imu.native.gyro_b", "IMU_NATIVE", "gyro_b_radps", 1),
-    ("imu.native.temperature", "IMU_NATIVE", "temperature_c", 1),
     ("gnss.native.velocity_enu", "GNSS_NATIVE", "velocity_enu_mps", 2),
     (
         "gnss.native.velocity_variance",
@@ -218,12 +217,6 @@ _STABLE_ALIAS_SPECS = (
     ("baro.native.pressure", "BARO_NATIVE", "pressure_pa", 3),
     ("baro.native.altitude", "BARO_NATIVE", "altitude_m", 3),
     ("mag.native.field_b", "MAG_NATIVE", "magnetic_field_b_uT", 13),
-    (
-        "hardware_attitude.reference.q_nb",
-        "HW_QUAT_NATIVE",
-        "quaternion_wxyz",
-        4,
-    ),
     (
         "inertial.increment.delta_theta_b",
         "INERTIAL_INCREMENT",
@@ -274,8 +267,6 @@ _STABLE_ALIAS_SPECS = (
 )
 
 _CANONICAL_FIELD_SPECS = {
-    "imu.acceleration": ("IMU_NATIVE", "accel_b_mps2"),
-    "imu.angular_rate": ("IMU_NATIVE", "gyro_b_radps"),
     "gnss.velocity": ("GNSS_NATIVE", "velocity_enu_mps"),
     "barometer.altitude": ("BARO_NATIVE", "altitude_m"),
 }

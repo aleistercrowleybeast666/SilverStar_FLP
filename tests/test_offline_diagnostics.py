@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
-from threading import get_ident
+from threading import Event, get_ident
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -29,7 +29,7 @@ from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.pages.replay import ReplayPage
 from silverstar_flp.ui.theme import Theme_Apply
-from tests.synthetic_parameter_navigation import NavigationPair_Open
+from tests.synthetic_parameter_navigation import NavigationPair_Open, SyntheticOperations_Attach
 from tests.test_gui_smoke import _ProjectIdentity_Set
 from tests.test_kf6_field_analysis import Measurement_Create
 
@@ -70,14 +70,14 @@ def diagnostic_dataset(tmp_path):
                 },
             )
         )
-    return replace(
+    return SyntheticOperations_Attach(replace(
         base,
         records={
             **base.records,
             "GNSS_MEASUREMENT": tuple(records),
             "BARO_MEASUREMENT": tuple(baro),
         },
-    )
+    ))
 
 
 def test_effective_override_real_skip_reset_and_input_immutability(diagnostic_dataset, tmp_path):
@@ -144,6 +144,7 @@ def test_latency_synthetic_known_shift_and_cancellation(diagnostic_dataset):
     ds = replace(
         ds, records={**ds.records, "GNSS_MEASUREMENT": tuple(records), "BARO_MEASUREMENT": ()}
     )
+    ds = SyntheticOperations_Attach(ds)
     progress = []
     context = TaskContext(progress_callback=lambda p, _: progress.append(p))
     scan = LatencySweep_Run(
@@ -268,15 +269,17 @@ def test_background_scan_and_project_excludes_diagnostics(
     main_thread = get_ident()
     thread_ids = []
     ticks = []
+    ui_tick = Event()
 
     def scan(ds, request, *, context, analysis_options):
         thread_ids.append(get_ident())
+        assert ui_tick.wait(5), "GUI event loop did not advance during background work"
         return LatencySweep_Run(ds, request, context=context, analysis_options=analysis_options)
 
     monkeypatch.setattr(module, "LatencySweep_Run", scan)
     timer = QTimer()
     timer.setInterval(10)
-    timer.timeout.connect(lambda: ticks.append(1))
+    timer.timeout.connect(lambda: (ticks.append(1), ui_tick.set()))
     timer.start()
     page._Diagnostic_Request("scan")
     assert window._active_worker is not None

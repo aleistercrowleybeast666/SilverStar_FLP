@@ -28,10 +28,10 @@ from silverstar_flp.plugins.api.algorithm import (
     ReplayRequest,
     StateGroupSpec,
 )
-from silverstar_flp.plugins.log_parsers.sslog0.plugin import Sslog0ParserPlugin
 from silverstar_flp.plugins.registry import PluginRegistry
 from silverstar_flp.ui.pages.state_estimation import StateEstimationPage
 from tests.sslog_synthetic import START_TIMESTAMP_US, AnalysisFlight_Build
+from tests.test_project_export import _DisplayDataset_Parse, _PlotBaseName_Get
 
 
 def _Series(
@@ -380,7 +380,7 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_fake_eskf.BIN")
     )
     registry = PluginRegistry()
@@ -427,7 +427,7 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
 def test_standard_export_uses_fake_state_and_future_sensor_metadata(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_fake_export.BIN")
     )
     registry = PluginRegistry()
@@ -454,7 +454,7 @@ def test_standard_export_uses_fake_state_and_future_sensor_metadata(
     )
 
     assert not manifest.failures
-    names = {path.name for path in manifest.files}
+    names = {_PlotBaseName_Get(path) for path in manifest.files}
     assert {
         "Fake_ESKF_Recomputed_Attitude_Error_Std_1Sigma_EN.png",
         "Fake_ESKF_Recomputed_Gyro_Bias_Std_1Sigma_EN.png",
@@ -472,7 +472,7 @@ def test_standard_export_uses_fake_state_and_future_sensor_metadata(
 def test_unconfigured_measurement_group_is_skipped_despite_nonzero_diagnostics(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(
             tmp_path / "SYNTHETIC_fake_unconfigured_mag.BIN",
             configured_magnetometer_rate_hz=0,
@@ -502,7 +502,7 @@ def test_unconfigured_measurement_group_is_skipped_despite_nonzero_diagnostics(
     )
 
     assert not manifest.failures
-    names = {path.name for path in manifest.files}
+    names = {_PlotBaseName_Get(path) for path in manifest.files}
     assert not any("Magnetometer" in name for name in names)
     skipped = [
         item
@@ -523,7 +523,7 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_no_gnss_updates.BIN")
     )
     from tests.parameter_fixtures import SyntheticParameters_Attach
@@ -545,7 +545,7 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
         thresholds=(),
         end_timestamp_us=None,
     ) -> None:
-        calls[path.name] = (series, empty_message, thresholds)
+        calls[_PlotBaseName_Get(path)] = (series, empty_message, thresholds)
         original(
             dataset_arg,
             series,
@@ -600,7 +600,7 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
 def test_full_p_keyframes_use_plugin_metadata_for_15_state_estimator(
     tmp_path: Path,
 ) -> None:
-    dataset = Sslog0ParserPlugin().parse(
+    dataset = _DisplayDataset_Parse(
         AnalysisFlight_Build(tmp_path / "SYNTHETIC_fake_eskf_full_p.BIN")
     )
     registry = PluginRegistry()
@@ -645,7 +645,7 @@ def test_gnss_nis_group_references_are_shared_by_gui_and_export(tmp_path):
     from tests.parameter_fixtures import SyntheticParameters_Attach
     app = QApplication.instance() or QApplication([])
     dataset = SyntheticParameters_Attach(
-        Sslog0ParserPlugin().parse(AnalysisFlight_Build(tmp_path / "nis.BIN")),
+        _DisplayDataset_Parse(AnalysisFlight_Build(tmp_path / "nis.BIN")),
         tmp_path / "parameters",
     )
     groups = Kf6AlgorithmPlugin.metadata.estimator_visualization.measurement_groups

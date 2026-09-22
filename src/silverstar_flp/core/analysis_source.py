@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 
@@ -136,6 +136,7 @@ class ReplayResultStore:
         result: AlgorithmResult,
         *,
         algorithm_name: str | None = None,
+        restored_run_index: int | None = None,
     ) -> ReplayStoredResult:
         mode = (
             ReplayMode.WHAT_IF
@@ -146,11 +147,11 @@ class ReplayResultStore:
                 else ReplayMode.RECORDED_CONFIGURATION
             )
         )
-        same_mode_count = sum(
-            entry.algorithm_id == result.algorithm_id and entry.mode == mode
-            for entry in self._entries
-        )
-        run_index = same_mode_count + 1
+        run_index = restored_run_index if restored_run_index is not None else 1 + max(
+            (entry.run_index for entry in self._entries
+             if entry.algorithm_id == result.algorithm_id and entry.mode == mode), default=0)
+        if type(run_index) is not int or run_index <= 0:
+            raise ValueError("replay_result_identity_invalid")
         algorithm_key = result.algorithm_id.rsplit(".", 1)[-1]
         mode_key = {
             ReplayMode.WHAT_IF: "what_if",
@@ -159,6 +160,8 @@ class ReplayResultStore:
         }[mode]
         result_id = f"{algorithm_key}:{mode_key}:{run_index}"
         source_id = f"replay:{result_id}"
+        if result_id in self._by_result_id:
+            raise ValueError("replay_result_identity_duplicate")
         entry = ReplayStoredResult(
             result_id=result_id,
             source_id=source_id,
@@ -403,8 +406,23 @@ class ChannelResolver:
             for prefix in prefixes:
                 series = self.dataset.Series_Get(f"{prefix}.{suffix}")
                 if series is not None:
+                    breaks = []
+                    previous = (0, 0, 0, 0)
+                    for record in self.dataset.Records_Get("GNSS_RECOVERY"):
+                        counts = record.payload["reanchor_count"]
+                        if any(a > b for a, b in zip(counts, previous, strict=True)):
+                            breaks.append(record.payload["estimator_present_timestamp_us"])
+                        previous = counts
+                    if breaks and prefix.startswith("kf6"):
+                        return replace(series, metadata={**series.metadata,
+                                       "discontinuity_timestamps_us": tuple(breaks)})
                     return series
             return None
+        if channel_id in ("attitude.q_nb", "navigation.linear_accel_enu"):
+            selected = solution or self._RecordedPositionSolution_Get()
+            return (
+                self.dataset.Series_Get(f"{selected}.recorded.{channel_id}") if selected else None
+            )
         direct_series = self.dataset.Series_Get(channel_id)
         if direct_series is not None:
             return direct_series
