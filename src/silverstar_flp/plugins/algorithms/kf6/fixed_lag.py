@@ -66,7 +66,7 @@ class ReplayEvent:
     recovery_mask: int = 0
 
     def Order_Get(self):
-        rank = 0 if self.kind & 1 else 1 if self.kind & 2 else 2
+        rank = 3 if self.kind == 8 else 0 if self.kind & 1 else 1 if self.kind & 2 else 2
         return self.measurement_us, rank, int(self.kind == 4), self.sequence
 
 
@@ -160,6 +160,15 @@ class FixedLagReplay:
     def _EventApply(state, event):
         p = event.payload
         outcome = {'results': [3] * 4, 'baro': 3}
+        if event.kind == 8:
+            target = np.asarray(p['target_position_en'], dtype=np.float32)
+            variance = np.asarray(p['target_variance_en'], dtype=np.float32)
+            state.state[:2] = target
+            state.covariance[:2, :] = 0.0
+            state.covariance[:, :2] = 0.0
+            state.covariance[0, 0] = max(float(variance[0]), 1.0e-3)
+            state.covariance[1, 1] = max(float(variance[1]), 1.0e-3)
+            return ReplayResult.OK, outcome
         groups = [g for g in range(4) if event.kind & (1 if g < 2 else 2)
                   and not (g == 1 and state.analysis_position_vertical_disabled)]
         if event.kind != 4:
@@ -216,9 +225,15 @@ class FixedLagReplay:
 
     @staticmethod
     def _EventValid(event):
-        if event.kind not in (1, 2, 3, 4):
+        if event.kind not in (1, 2, 3, 4, 8):
             return False
         payload = event.payload
+        if event.kind == 8:
+            target = np.asarray(payload.get('target_position_en', ()), dtype=np.float64)
+            variance = np.asarray(payload.get('target_variance_en', ()), dtype=np.float64)
+            return (target.shape == (2,) and variance.shape == (2,)
+                    and np.all(np.isfinite(target)) and np.all(np.isfinite(variance))
+                    and np.all(variance > 0))
         if event.kind == 4:
             return (np.isfinite(payload['relative_altitude_m'])
                     and np.isfinite(payload['variance_m2']) and payload['variance_m2'] > 0)
@@ -397,7 +412,8 @@ def EpochState_Restore(dataset, epoch, template):
     return FixedLagReplay(state, epoch=epoch), q.copy()
 
 
-def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, context):
+def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, context,
+                 assistance=None):
     from silverstar_flp.plugins.algorithms.kf6.plugin import _ReplaySnapshot
 
     operations = [
@@ -423,6 +439,8 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
     evidence = {}
     snapshots = []
     group_updates = []
+    measurement_events = []
+    analysis_events = []
     quality_evidence = {(r.payload['replay_epoch'], r.payload['source_sequence']): r.payload
                         for r in dataset.Records_Get('GNSS_RECOVERY')}
     reanchor_times = []
@@ -530,6 +548,21 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                                 measurement_us=int(p[kind + '_measurement_timestamp_us']))
                 expected = int(p[kind + '_replay_result'])
                 attempt_mask |= event.kind
+            decision = None
+            if assistance is not None and event.kind & 1:
+                decision = assistance.decisions.get(int(p['sequence']))
+                if decision is not None:
+                    event_payload = dict(event.payload)
+                    if decision.position_r_scale != 1.0:
+                        variance = list(event_payload['position_variance_m2'])
+                        variance[:2] = [float(value) * decision.position_r_scale
+                                        for value in variance[:2]]
+                        event_payload['position_variance_m2'] = tuple(variance)
+                    event = replace(
+                        event, payload=event_payload,
+                        valid_mask=(event.valid_mask if decision.position_en_allowed
+                                    else event.valid_mask & ~1),
+                    )
             previous_reanchors = tuple(history.state.reanchor_counts)
             if (
                 event.kind == 3
@@ -566,6 +599,25 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
             else:
                 result = history.Insert(event)
             outcome = history.last_outcome
+            if (assistance is not None and decision is not None
+                    and decision.reanchor_ready and result == ReplayResult.OK
+                    and bool(event.valid_mask & 1)):
+                target = np.asarray(p['position_enu_m'][:2], dtype=np.float64)
+                distance = float(np.linalg.norm(target - history.state.state[:2]))
+                if distance >= assistance.config.reanchor_min_distance_m:
+                    reanchor_event = ReplayEvent(
+                        history.present, history.present, int(p['sequence']), 8,
+                        epoch,
+                        {'target_position_en': tuple(target),
+                         'target_variance_en': tuple(p['position_variance_m2'][:2])},
+                    )
+                    reanchor_result = history.Insert(reanchor_event)
+                    if reanchor_result != ReplayResult.OK:
+                        raise ValueError('integrity_reanchor_failed')
+                    analysis_events.append({
+                        'event': 'INTEGRITY_REANCHOR', 'timestamp_us': history.present,
+                        'source_sequence': int(p['sequence']), 'distance_m': distance,
+                    })
             if any(
                 a > b
                 for a, b in zip(history.state.reanchor_counts, previous_reanchors, strict=True)
@@ -583,6 +635,37 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                     axes = (0, 1) if g % 2 == 0 else (2,)
                     innovation = outcome['position_innovation' if g < 2 else 'velocity_innovation']
                     variance = p['position_variance_m2' if g < 2 else 'velocity_variance_m2ps2']
+                    effective_source = (
+                        history.state.last_position_effective_variance
+                        if g < 2 else history.state.last_velocity_effective_variance
+                    )
+                    effective = np.asarray(
+                        [float(effective_source[a]) for a in axes], dtype=np.float64
+                    )
+                    base = np.asarray([float(variance[a]) for a in axes], dtype=np.float64)
+                    accepted = outcome["results"][g] in (0, 1)
+                    resolved = int(p[
+                        "position_measurement_timestamp_us"
+                        if g < 2 else "velocity_measurement_timestamp_us"
+                    ])
+                    measurement_events.append(dict(
+                        group=("position_en", "position_u", "velocity_en", "velocity_u")[g],
+                        timestamp_us=history.present,
+                        receive_timestamp_us=event.receive_us,
+                        resolved_measurement_timestamp_us=resolved,
+                        operation_sequence=order,
+                        valid=bool(int(p["valid_group_mask"]) & (1 << g)),
+                        input_variance=tuple(float(value) for value in base),
+                        effective_variance=tuple(
+                            float(value) for value in (
+                                effective if accepted else np.full(base.shape, np.nan)
+                            )
+                        ),
+                        receive_age=(history.present - event.receive_us) * .001,
+                        fixed_lag_latency=(history.present - resolved) * .001,
+                        r_scale=(float(effective[0] / base[0])
+                                 if accepted and base[0] > 0 else np.nan),
+                    ))
                     group_updates.append(
                         dict(
                             timestamp_us=history.present,
@@ -607,7 +690,23 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                     )
 
             if kind == 'baro':
-                results[2] = outcome.get('baro', 3)
+                baro_result = outcome.get('baro', 3)
+                base = float(p["variance_m2"])
+                effective = float(history.state.last_baro_effective_variance)
+                accepted = baro_result in (0, 1)
+                measurement_events.append(dict(
+                    group="baro", timestamp_us=history.present,
+                    receive_timestamp_us=event.receive_us,
+                    resolved_measurement_timestamp_us=event.measurement_us,
+                    operation_sequence=order,
+                    valid=bool(p.get("valid_mask", 1) & 1),
+                    input_variance=(base,),
+                    effective_variance=(effective if accepted else float("nan"),),
+                    receive_age=(history.present - event.receive_us) * .001,
+                    fixed_lag_latency=(history.present - event.measurement_us) * .001,
+                    r_scale=effective / base if accepted and base > 0 else np.nan,
+                ))
+                results[2] = baro_result
             elif outcome:
                 for group in range(2):
                     if event.kind & (1 << group):
@@ -643,4 +742,6 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
     return tuple(snapshots), history.state, {'operation_count': len(operations),
         'replay_count': history.replays, 'execution_mismatches': mismatches,
         'measurement_timing_inferred': False, 'reanchor_counts': history.state.reanchor_counts,
-        'gnss_group_updates': group_updates, 'reanchor_timestamps_us': reanchor_times}
+        'gnss_group_updates': group_updates, 'measurement_events': measurement_events,
+        'integrity_analysis_events': analysis_events,
+        'reanchor_timestamps_us': reanchor_times}

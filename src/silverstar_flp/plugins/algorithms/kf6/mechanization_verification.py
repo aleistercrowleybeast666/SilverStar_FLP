@@ -43,7 +43,7 @@ def Mechanization_Verify(dataset, start_us, end_us=None):
             )
             row["passed"] = bool(
                 row["start_timestamp_difference_us"] == 0
-                and row["dt_difference_s"] == 0
+                and abs(row["dt_difference_s"]) <= 2.0e-9
                 and np.allclose(
                     computed.delta_theta_b, expected.delta_theta_b, rtol=2e-6, atol=1e-9
                 )

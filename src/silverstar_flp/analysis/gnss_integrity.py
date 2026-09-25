@@ -28,6 +28,11 @@ class GnssIntegrityResult:
     residual_m: np.ndarray
     valid_en: np.ndarray
     valid_u: np.ndarray
+    anchored_residual_m: np.ndarray
+    anchored_valid_en: np.ndarray
+    anchored_valid_u: np.ndarray
+    anchor_reset_en: np.ndarray
+    anchor_reset_u: np.ndarray
     quality: np.ndarray
     summary: dict[str, dict[str, float | int]]
 
@@ -74,6 +79,43 @@ def _Summary_Get(values: np.ndarray, eligible: int) -> dict[str, float | int]:
     }
 
 
+def _AnchoredClosure_Build(
+    time: np.ndarray,
+    position: np.ndarray,
+    velocity: np.ndarray,
+    group_valid: np.ndarray,
+    broken: np.ndarray,
+    mission_start_us: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Integrate only continuous, independently valid EN and U segments."""
+    residual = np.full(position.shape, np.nan, dtype=np.float64)
+    valid = np.zeros((len(time), 2), dtype=np.bool_)
+    anchor_reset = np.zeros((len(time), 2), dtype=np.bool_)
+    anchors: list[np.ndarray | None] = [None, None]
+    integrated = np.zeros(3, dtype=np.float64)
+    for index in range(len(time)):
+        for group, axes, required in ((0, (0, 1), (0, 2)), (1, (2,), (1, 3))):
+            if time[index] < mission_start_us or not all(
+                group_valid[index, item] for item in required
+            ):
+                anchors[group] = None
+                continue
+            if anchors[group] is None or index == 0 or broken[index - 1]:
+                anchors[group] = position[index, list(axes)].copy()
+                integrated[list(axes)] = 0.0
+                anchor_reset[index, group] = True
+                continue
+            dt_s = (int(time[index]) - int(time[index - 1])) * 1e-6
+            integrated[list(axes)] += (
+                0.5 * (velocity[index - 1, list(axes)] + velocity[index, list(axes)]) * dt_s
+            )
+            residual[index, list(axes)] = (
+                position[index, list(axes)] - anchors[group] - integrated[list(axes)]
+            )
+            valid[index, group] = True
+    return residual, valid, anchor_reset
+
+
 def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegrityResult:
     if window_s not in WINDOW_SECONDS:
         raise ValueError("gnss_integrity_window_invalid")
@@ -114,16 +156,22 @@ def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegr
          float(p.get("satellite_count", math.nan)))
         for p in payloads
     ], dtype=np.float64)
-    masks = np.asarray([int(p.get("valid_group_mask", 0)) for p in payloads], dtype=np.int64)
-    pos_usable = np.asarray([bool(p.get("position_usable", 0)) for p in payloads])
-    vel_masks = np.asarray([int(p.get("velocity_valid_mask", 0)) for p in payloads], dtype=np.int64)
+    # New records own four independent bits. Aggregate flags are a legacy fallback only.
+    masks = np.asarray([
+        int(p["valid_group_mask"]) if "valid_group_mask" in p else (
+            (0x03 if bool(p.get("position_usable", 0)) else 0)
+            | (0x04 if int(p.get("velocity_valid_mask", 0)) & 0x03 == 0x03 else 0)
+            | (0x08 if int(p.get("velocity_valid_mask", 0)) & 0x04 else 0)
+        )
+        for p in payloads
+    ], dtype=np.int64)
     geographic_valid = ((lat >= -900_000_000) & (lat <= 900_000_000)
                         & (lon >= -1_800_000_000) & (lon <= 1_800_000_000))
     group_valid = np.column_stack((
-        (masks & 1 != 0) & pos_usable & geographic_valid,
-        (masks & 2 != 0) & pos_usable & geographic_valid,
-        (masks & 4 != 0) & (vel_masks & 3 == 3),
-        (masks & 8 != 0) & (vel_masks & 4 != 0),
+        (masks & 1 != 0) & geographic_valid,
+        (masks & 2 != 0) & geographic_valid,
+        masks & 4 != 0,
+        masks & 8 != 0,
     ))
     group_valid[:, 0] &= np.isfinite(position[:, :2]).all(axis=1)
     group_valid[:, 1] &= np.isfinite(position[:, 2])
@@ -177,12 +225,26 @@ def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegr
                 valid_en[end] = True
             else:
                 valid_u[end] = True
+    anchored, anchored_valid, anchor_reset = _AnchoredClosure_Build(
+        time, position, velocity, group_valid, broken,
+        int(dataset.start_timestamp_us or time[0]),
+    )
     horizontal_error = np.linalg.norm(residual[valid_en, :2], axis=1)
     vertical_error = np.abs(residual[valid_u, 2])
+    anchored_horizontal = np.linalg.norm(anchored[anchored_valid[:, 0], :2], axis=1)
+    anchored_vertical = np.abs(anchored[anchored_valid[:, 1], 2])
     return GnssIntegrityResult(
         window_s=window_s, timestamp_us=time, position_displacement_m=position_delta,
         velocity_displacement_m=velocity_delta, residual_m=residual,
-        valid_en=valid_en, valid_u=valid_u, quality=quality,
+        valid_en=valid_en, valid_u=valid_u,
+        anchored_residual_m=anchored,
+        anchored_valid_en=anchored_valid[:, 0],
+        anchored_valid_u=anchored_valid[:, 1],
+        anchor_reset_en=anchor_reset[:, 0],
+        anchor_reset_u=anchor_reset[:, 1],
+        quality=quality,
         summary={"horizontal": _Summary_Get(horizontal_error, eligible),
-                 "vertical": _Summary_Get(vertical_error, eligible)},
+                 "vertical": _Summary_Get(vertical_error, eligible),
+                 "anchored_horizontal": _Summary_Get(anchored_horizontal, len(time)),
+                 "anchored_vertical": _Summary_Get(anchored_vertical, len(time))},
     )

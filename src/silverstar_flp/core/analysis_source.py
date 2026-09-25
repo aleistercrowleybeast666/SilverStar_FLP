@@ -73,7 +73,7 @@ class ReplayStoredResult:
     def kind(self) -> AnalysisSourceKind:
         return (
             AnalysisSourceKind.WHAT_IF
-            if self.mode == ReplayMode.WHAT_IF
+            if self.mode in (ReplayMode.WHAT_IF, ReplayMode.INTEGRITY_ASSISTED)
             else AnalysisSourceKind.RECOMPUTED
         )
 
@@ -139,7 +139,9 @@ class ReplayResultStore:
         restored_run_index: int | None = None,
     ) -> ReplayStoredResult:
         mode = (
-            ReplayMode.WHAT_IF
+            ReplayMode.INTEGRITY_ASSISTED
+            if result.provenance == "Integrity-assisted KF6"
+            else ReplayMode.WHAT_IF
             if result.provenance == "What-if"
             else (
                 ReplayMode.OFFLINE
@@ -155,6 +157,7 @@ class ReplayResultStore:
         algorithm_key = result.algorithm_id.rsplit(".", 1)[-1]
         mode_key = {
             ReplayMode.WHAT_IF: "what_if",
+            ReplayMode.INTEGRITY_ASSISTED: "integrity_assisted",
             ReplayMode.OFFLINE: "offline",
             ReplayMode.RECORDED_CONFIGURATION: "recomputed",
         }[mode]

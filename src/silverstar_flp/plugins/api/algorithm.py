@@ -24,6 +24,7 @@ class ReplayMode(StrEnum):
     RECORDED_CONFIGURATION = "recorded_configuration"
     OFFLINE = "offline"
     WHAT_IF = "what_if"
+    INTEGRITY_ASSISTED = "integrity_assisted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,7 @@ class MeasurementGroupSpec:
     update_result_channel: str
     r_scale_channel: str
     measurement_age_channel: str = ""
+    fixed_lag_latency_channel: str = ""
     measurement_uncertainty_channel: str = ""
     effective_r_channel: str = ""
     update_result_index: int = 0
@@ -314,10 +316,14 @@ class ReplayRequest:
     mode: ReplayMode = ReplayMode.RECORDED_CONFIGURATION
     input_source: str = "corrected_imu"
     parameters: Mapping[str, Any] = field(default_factory=dict)
+    integrity_parameters: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", ReplayMode(self.mode))
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+        object.__setattr__(
+            self, "integrity_parameters", MappingProxyType(dict(self.integrity_parameters))
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,7 +378,7 @@ class AlgorithmPlugin(ABC):
 
     def Parameters_Resolve(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
         self.metadata.Parameters_Validate(request.parameters, complete=False)
-        if request.mode == ReplayMode.RECORDED_CONFIGURATION:
+        if request.mode in (ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED):
             configuration = self.ConfigurationAvailability_Get(dataset)
             if not configuration.recorded_available:
                 raise ValueError(
@@ -395,7 +401,9 @@ class AlgorithmPlugin(ABC):
         return values
 
     def ParameterAudit_Get(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
-        firmware = request.mode == ReplayMode.RECORDED_CONFIGURATION or (
+        firmware = request.mode in (
+            ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED
+        ) or (
             request.mode == ReplayMode.WHAT_IF and self.FirmwareMember_Is(dataset)
         )
         return {

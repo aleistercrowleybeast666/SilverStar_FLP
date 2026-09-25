@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import colorsys
-from collections.abc import Iterable
 
 import numpy as np
 import pyqtgraph as pg
@@ -54,7 +53,7 @@ from silverstar_flp.core.visual_semantics import (
     TrajectoryMarkerWorldSizesFromExtent_Get,
     TrajectoryPhaseColor_Get,
 )
-from silverstar_flp.ui.theme import Plot_Colors
+from silverstar_flp.ui.plot_helpers import _Plot_Prepare, _Plot_Reset, _PlotViews_Reset
 from silverstar_flp.ui.widgets import StandardComboBox
 
 try:
@@ -160,16 +159,6 @@ class TraceColorAllocator:
         return f"#{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}"
 
 
-def _Plot_Prepare(plot: pg.PlotWidget, theme: str) -> None:
-    background, foreground = Plot_Colors(theme)
-    plot.setBackground(background)
-    plot.getAxis("bottom").setTextPen(foreground)
-    plot.getAxis("left").setTextPen(foreground)
-    plot.getAxis("bottom").setPen(foreground)
-    plot.getAxis("left").setPen(foreground)
-    plot.showGrid(x=True, y=True, alpha=0.2)
-
-
 def _Series_Plot(
     plot: pg.PlotWidget,
     series: TimeSeries | None,
@@ -231,22 +220,6 @@ def _Series_Plot(
             pen=pg.mkPen(colors.Color_Next(), width=width, style=style),
             name=f"{prefix}{column}",
         )
-
-
-def _Plot_Reset(plots: Iterable[pg.PlotWidget]) -> None:
-    for plot in plots:
-        plot.clear()
-        plot.addLegend()
-
-
-def _PlotViews_Reset(plots: Iterable[pg.PlotWidget]) -> None:
-    for plot in plots:
-        view_box = plot.getViewBox()
-        view_box.enableAutoRange(axis=pg.ViewBox.XYAxes, enable=True)
-        view_box.updateAutoRange()
-        legend = plot.getPlotItem().legend
-        if legend is not None:
-            legend.anchor(itemPos=(0, 0), parentPos=(0, 0), offset=(30, 30))
 
 
 def _EulerSeries_Create(series: TimeSeries) -> TimeSeries:
@@ -349,6 +322,7 @@ class FlightPage(QWidget):
         self._end_timestamp_us = 0
         self._playback_time_us = 0
         self._position: TimeSeries | None = None
+        self._reference_position: TimeSeries | None = None
         self._attitude: TimeSeries | None = None
         self._mission_bounds: MissionReplayBounds | None = None
         self._trajectory_bounds: TrajectoryBounds | None = None
@@ -442,6 +416,10 @@ class FlightPage(QWidget):
         self.trajectory_quality_label.setObjectName("muted")
         self.trajectory_quality_label.setWordWrap(True)
         layout.addWidget(self.trajectory_quality_label)
+        self.trajectory_sources_label = QLabel()
+        self.trajectory_sources_label.setObjectName("muted")
+        self.trajectory_sources_label.setWordWrap(True)
+        layout.addWidget(self.trajectory_sources_label)
         self.replay_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.replay_splitter.setChildrenCollapsible(False)
         self.attitude_3d_group = QGroupBox()
@@ -515,6 +493,7 @@ class FlightPage(QWidget):
             self._trajectory_world_items = [
                 gl.GLLinePlotItem(width=2.0, antialias=True) for _ in range(3)
             ]
+            self.recorded_path_line = gl.GLLinePlotItem(width=1.5, antialias=True)
             self.pre_deploy_line = gl.GLLinePlotItem(width=3.0, antialias=True)
             self.post_deploy_line = gl.GLLinePlotItem(width=3.0, antialias=True)
             deploy_vertices, deploy_faces = TrajectoryEventMesh_Get(
@@ -565,6 +544,7 @@ class FlightPage(QWidget):
             self.deploy_marker.setDepthValue(30)
             for item in (
                 *self._trajectory_world_items,
+                self.recorded_path_line,
                 self.pre_deploy_line,
                 self.post_deploy_line,
                 self.deploy_marker,
@@ -704,34 +684,53 @@ class FlightPage(QWidget):
                     seconds=(onset - start) * 1e-6,
                 )
             )
-        for series, plot in ((velocity, self.velocity_plot), (position, self.position_plot)):
-            _Series_Plot(plot, series, start, end_timestamp_us=end,
-                         colors=color_allocators[plot],
-                         prefix=f"{_Source_Label(self._translator, self._resolver, source_id)} · ",
-                         width=1.7)
-        attitude_prefix = (
-            f"{self._translator.Text_Get('status.recorded')} · "
-            if source.kind == AnalysisSourceKind.RECORDED
-            else f"{_Source_Label(self._translator, self._resolver, source_id)} · "
+        selected_label = _Source_Label(self._translator, self._resolver, source_id)
+        reference_position = None
+        if source.kind != AnalysisSourceKind.RECORDED:
+            reference_position = self._resolver.RecordedSeries_Get("navigation.position_enu")
+        self._reference_position = reference_position
+        self.trajectory_sources_label.setText(
+            self._translator.Text_Get(
+                "flight.trajectory_two_sources",
+                recorded=_Source_Label(
+                    self._translator, self._resolver,
+                    ReplayResultStore.RECORDED_SOURCE_ID,
+                ),
+                selected=selected_label,
+            ) if reference_position is not None else ""
         )
-        _Series_Plot(
-            self.quaternion_plot,
-            attitude,
-            start,
-            end_timestamp_us=end,
-            colors=color_allocators[self.quaternion_plot],
-            prefix=attitude_prefix,
-            width=1.7,
+        reference_label = _Source_Label(
+            self._translator, self._resolver, ReplayResultStore.RECORDED_SOURCE_ID
         )
+        for channel, selected_series, plot in (
+            ("navigation.velocity_enu", velocity, self.velocity_plot),
+            ("navigation.position_enu", position, self.position_plot),
+            ("attitude.q_nb", attitude, self.quaternion_plot),
+        ):
+            if source.kind != AnalysisSourceKind.RECORDED:
+                recorded = self._resolver.RecordedSeries_Get(channel)
+                _Series_Plot(
+                    plot, recorded, start, end_timestamp_us=end,
+                    colors=color_allocators[plot],
+                    prefix=f"{reference_label} · ",
+                    width=1.4, reference=True,
+                )
+                if channel == "attitude.q_nb" and recorded is not None:
+                    _Series_Plot(
+                        self.euler_plot, _EulerSeries_Create(recorded), start,
+                        end_timestamp_us=end, colors=color_allocators[self.euler_plot],
+                        prefix=f"{reference_label} · ",
+                        width=1.4, reference=True,
+                    )
+            _Series_Plot(
+                plot, selected_series, start, end_timestamp_us=end,
+                colors=color_allocators[plot], prefix=f"{selected_label} · ", width=1.7,
+            )
         if attitude is not None:
             _Series_Plot(
-                self.euler_plot,
-                _EulerSeries_Create(attitude),
-                start,
-                end_timestamp_us=end,
-                colors=color_allocators[self.euler_plot],
-                prefix=attitude_prefix,
-                width=1.7,
+                self.euler_plot, _EulerSeries_Create(attitude), start,
+                end_timestamp_us=end, colors=color_allocators[self.euler_plot],
+                prefix=f"{selected_label} · ", width=1.7,
             )
         _Series_Plot(
             self.acceleration_plot,
@@ -987,6 +986,21 @@ class FlightPage(QWidget):
 
     def _Trajectory3d_Refresh(self, timestamp_us: int) -> None:
         empty = np.empty((0, 3), dtype=np.float32)
+        reference = self._reference_position
+        if reference is not None:
+            values = np.asarray(reference.values, dtype=np.float32)
+            valid = (
+                reference.valid & np.all(np.isfinite(values), axis=1)
+                & (reference.timestamp_us >= np.uint64(self._start_timestamp_us))
+                & (reference.timestamp_us <= np.uint64(timestamp_us))
+            )
+            recorded_points = values[valid] - self._trajectory_origin
+            self.recorded_path_line.setData(
+                pos=recorded_points if len(recorded_points) > 1 else empty,
+                color=(0.55, 0.57, 0.62, 0.65), width=1.5,
+            )
+        else:
+            self.recorded_path_line.setData(pos=empty)
         if self._position is None or self._position.count == 0:
             self.pre_deploy_line.setData(pos=empty)
             self.post_deploy_line.setData(pos=empty)

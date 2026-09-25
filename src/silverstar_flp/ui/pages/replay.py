@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,7 +28,6 @@ from silverstar_flp.core.analysis_source import (
 from silverstar_flp.core.comparison import Series_Compare
 from silverstar_flp.core.dataset import FlightDataset
 from silverstar_flp.core.i18n import Translator
-from silverstar_flp.plugins.algorithms.kf6.diagnostics import Kf6DiagnosticRequest
 from silverstar_flp.plugins.api.algorithm import (
     AlgorithmResult,
     ParameterSpec,
@@ -38,7 +36,6 @@ from silverstar_flp.plugins.api.algorithm import (
     ReplayRequest,
 )
 from silverstar_flp.plugins.registry import PluginRegistry
-from silverstar_flp.ui.offline_diagnostics import OfflineDiagnosticsPanel
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 from silverstar_flp.ui.widgets import StandardComboBox
 
@@ -185,14 +182,7 @@ class ReplayPage(QWidget):
         content_layout.addStretch(1)
 
         self.scroll_area.setWidget(scroll_content)
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self.scroll_area, "")
-        self.diagnostics_panel = OfflineDiagnosticsPanel(translator)
-        self.tabs.addTab(self.diagnostics_panel, "")
-        self.diagnostics_panel.requested.connect(self._Diagnostic_Request)
-        self._diagnostic_algorithm_id = None
-        self._diagnostic_parameter_signature = None
-        page_layout.addWidget(self.tabs)
+        page_layout.addWidget(self.scroll_area)
 
         self.algorithm_combo.currentIndexChanged.connect(self._Algorithm_Refresh)
         self.mode_combo.currentIndexChanged.connect(self._Mode_Refresh)
@@ -205,8 +195,6 @@ class ReplayPage(QWidget):
         results: ReplayResultStore | Mapping[str, AlgorithmResult] | None = None,
     ) -> None:
         dataset_changed = self._dataset is not dataset
-        if dataset_changed:
-            self.diagnostics_panel.Context_Clear()
         self._dataset = dataset
         if isinstance(results, ReplayResultStore):
             self._store = results
@@ -240,11 +228,6 @@ class ReplayPage(QWidget):
             )
 
     def _Algorithm_Refresh(self) -> None:
-        algorithm_id = self.algorithm_combo.currentData()
-        if algorithm_id != self._diagnostic_algorithm_id:
-            self.diagnostics_panel.Context_Clear()
-            self._diagnostic_algorithm_id = algorithm_id
-        self.tabs.setTabEnabled(1, algorithm_id == "silverstar.algorithm.kf6")
         self._ParameterForm_Clear()
         for widget in (*self._parameter_labels.values(), *self._parameter_widgets.values()):
             widget.deleteLater()
@@ -252,6 +235,7 @@ class ReplayPage(QWidget):
         self._parameter_labels = {}
         self._parameter_specs = {}
         plugin = self._CurrentPlugin_Get()
+        self._ComboLabels_Refresh()
         self._recorded_parameter_values = self._RecordedParameters_Get(plugin)
         self._offline_parameter_values = {
             key: value
@@ -374,14 +358,6 @@ class ReplayPage(QWidget):
         self._ParametersDirty_Refresh()
 
     def _ParametersDirty_Refresh(self, *_args: object) -> None:
-        signature = (
-            self.algorithm_combo.currentData(),
-            self.mode_combo.currentData(),
-            tuple(sorted(self._ActualValues_Get().items())),
-        )
-        if signature != self._diagnostic_parameter_signature:
-            self.diagnostics_panel.Scan_Clear()
-            self._diagnostic_parameter_signature = signature
         self._parameters_dirty = any(
             not math.isclose(
                 editor.value(),
@@ -425,7 +401,7 @@ class ReplayPage(QWidget):
     def _Mode_Refresh(self) -> None:
         mode = self.mode_combo.currentData()
         what_if = mode == ReplayMode.WHAT_IF
-        if mode == ReplayMode.RECORDED_CONFIGURATION:
+        if mode in (ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED):
             self._parameter_baseline_values = dict(self._recorded_parameter_values)
         elif mode == ReplayMode.WHAT_IF:
             firmware = self._dataset is not None and self._CurrentPlugin_Get().FirmwareMember_Is(
@@ -481,6 +457,9 @@ class ReplayPage(QWidget):
     def Configuration_Get(self) -> dict:
         plugin = self._CurrentPlugin_Get()
         mode = ReplayMode(self.mode_combo.currentData())
+        if mode == ReplayMode.INTEGRITY_ASSISTED:
+            # Analysis-only mode is an ephemeral run choice, not project configuration.
+            mode = ReplayMode.RECORDED_CONFIGURATION
         values = (
             self._ActualValues_Get()
             if mode == ReplayMode.WHAT_IF
@@ -566,7 +545,7 @@ class ReplayPage(QWidget):
         self.availability_label.setToolTip("\n".join(availability.warnings))
         mode_available = (
             configuration.recorded_available
-            if mode == ReplayMode.RECORDED_CONFIGURATION
+            if mode in (ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED)
             or (mode == ReplayMode.WHAT_IF and configuration.firmware_member)
             else configuration.offline_available
         )
@@ -584,11 +563,6 @@ class ReplayPage(QWidget):
             details += " · " + self._translator.Text_Get("replay.firmware_parameter_provenance")
             self.availability_label.setText(details)
         self.run_button.setEnabled(availability.available and mode_available)
-        self.diagnostics_panel.Available_Set(
-            availability.available
-            and mode_available
-            and self.algorithm_combo.currentData() == "silverstar.algorithm.kf6"
-        )
 
     def _Request_Get(self) -> ReplayRequest:
         mode = self.mode_combo.currentData()
@@ -604,19 +578,8 @@ class ReplayPage(QWidget):
         )
         return request
 
-    def _Diagnostic_Request(self, operation: str) -> None:
-        request = Kf6DiagnosticRequest(
-            self._Request_Get(), self.diagnostics_panel.Options_Get(), operation
-        )
-        self.replayRequested.emit(str(self.algorithm_combo.currentData()), request)
-
     def _Replay_Request(self) -> None:
         request = self._Request_Get()
-        if (
-            self.algorithm_combo.currentData() == "silverstar.algorithm.kf6"
-            and self.diagnostics_panel.Options_Get() is not None
-        ):
-            request = Kf6DiagnosticRequest(request, self.diagnostics_panel.Options_Get())
         self.run_button.setEnabled(False)
         self.result_label.setText(self._translator.Text_Get("replay.running"))
         self.replayRequested.emit(str(self.algorithm_combo.currentData()), request)
@@ -631,7 +594,6 @@ class ReplayPage(QWidget):
             entry = self._store.Result_Add(result, algorithm_name=plugin.metadata.display_name)
         self._last_entry = entry
         self._last_result = entry.result
-        self.diagnostics_panel.Result_Set(entry.result)
         provenance_codes = {
             "Recorded": "status.recorded",
             "Recomputed": "status.recomputed",
@@ -664,7 +626,12 @@ class ReplayPage(QWidget):
             coverage_text = (
                 f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s ({coverage[0]}–{coverage[1]} µs)"
             )
-        mode_code = "status.what_if" if entry.mode == ReplayMode.WHAT_IF else "status.recomputed"
+        mode_code = (
+            "replay.mode.integrity_assisted"
+            if entry.mode == ReplayMode.INTEGRITY_ASSISTED
+            else "status.what_if" if entry.mode == ReplayMode.WHAT_IF
+            else "status.recomputed"
+        )
         input_text = self._InputSource_Text_Get(entry.input_source)
         plugin = self._registry.Algorithm_Get(entry.algorithm_id)
         specs = {
@@ -697,6 +664,53 @@ class ReplayPage(QWidget):
             self._translator.Text_Get("replay.detail.warnings", value=warnings),
             self._translator.Text_Get("replay.detail.channels", value=channels),
         )
+        verification = entry.diagnostics.get("mechanization_verification")
+        if isinstance(verification, Mapping):
+            rows = verification.get("intervals", ())
+            matched = sum(1 for row in rows if row.get("passed"))
+            first = verification.get("first_divergence")
+            verification_lines = [
+                self._translator.Text_Get(
+                    "replay.mechanization_status",
+                    value="PASS" if verification.get("passed") else "FAIL",
+                ),
+                self._translator.Text_Get(
+                    "replay.mechanization_counts",
+                    recorded=verification.get("recorded_count", 0),
+                    computed=verification.get("computed_count", 0),
+                    matched=matched,
+                ),
+                self._translator.Text_Get("replay.mechanization_first_none")
+                if first is None else self._translator.Text_Get(
+                    "replay.mechanization_first",
+                    timestamp=first.get("timestamp_us", "—"),
+                    sequence=first.get("source_sequence", "—"),
+                    theta=first.get("delta_theta_difference", "—"),
+                    velocity=first.get("delta_velocity_difference", "—"),
+                    dt=first.get("dt_difference_s", "—"),
+                    start=first.get("start_timestamp_difference_us", "—"),
+                    end=first.get("end_timestamp_difference_us", "—"),
+                ),
+            ]
+            lines = (*lines, *verification_lines)
+        integrity = entry.diagnostics.get("integrity_assistance")
+        if isinstance(integrity, Mapping):
+            transitions = integrity.get("transitions", ())
+            lines = (*lines, self._translator.Text_Get(
+                "replay.integrity_summary",
+                transitions=len(transitions),
+                disabled=float(integrity.get("disabled_duration_s", 0.0)),
+                reanchors=int(integrity.get("reanchor_count", 0)),
+            ))
+            config = integrity.get("parameters", {})
+            if isinstance(config, Mapping):
+                lines = (*lines, self._translator.Text_Get(
+                    "replay.integrity_parameters",
+                    window=config.get("window_s", "—"),
+                    rolling=config.get("rolling_threshold_m", "—"),
+                    anchored=config.get("anchored_threshold_m", "—"),
+                    scale=config.get("integrity_scale", "—"),
+                ))
         if entry.analysis_only:
             lines = (self._translator.Text_Get("diagnostic.analysis_notice"), *lines)
         self.result_information_label.setText("\n".join(lines))
@@ -753,7 +767,6 @@ class ReplayPage(QWidget):
         if entry is not None:
             self._last_entry = entry
             self._last_result = entry.result
-            self.diagnostics_panel.Result_Set(entry.result)
             self._ResultInformation_Set(entry)
             self._Comparison_Set(entry.result)
 
@@ -767,7 +780,11 @@ class ReplayPage(QWidget):
         return self._store.Entry_Get(result_id)
 
     def _EntryMode_Text(self, entry, mode_code):
-        key = "diagnostic.analysis" if entry.analysis_only else mode_code
+        key = (
+            "replay.mode.integrity_assisted"
+            if entry.mode == ReplayMode.INTEGRITY_ASSISTED
+            else "diagnostic.analysis" if entry.analysis_only else mode_code
+        )
         return self._translator.Text_Get(key)
 
     def _RecordedSourceLabel_Get(self):
@@ -851,55 +868,34 @@ class ReplayPage(QWidget):
 
     def Result_Error(self, message: str) -> None:
         self.result_label.setText(message)
-        self.diagnostics_panel.Result_Error(message)
         self._Availability_Refresh()
 
     def Task_Busy(self) -> None:
         self.run_button.setEnabled(False)
         self.controls_group.setEnabled(False)
         self.parameters_group.setEnabled(False)
-        self.diagnostics_panel.Busy_Set(True)
 
     def Task_Finish(self) -> None:
         self.controls_group.setEnabled(True)
         self.parameters_group.setEnabled(True)
-        self.diagnostics_panel.Busy_Set(False)
         self._Availability_Refresh()
 
     def _Comparison_Set(self, result: AlgorithmResult) -> None:
         if self._dataset is None:
             return
-        if result.algorithm_id.endswith("pure_ins"):
-            mappings = (
-                ("comparison.attitude", "pure_ins.recorded.attitude.q_nb", "attitude.q_nb", True),
-                (
-                    "comparison.velocity",
-                    "pure_ins.recorded.navigation.velocity_enu",
-                    "navigation.velocity_enu",
-                    False,
-                ),
-                (
-                    "comparison.position",
-                    "pure_ins.recorded.navigation.position_enu",
-                    "navigation.position_enu",
-                    False,
-                ),
-            )
-        else:
-            mappings = (
-                (
-                    "comparison.velocity",
-                    "kf6.recorded.navigation.velocity_enu",
-                    "navigation.velocity_enu",
-                    False,
-                ),
-                (
-                    "comparison.position",
-                    "kf6.recorded.navigation.position_enu",
-                    "navigation.position_enu",
-                    False,
-                ),
-            )
+        recorded_prefix = (
+            "kf6.recorded"
+            if self._dataset.Series_Get("kf6.recorded.navigation.position_enu") is not None
+            else "pure_ins.recorded"
+        )
+        mappings = (
+            ("comparison.attitude", f"{recorded_prefix}.attitude.q_nb",
+             "attitude.q_nb", True),
+            ("comparison.velocity", f"{recorded_prefix}.navigation.velocity_enu",
+             "navigation.velocity_enu", False),
+            ("comparison.position", f"{recorded_prefix}.navigation.position_enu",
+             "navigation.position_enu", False),
+        )
         rows: list[tuple[str, object]] = []
         for name_code, recorded_id, recomputed_id, quaternion in mappings:
             recorded = self._dataset.Series_Get(recorded_id)
@@ -942,6 +938,11 @@ class ReplayPage(QWidget):
         self.mode_combo.addItem(
             self._translator.Text_Get("replay.mode.what_if"), ReplayMode.WHAT_IF
         )
+        if self.algorithm_combo.currentData() == "silverstar.algorithm.kf6":
+            self.mode_combo.addItem(
+                self._translator.Text_Get("replay.mode.integrity_assisted"),
+                ReplayMode.INTEGRITY_ASSISTED,
+            )
         self.mode_combo.setCurrentIndex(max(self.mode_combo.findData(mode), 0))
         self.mode_combo.blockSignals(False)
 
@@ -950,9 +951,6 @@ class ReplayPage(QWidget):
             self._ActualValues_Get() if self.mode_combo.currentData() == ReplayMode.WHAT_IF else {}
         )
         self._translator = translator
-        self.tabs.setTabText(0, translator.Text_Get("replay.configuration"))
-        self.tabs.setTabText(1, translator.Text_Get("diagnostic.title"))
-        self.diagnostics_panel.Language_Apply(translator)
         self._ComboLabels_Refresh()
         self._AlgorithmLabels_Refresh()
         self.controls_group.setTitle(translator.Text_Get("replay.configuration"))

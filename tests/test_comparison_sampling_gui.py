@@ -15,7 +15,7 @@ from silverstar_flp.ui.pages.data_explorer import DataExplorerPage
 from tests.sslog_synthetic import AnalysisFlight_Build
 
 
-def test_kf_display_curves_use_common_timestamps_solid_lines_and_full_source(tmp_path):
+def test_kf_display_curves_overlay_recorded_and_selected_with_full_source(tmp_path):
     app = QApplication.instance() or QApplication([])
     dataset = Sslog0ParserPlugin().parse(AnalysisFlight_Build(tmp_path / "SYNTHETIC_sampling.BIN"))
     result = Kf6AlgorithmPlugin().run(dataset, ReplayRequest(mode=ReplayMode.OFFLINE))
@@ -28,10 +28,12 @@ def test_kf_display_curves_use_common_timestamps_solid_lines_and_full_source(tmp
     app.processEvents()
     for plot in (page.position_plot, page.velocity_plot):
         curves = plot.listDataItems()
-        active = curves[:3]
-        recorded = [curve for curve in curves if curve.name().startswith("Recorded KF_6")]
-        assert len(curves) == len(active) == 3
-        assert recorded == []
+        recorded = curves[:3]
+        active = curves[3:]
+        assert len(curves) == 6
+        assert len(recorded) == len(active) == 3
+        assert all(curve.name().startswith("Recorded") for curve in recorded)
+        assert all(curve.opts['pen'].style() == Qt.PenStyle.DashLine for curve in recorded)
         for curve in active:
             assert curve.opts['pen'].style() == Qt.PenStyle.SolidLine
             assert curve.opts['pen'].widthF() == 1.7

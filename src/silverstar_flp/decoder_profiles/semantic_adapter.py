@@ -1011,6 +1011,22 @@ class SilverStarSslog0SemanticAdapter:
         )
         calibration = _CalibrationSnapshot_Get(with_events, self.package)
         context = _Context_Build(self.package, aliases, calibration)
+        from silverstar_flp.analysis.measurement_diagnostics import (
+            RecordedMeasurementChannels_Build,
+        )
+
+        firmware = context.FirmwareParameters_Get("silverstar.algorithm.estimator.kf6") or {}
+        numeric_parameters = {
+            name: float(item["value"])
+            for name, item in firmware.items()
+            if isinstance(item, Mapping) and isinstance(item.get("value"), (int, float))
+        }
+        measurement_channels = RecordedMeasurementChannels_Build(
+            with_events.records, numeric_parameters
+        )
+        adapted_series = {**adapted_series, **measurement_channels}
+        aliases = {**aliases, **{name: name for name in measurement_channels}}
+        context = _Context_Build(self.package, aliases, calibration)
         metadata = {
             **dict(with_events.metadata),
             "semantic_adapter_id": "silverstar.sslog0.semantic_adapter/1.1",

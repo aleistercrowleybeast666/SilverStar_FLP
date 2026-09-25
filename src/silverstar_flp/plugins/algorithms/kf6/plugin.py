@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -625,10 +625,12 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                         group_id, label_key, dimension, components, innovation,
                         f"kf6.nis.{group_id.removeprefix('gnss_')}",
                         f"kf6.update_result.{group_id.removeprefix('gnss_')}",
-                        "kf6.measurement_r_scale",
-                        measurement_age_channel="kf6.measurement_age.gnss",
-                        effective_r_channel="",
-                        r_scale_index=scale_index,
+                        f"kf6.measurement_r_scale.{group_id.removeprefix('gnss_')}",
+                        measurement_age_channel=f"kf6.measurement_receive_age.{group_id.removeprefix('gnss_')}",
+                        fixed_lag_latency_channel=f"kf6.measurement_fixed_lag_latency.{group_id.removeprefix('gnss_')}",
+                        measurement_uncertainty_channel=f"kf6.measurement_input_variance.{group_id.removeprefix('gnss_')}",
+                        effective_r_channel=f"kf6.measurement_effective_variance.{group_id.removeprefix('gnss_')}",
+                        r_scale_index=0,
                         attempt_mask_channel="",
                         attempt_mask_bit=0,
                         soft_threshold_parameter_id=soft,
@@ -663,15 +665,17 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     "barometric_altitude",
                     "measurement.barometric_altitude",
                     1,
-                    ("U",),
+                    ("Baro",),
                     "kf6.innovation.baro",
                     "kf6.nis.baro",
                     "kf6.update_result",
-                    "kf6.measurement_r_scale",
-                    measurement_age_channel="kf6.measurement_age.baro",
-                    effective_r_channel="kf6.measurement_r.baro",
+                    "kf6.measurement_r_scale.baro",
+                    measurement_age_channel="kf6.measurement_receive_age.baro",
+                    fixed_lag_latency_channel="kf6.measurement_fixed_lag_latency.baro",
+                    measurement_uncertainty_channel="kf6.measurement_input_variance.baro",
+                    effective_r_channel="kf6.measurement_effective_variance.baro",
                     update_result_index=2,
-                    r_scale_index=2,
+                    r_scale_index=0,
                     attempt_mask_channel="kf6.measurement_attempt_mask",
                     attempt_mask_bit=0x04,
                     soft_threshold_parameter_id="nis_1d_soft",
@@ -849,6 +853,17 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 source_end_timestamp_us=increments[-1].interval_end_timestamp_us,
             )
         parameters = self._Parameters_Resolve(dataset, request)
+        assistance = None
+        if request.mode == ReplayMode.INTEGRITY_ASSISTED:
+            if not dataset.Records_Get("ESTIMATOR_STEP"):
+                raise ValueError("integrity_assistance_requires_fixed_lag_log")
+            from silverstar_flp.analysis.integrity_assistance import (
+                IntegrityConfig,
+                IntegrityPlan_Build,
+            )
+            assistance = IntegrityPlan_Build(
+                dataset, IntegrityConfig(**request.integrity_parameters)
+            )
         filter_instance = Kf6Filter.Kf6_Create(
             gnss_reacquire_outage_ms=parameters.get("gnss_reacquire_outage_ms", 300),
             process_accel_std_mps2=np.asarray(
@@ -927,9 +942,12 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 )
             replay_dataset = replace(dataset, records=replaced_records)
             snapshots, filter_instance, timing_diagnostics = Faithful_Run(
-                replay_dataset, filter_instance, q_nb, increments, parameters, task_context)
+                replay_dataset, filter_instance, q_nb, increments, parameters,
+                task_context, assistance=assistance,
+            )
             source_diagnostics.update(timing_diagnostics)
         else:
+            measurement_events: list[dict[str, object]] = []
             snapshots = self._Replay_Run(
                 filter_instance,
                 q_nb,
@@ -937,9 +955,29 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 schedule,
                 parameters,
                 task_context,
+                measurement_events,
             )
+            source_diagnostics["measurement_events"] = measurement_events
         if not snapshots:
             raise ValueError("replay_no_valid_kf6_output")
+        if assistance is not None:
+            decision_rows = tuple(assistance.decisions.values())
+            disabled_us = sum(
+                max(0, int(decision_rows[index + 1].timestamp_us - row.timestamp_us))
+                for index, row in enumerate(decision_rows[:-1])
+                if not row.position_en_allowed
+            )
+            source_diagnostics["integrity_assistance"] = {
+                "parameters": asdict(assistance.config),
+                "transitions": tuple((time, state.value) for time, state in assistance.transitions),
+                "disabled_duration_s": disabled_us * 1.0e-6,
+                "reanchor_count": len(source_diagnostics.get("integrity_analysis_events", ())),
+                "analysis_only": True,
+            }
+            diagnostic_metadata["mode"] = "analysis_only"
+            diagnostic_metadata["analysis_only_overrides"]["integrity_assistance"] = (
+                asdict(assistance.config)
+            )
         warnings = list(availability.warnings)
         fidelity = availability.fidelity
         state_decimation = tuple(system_config.payload.get("log_decimation", ()))
@@ -959,10 +997,43 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         ):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_offline_field_analysis")
+        if assistance is not None:
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("kf6_integrity_assisted_analysis_only")
         if "gnss_reacquire_outage_ms" not in parameters and dataset.Records_Get("GNSS_MEASUREMENT"):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_reacquisition_policy_changed")
         channels = self._Channels_Build(snapshots)
+        from silverstar_flp.analysis.measurement_diagnostics import (
+            RecomputedMeasurementChannels_Build,
+        )
+        channels.update(RecomputedMeasurementChannels_Build(
+            source_diagnostics.get("measurement_events", ())
+        ))
+        if assistance is not None:
+            decision_rows = tuple(assistance.decisions.values())
+            integrity_time = np.asarray(
+                [row.timestamp_us for row in decision_rows], dtype=np.uint64
+            )
+            for name, values, unit, quantity in (
+                ("state", [
+                    ("TRUSTED", "SUSPECT", "UNTRUSTED", "RECOVERING").index(row.state.value)
+                    for row in decision_rows], "enum", "integrity_state"),
+                ("position_r_scale", [row.position_r_scale for row in decision_rows],
+                 "1", "scale"),
+                ("position_en_allowed", [float(row.position_en_allowed) for row in decision_rows],
+                 "1", "status"),
+                ("rolling_closure", [row.rolling_m for row in decision_rows],
+                 "m", "closure"),
+                ("anchored_closure", [row.anchored_m for row in decision_rows],
+                 "m", "closure"),
+            ):
+                series = _Series_Create(
+                    integrity_time, np.asarray(values), unit=unit, quantity=quantity
+                )
+                channels[f"kf6.integrity.{name}"] = replace(
+                    series, valid=np.isfinite(series.values)
+                )
         for channel_id in ("navigation.position_enu", "navigation.velocity_enu"):
             series = channels[channel_id]
             channels[channel_id] = replace(
@@ -1034,7 +1105,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 **source_diagnostics,
             },
             provenance=(
-                "Analysis-only"
+                "Integrity-assisted KF6"
+                if assistance is not None
+                else "Analysis-only"
                 if diagnostic_metadata["mode"] == "analysis_only"
                 else "What-if"
                 if request.mode == ReplayMode.WHAT_IF
@@ -1267,6 +1340,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         schedule: tuple[_ScheduledMeasurement, ...],
         parameters: dict[str, float],
         context: TaskContext,
+        measurement_events: list[dict[str, object]] | None = None,
     ) -> tuple[_ReplaySnapshot, ...]:
         q_nb = initial_q_nb.copy()
         measurement_index = 0
@@ -1301,6 +1375,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     position_result, velocity_result, mask, scales = result
                     attempt_mask |= mask
                     r_scale[0:2] = scales
+                    if measurement_events is not None:
+                        self._MeasurementEvents_Append(
+                            measurement_events, filter_instance, measurement,
+                            increment.interval_end_timestamp_us,
+                        )
                 else:
                     result, scale, mask = self._Baro_Apply(
                         filter_instance,
@@ -1309,6 +1388,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     baro_result = result
                     r_scale[2] = scale
                     attempt_mask |= mask
+                    if measurement_events is not None:
+                        self._MeasurementEvents_Append(
+                            measurement_events, filter_instance, measurement,
+                            increment.interval_end_timestamp_us, baro_result,
+                        )
             snapshots.append(
                 _ReplaySnapshot(
                     timestamp_us=increment.interval_end_timestamp_us,
@@ -1343,6 +1427,67 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     "replay.kf6",
                 )
         return tuple(snapshots)
+
+    @staticmethod
+    def _MeasurementEvents_Append(
+        output: list[dict[str, object]], filter_instance: Kf6Filter,
+        measurement: _ScheduledMeasurement, present: int,
+        baro_result: int | None = None,
+    ) -> None:
+        payload = measurement.record.payload
+        receive = int(payload.get("receive_timestamp_us", 0))
+        if measurement.kind == "baro":
+            groups = (("baro", (0,), "variance_m2", "measurement_timestamp_us", 0),)
+        else:
+            groups = (
+                ("position_en", (0, 1), "position_variance_m2",
+                 "position_measurement_timestamp_us", 0),
+                ("position_u", (2,), "position_variance_m2",
+                 "position_measurement_timestamp_us", 1),
+                ("velocity_en", (0, 1), "velocity_variance_m2ps2",
+                 "velocity_measurement_timestamp_us", 2),
+                ("velocity_u", (2,), "velocity_variance_m2ps2",
+                 "velocity_measurement_timestamp_us", 3),
+            )
+        for group, axes, variance_key, time_key, index in groups:
+            resolved = int(payload.get(time_key, payload.get("sample_timestamp_us", 0)))
+            raw = payload.get(variance_key)
+            if raw is None:
+                continue
+            variance = np.asarray(raw, dtype=np.float64).reshape(-1)
+            if max(axes) >= variance.size:
+                continue
+            base = variance[list(axes)]
+            if group == "baro":
+                effective = np.asarray(
+                    [filter_instance.last_baro_effective_variance], dtype=np.float64
+                )
+                result = int(baro_result) if baro_result is not None else 3
+                group_valid = bool(int(payload.get("valid_mask", 1)) & 1)
+            else:
+                effective_source = (
+                    filter_instance.last_position_effective_variance
+                    if index < 2 else filter_instance.last_velocity_effective_variance
+                )
+                effective = np.asarray(effective_source, dtype=np.float64)[list(axes)]
+                result = int(filter_instance.last_group_result[index])
+                group_valid = bool(int(payload.get("valid_group_mask", 0)) & (1 << index))
+            accepted = result in (0, 1)
+            valid = group_valid and 0 < receive <= present and 0 < resolved <= present
+            output.append(dict(
+                group=group, timestamp_us=present, receive_timestamp_us=receive,
+                resolved_measurement_timestamp_us=resolved,
+                operation_sequence=measurement.source_order, valid=valid,
+                input_variance=tuple(float(value) for value in base),
+                effective_variance=tuple(
+                    float(value) for value in (
+                        effective if accepted else np.full(base.shape, np.nan)
+                    )
+                ),
+                receive_age=(present - receive) * .001,
+                fixed_lag_latency=(present - resolved) * .001,
+                r_scale=float(effective[0] / base[0]) if accepted and base[0] > 0 else np.nan,
+            ))
 
     @staticmethod
     def _Gnss_Apply(

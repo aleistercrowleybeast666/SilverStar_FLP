@@ -57,8 +57,6 @@ from silverstar_flp.log_open import (
     LogOpenResult,
     LogOpenSourceMode,
 )
-from silverstar_flp.plugins.algorithms.kf6.diagnostics import Kf6DiagnosticRequest
-from silverstar_flp.plugins.algorithms.kf6.field_analysis import LatencySweep_Run
 from silverstar_flp.plugins.api.algorithm import AlgorithmResult, ReplayRequest
 from silverstar_flp.plugins.container_packages import TrustedContainerPluginManager
 from silverstar_flp.plugins.registry import PluginRegistry
@@ -777,30 +775,6 @@ class MainWindow(QMainWindow):
             return
         plugin = self._registry.Algorithm_Get(algorithm_id)
         dataset = self._dataset
-        if isinstance(request, Kf6DiagnosticRequest):
-            if algorithm_id != "silverstar.algorithm.kf6":
-                self.replay_page.Result_Error("kf6_diagnostic_algorithm_required")
-                return
-            if request.operation == "scan":
-                worker = FunctionWorker(
-                    lambda context: LatencySweep_Run(
-                        dataset, request.replay, context=context, analysis_options=request.options
-                    )
-                )
-                callback = self.replay_page.diagnostics_panel.Scan_Set
-            else:
-                worker = FunctionWorker(
-                    lambda context: plugin.run(
-                        dataset, request.replay, context, analysis_options=request.options
-                    )
-                )
-                callback = (
-                    self.replay_page.diagnostics_panel.Result_Set
-                    if request.operation == "inspect"
-                    else self._Replay_ResultSet
-                )
-            self._Task_Start(worker, callback, self.replay_page.Result_Error)
-            return
         worker = FunctionWorker(lambda context: plugin.run(dataset, request, context))
         self._Task_Start(
             worker,
@@ -810,6 +784,8 @@ class MainWindow(QMainWindow):
 
     def _Replay_ResultSet(self, result: AlgorithmResult) -> None:
         display_name = self._registry.Algorithm_Get(result.algorithm_id).metadata.display_name
+        if result.provenance == "Integrity-assisted KF6":
+            display_name += " · Integrity-assisted"
         restore_index = self._source_restore_index
         self._source_restore_index = None
         entry = self._replay_store.Result_Add(result, algorithm_name=display_name,

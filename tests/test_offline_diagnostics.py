@@ -4,16 +4,12 @@ import hashlib
 import json
 import os
 from dataclasses import replace
-from pathlib import Path
-from threading import Event, get_ident
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QSettings, QTimer
-from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QSettings
 
 from silverstar_flp.core.context import TaskCancelledError, TaskContext
 from silverstar_flp.core.i18n import Translator
@@ -28,7 +24,6 @@ from silverstar_flp.plugins.api.algorithm import ReplayMode, ReplayRequest
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.main_window import MainWindow
 from silverstar_flp.ui.pages.replay import ReplayPage
-from silverstar_flp.ui.theme import Theme_Apply
 from tests.synthetic_parameter_navigation import NavigationPair_Open, SyntheticOperations_Attach
 from tests.test_gui_smoke import _ProjectIdentity_Set
 from tests.test_kf6_field_analysis import Measurement_Create
@@ -165,77 +160,33 @@ def test_latency_synthetic_known_shift_and_cancellation(diagnostic_dataset):
 
 
 @pytest.mark.parametrize("language", ["zh_CN", "en_US"])
-@pytest.mark.parametrize("theme", ["light", "dark"])
-def test_panel_defaults_restore_layout_and_apply_best(qtbot, language, theme, tmp_path):
-    app = QApplication.instance()
-    # Windows offscreen QPA does not discover system fonts automatically.
-    font_path = Path("C:/Windows/Fonts/msyh.ttc")
-    if font_path.exists():
-        font_id = QFontDatabase.addApplicationFont(str(font_path))
-        families = QFontDatabase.applicationFontFamilies(font_id)
-        assert families
-        app.setFont(QFont(families[0], 10))
-        assert QFontMetrics(app.font()).inFont("中")
-    Theme_Apply(app, theme)
+def test_replay_product_removes_legacy_diagnostics_page(qtbot, language, diagnostic_dataset):
+    from silverstar_flp.ui.offline_diagnostics import OfflineDiagnosticsPanel
+
     page = ReplayPage(Translator(language), builtin_registry())
     qtbot.addWidget(page)
-    page.algorithm_combo.setCurrentIndex(page.algorithm_combo.findData("silverstar.algorithm.kf6"))
-    page.resize(1000, 700)
-    page.show()
-    panel = page.diagnostics_panel
-    panel.Available_Set(True)
-    panel.show()
-    assert panel.Options_Get() is None
-    assert not panel.baro_enabled.isChecked() and not panel.pu_disabled.isChecked()
-    assert panel.shift.value() == 0
-    panel.mode.setCurrentIndex(1)
-    panel.manual.setChecked(True)
-    panel.shift.setValue(-200)
-    panel.baro_enabled.setChecked(True)
-    panel.pu_disabled.setChecked(True)
-    assert panel.Options_Get().baro_effective_sigma_m == 2
-    panel.Shift_Reset()
-    assert panel.Options_Get().velocity_shift_ms == 0
-    panel.baro_sigma.setValue(3)
-    panel.Firmware_Restore()
-    assert panel.baro_sigma.value() == 2
-    assert panel.Options_Get() is None
-    events = []
-    panel.requested.connect(events.append)
-    panel.Scan_Set(
-        {
-            "best_shift_ms": -80,
-            "score_zero_ms": 1.0,
-            "score_best": 0.1,
-            "improvement_percent": 90.0,
-            "sampled_minimum_width_ms": 10,
-            "runs": [{"shift_ms": -80, "score": 0.1}, {"shift_ms": 0, "score": 1.0}],
-        }
+    page.Dataset_Set(diagnostic_dataset)
+    assert not hasattr(page, "diagnostics_panel")
+    assert not hasattr(page, "tabs")
+    assert not page.findChildren(OfflineDiagnosticsPanel)
+    page.algorithm_combo.setCurrentIndex(
+        page.algorithm_combo.findData("silverstar.algorithm.kf6")
     )
-    assert panel.Options_Get() is None
-    panel.Best_Apply()
-    assert events == ["replay"]
-    assert panel.Options_Get().velocity_shift_ms == -80
-    panel.Busy_Set(True)
-    assert not panel.actions["scan"].isEnabled()
-    panel.Busy_Set(False)
-    assert panel.actions["scan"].isEnabled()
-    page.tabs.setCurrentIndex(1)
-    app.processEvents()
-    assert page.tabs.width() <= page.width()
-    assert panel.minimumSizeHint().width() < 1000
-    page.grab().save(str(tmp_path / f"{language}_{theme}.png"))
+    mode_index = page.mode_combo.findData(ReplayMode.INTEGRITY_ASSISTED)
+    assert mode_index >= 0
+    page.mode_combo.setCurrentIndex(mode_index)
+    request = page._Request_Get()
+    assert request.mode == ReplayMode.INTEGRITY_ASSISTED
+    assert page.Configuration_Get()["mode"] == ReplayMode.RECORDED_CONFIGURATION.value
 
 
-def test_background_scan_and_project_excludes_diagnostics(
+def test_project_excludes_analysis_only_diagnostics(
     qtbot, monkeypatch, tmp_path, diagnostic_dataset
 ):
     import silverstar_flp.ui.main_window as module
 
-    # Isolate QSettings in a repository-local test file.
     monkeypatch.setattr(
-        module,
-        "QSettings",
+        module, "QSettings",
         lambda *a: QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat),
     )
     window = MainWindow(builtin_registry())
@@ -244,7 +195,9 @@ def test_background_scan_and_project_excludes_diagnostics(
     window._Dataset_Set(diagnostic_dataset)
     _ProjectIdentity_Set(window, diagnostic_dataset.source_path, tmp_path)
     page = window.replay_page
-    page.algorithm_combo.setCurrentIndex(page.algorithm_combo.findData("silverstar.algorithm.kf6"))
+    page.algorithm_combo.setCurrentIndex(
+        page.algorithm_combo.findData("silverstar.algorithm.kf6")
+    )
     page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.WHAT_IF))
     page._parameter_widgets["gnss_position_std_vertical"].setValue(4)
     result = Kf6AlgorithmPlugin().run(
@@ -254,59 +207,10 @@ def test_background_scan_and_project_excludes_diagnostics(
     )
     window._Replay_ResultSet(result)
     assert page._ActualValues_Get()["gnss_position_std_vertical"] == 4
-    page.diagnostics_panel.mode.setCurrentIndex(1)
-    page.diagnostics_panel.baro_enabled.setChecked(True)
     project_path = tmp_path / "test.ssflp"
     window._Project_Write(project_path)
     text = project_path.read_text()
     assert "baro_effective_sigma" not in text
     assert "analysis_only" not in text
-    assert len(json.loads(text)["replay_configurations"]) == 1  # production draft only
-    decoder_files = list(tmp_path.rglob("*.ssdecoder"))
-    assert decoder_files
-    decoder_hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in decoder_files}
-    page.mode_combo.setCurrentIndex(page.mode_combo.findData(ReplayMode.RECORDED_CONFIGURATION))
-    main_thread = get_ident()
-    thread_ids = []
-    ticks = []
-    ui_tick = Event()
-
-    def scan(ds, request, *, context, analysis_options):
-        thread_ids.append(get_ident())
-        assert ui_tick.wait(5), "GUI event loop did not advance during background work"
-        return LatencySweep_Run(ds, request, context=context, analysis_options=analysis_options)
-
-    monkeypatch.setattr(module, "LatencySweep_Run", scan)
-    timer = QTimer()
-    timer.setInterval(10)
-    timer.timeout.connect(lambda: (ticks.append(1), ui_tick.set()))
-    timer.start()
-    page._Diagnostic_Request("scan")
-    assert window._active_worker is not None
-    assert not page.diagnostics_panel.actions["scan"].isEnabled()
-    qtbot.waitUntil(lambda: window._active_worker is None, timeout=30000)
-    timer.stop()
-    assert thread_ids and thread_ids[0] != main_thread and ticks
-    assert page.diagnostics_panel._scan is not None
-    assert page.diagnostics_panel.actions["scan"].isEnabled()
-
-    assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in decoder_files} == decoder_hashes
-    assert "analysis_only" not in project_path.read_text()
-
-    def fail_scan(*args, **kwargs):
-        raise ValueError("diagnostic_test_failure")
-
-    monkeypatch.setattr(module, "LatencySweep_Run", fail_scan)
-    page._Diagnostic_Request("scan")
-    qtbot.waitUntil(lambda: window._active_worker is None, timeout=30000)
-    assert "diagnostic_test_failure" in page.diagnostics_panel.summary.text()
-    assert page.diagnostics_panel.actions["scan"].isEnabled()
-
-    def cancel_scan(*args, context, **kwargs):
-        context.Cancel_Request()
-        context.Cancel_RaiseIfRequested()
-
-    monkeypatch.setattr(module, "LatencySweep_Run", cancel_scan)
-    page._Diagnostic_Request("scan")
-    qtbot.waitUntil(lambda: window._active_worker is None, timeout=30000)
-    assert page.diagnostics_panel.actions["scan"].isEnabled()
+    assert len(json.loads(text)["replay_configurations"]) == 1
+    assert list(tmp_path.rglob("*.ssdecoder"))
