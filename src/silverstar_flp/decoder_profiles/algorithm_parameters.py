@@ -81,7 +81,7 @@ def FirmwareParameters_Validate(value: Any, members: tuple[str, ...]) -> None:
                 raise DecoderProfileError("firmware_parameter_metadata_invalid", name)
 
 
-def FirmwareParameters_CheckPlugins(value: Any) -> None:
+def FirmwareParameters_CheckPlugins(value: Any, *, integrity_revision: int = 0) -> None:
     # Only already trusted builtin algorithm schemas are inspected. Membership never
     # instantiates executable components named by the package.
     from silverstar_flp.plugins.registry import builtin_registry
@@ -93,6 +93,14 @@ def FirmwareParameters_CheckPlugins(value: Any) -> None:
             if group["component"] not in plugin.metadata.firmware_component_ids:
                 continue
             try:
+                identifiers = {item["id"] for item in group["parameters"]}
+                if plugin.metadata.plugin_id == "silverstar.algorithm.kf6":
+                    integrity_ids = {
+                        name for name in specs if name.startswith("gnss_integrity_")
+                    }
+                    present = identifiers & integrity_ids
+                    if (integrity_revision >= 1 or present) and present != integrity_ids:
+                        raise ValueError("gnss_integrity_parameters_incomplete")
                 for item in group["parameters"]:
                     name = item["id"]
                     if name not in specs:

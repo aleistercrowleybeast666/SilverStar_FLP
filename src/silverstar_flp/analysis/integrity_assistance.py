@@ -37,6 +37,12 @@ class IntegrityConfig:
     recovery_local_closure_m: float = 2.0
     recovery_anchored_threshold_m: float = 8.0
     reanchor_min_distance_m: float = 8.0
+    reference_max_age_s: float = 30.0
+    velocity_bias_bound_mps: float = 0.15
+    reference_renewal_max_m: float = 2.0
+    evidence_max_age_ms: int = 550
+    max_gap_ms: int = 120
+    recovery_min_samples: int = 25
 
     def __post_init__(self) -> None:
         if self.window_s not in (1, 2, 5, 10):
@@ -47,7 +53,10 @@ class IntegrityConfig:
             self.recovery_duration_s, self.integrity_scale, self.hacc_max_m,
             self.sacc_max_mps, self.recovery_rolling_m,
             self.recovery_local_closure_m, self.recovery_anchored_threshold_m,
-            self.reanchor_min_distance_m,
+            self.reanchor_min_distance_m, self.reference_max_age_s,
+            self.velocity_bias_bound_mps, self.reference_renewal_max_m,
+            self.evidence_max_age_ms,
+            self.max_gap_ms, self.recovery_min_samples,
         )) or self.integrity_scale < 1:
             raise ValueError("integrity_parameter_invalid")
 
@@ -62,6 +71,11 @@ class IntegrityDecision:
     rolling_m: float
     anchored_m: float
     quality_valid: bool
+    evidence_valid: bool = False
+    evidence_cutoff_us: int = 0
+    evidence_age_us: int = 0
+    reason: str = "unavailable"
+    reference_generation: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,105 +90,161 @@ def IntegrityDecisions_Build(
     closure: GnssIntegrityResult, sequences: np.ndarray,
     config: IntegrityConfig,
 ) -> IntegrityPlan:
+    """Consume each received epoch once; no future samples or KF output enter evidence."""
     if len(sequences) != len(closure.timestamp_us):
         raise ValueError("integrity_sequence_count_mismatch")
     state = IntegrityState.TRUSTED
-    abnormal_since: int | None = None
-    suspect_since: int | None = None
-    stable_since: int | None = None
-    stable_anchor: np.ndarray | None = None
-    recovering_since: int | None = None
-    reference_lost = False
+    abnormal_us = 0
+    healthy_us = 0
+    recovery_us = 0
+    healthy_count = 0
+    previous_us: int | None = None
+    reference_us: int | None = None
+    reference_generation = 0
+    reference_trusted = False
+    reference_baseline = np.zeros(2, dtype=np.float64)
     transitions: list[tuple[int, IntegrityState]] = []
     decisions: dict[int, IntegrityDecision] = {}
     for index, timestamp in enumerate(closure.timestamp_us):
         now = int(timestamp)
+        cutoff = (int(closure.evidence_cutoff_us[index])
+                  if closure.evidence_cutoff_us is not None else now)
+        age_us = now - cutoff
         rolling = (float(np.linalg.norm(closure.residual_m[index, :2]))
                    if closure.valid_en[index] else np.nan)
-        anchored = (float(np.linalg.norm(closure.anchored_residual_m[index, :2]))
+        anchored_vector = closure.anchored_residual_m[index, :2]
+        anchored = (float(np.linalg.norm(anchored_vector - reference_baseline))
                     if closure.anchored_valid_en[index] else np.nan)
         hacc = float(closure.quality[index, 0])
         sacc = float(closure.quality[index, 2])
         quality = bool(
-            closure.anchored_valid_en[index]
-            and np.isfinite(hacc) and 0 < hacc <= config.hacc_max_m
+            np.isfinite(hacc) and 0 < hacc <= config.hacc_max_m
             and np.isfinite(sacc) and 0 < sacc <= config.sacc_max_mps
         )
-        abnormal = quality and (
-            (np.isfinite(rolling) and rolling > config.rolling_threshold_m)
-            or (np.isfinite(anchored) and anchored > config.anchored_threshold_m)
+        generation = (int(closure.segment_en[index])
+                      if closure.segment_en is not None else 1)
+        if closure.anchor_reset_en[index] or (
+                index == 0 and closure.anchored_valid_en[index]
+                and reference_us is None):
+            reference_us = cutoff
+            reference_generation = generation
+            reference_trusted = state == IntegrityState.TRUSTED
+            reference_baseline = np.zeros(2, dtype=np.float64)
+        if generation != reference_generation:
+            reference_trusted = False
+        reference_age_s = ((cutoff - reference_us) * 1e-6
+                           if reference_us is not None else np.inf)
+        if reference_age_s > config.reference_max_age_s:
+            renewable = bool(
+                state == IntegrityState.TRUSTED and reference_trusted
+                and np.isfinite(anchored) and anchored <= config.reference_renewal_max_m
+                and np.isfinite(rolling) and rolling <= config.recovery_rolling_m
+            )
+            if renewable:
+                reference_baseline = anchored_vector.copy()
+                reference_us = cutoff
+                reference_age_s = 0.0
+                anchored = 0.0
+            else:
+                reference_trusted = False
+                if state == IntegrityState.TRUSTED:
+                    state = IntegrityState.SUSPECT
+                    transitions.append((now, state))
+        rolling_valid = bool(np.isfinite(rolling))
+        anchored_valid = bool(np.isfinite(anchored) and reference_trusted)
+        evidence_valid = bool(
+            quality and rolling_valid and 0 <= age_us <= config.evidence_max_age_ms * 1000
         )
-        if abnormal:
-            if abnormal_since is None:
-                abnormal_since = now
-        else:
-            abnormal_since = None
+        anchored_limit = (config.anchored_threshold_m
+                          + config.velocity_bias_bound_mps * reference_age_s)
+        abnormal = bool(evidence_valid and (
+            rolling > config.rolling_threshold_m
+            or (anchored_valid and anchored > anchored_limit)
+        ))
+        recovery_healthy = bool(
+            evidence_valid and rolling <= config.recovery_rolling_m
+            and anchored_valid and anchored <= config.recovery_anchored_threshold_m
+        )
+        delta_us = 0 if previous_us is None else now - previous_us
+        contiguous = 0 < delta_us <= config.max_gap_ms * 1000
+        previous_us = now
+        if evidence_valid and contiguous:
+            if abnormal:
+                abnormal_us += delta_us
+                healthy_us = 0
+            elif recovery_healthy:
+                healthy_us += delta_us
+                abnormal_us = 0
+            else:
+                abnormal_us = 0
+                healthy_us = 0
+        elif evidence_valid:
+            abnormal_us = 0
+            healthy_us = 0
+        # Missing/poor evidence is never a healthy vote. Pause both timers.
+        if recovery_healthy:
+            healthy_count += 1
+            if contiguous:
+                recovery_us += delta_us
+        elif evidence_valid:
+            healthy_count = 0
+            recovery_us = 0
         reanchor_ready = False
         if state == IntegrityState.TRUSTED:
-            if (abnormal_since is not None
-                    and now - abnormal_since >= config.suspect_duration_s * 1e6):
+            if abnormal_us >= int(config.suspect_duration_s * 1_000_000):
                 state = IntegrityState.SUSPECT
-                suspect_since = now
                 transitions.append((now, state))
         elif state == IntegrityState.SUSPECT:
-            if not abnormal:
-                state = IntegrityState.TRUSTED
-                suspect_since = None
-                transitions.append((now, state))
-            elif (suspect_since is not None
-                  and now - suspect_since >= config.untrusted_duration_s * 1e6):
+            if abnormal_us >= int((config.suspect_duration_s
+                                   + config.untrusted_duration_s) * 1_000_000):
                 state = IntegrityState.UNTRUSTED
-                stable_since = None
-                stable_anchor = None
-                reference_lost = False
+                transitions.append((now, state))
+            elif healthy_us >= int(config.suspect_duration_s * 1_000_000):
+                state = IntegrityState.TRUSTED
                 transitions.append((now, state))
         elif state == IntegrityState.UNTRUSTED:
-            if closure.anchor_reset_en[index]:
-                reference_lost = True
-            stable = (not reference_lost and quality and np.isfinite(rolling)
-                      and rolling <= config.recovery_rolling_m
-                      and np.isfinite(anchored)
-                      and anchored <= config.recovery_anchored_threshold_m)
-            anchored_vector = closure.anchored_residual_m[index, :2]
-            if stable and stable_since is None:
-                stable_since = now
-                stable_anchor = anchored_vector.copy()
-            if stable and stable_anchor is not None:
-                stable = bool(np.linalg.norm(anchored_vector - stable_anchor)
-                              <= config.recovery_local_closure_m)
-            if not stable:
-                stable_since = None
-                stable_anchor = None
-            if stable_since is not None and now - stable_since >= config.recovery_duration_s * 1e6:
+            if (recovery_healthy
+                    and healthy_count >= config.recovery_min_samples
+                    and recovery_us >= int(config.recovery_duration_s * 1_000_000)):
                 state = IntegrityState.RECOVERING
-                recovering_since = now
+                recovery_us = 0
+                healthy_count = 0
                 reanchor_ready = True
                 transitions.append((now, state))
         else:
-            if (not quality or not np.isfinite(anchored)
-                    or anchored > config.recovery_anchored_threshold_m
-                    or (np.isfinite(rolling) and rolling > config.rolling_threshold_m)):
+            if abnormal:
                 state = IntegrityState.UNTRUSTED
-                stable_since = None
-                stable_anchor = None
+                recovery_us = 0
+                healthy_count = 0
                 transitions.append((now, state))
-            elif (recovering_since is not None
-                  and now - recovering_since >= config.recovery_duration_s * 1e6):
+            elif (recovery_healthy
+                  and healthy_count >= config.recovery_min_samples
+                  and recovery_us >= int(config.recovery_duration_s * 1_000_000)):
                 state = IntegrityState.TRUSTED
-                abnormal_since = None
                 transitions.append((now, state))
-        if state == IntegrityState.SUSPECT:
-            scale = config.integrity_scale
-        elif state == IntegrityState.RECOVERING:
-            progress = min(1.0, (now - (recovering_since or now)) /
-                           (config.recovery_duration_s * 1e6))
-            scale = 1.0 + (config.integrity_scale - 1.0) * (1.0 - progress)
+        if not quality:
+            reason = "quality_unavailable"
+        elif age_us < 0 or age_us > config.evidence_max_age_ms * 1000:
+            reason = "evidence_age"
+        elif not rolling_valid:
+            reason = (closure.rolling_reason_en[index]
+                      if closure.rolling_reason_en else "window_unavailable")
+        elif not anchored_valid:
+            reason = "reference_untrusted_or_expired"
+        elif abnormal:
+            reason = "closure_abnormal"
         else:
-            scale = 1.0
+            reason = "healthy_evidence"
+        scale = config.integrity_scale if state in (
+            IntegrityState.SUSPECT, IntegrityState.RECOVERING,
+        ) else 1.0
         sequence = int(sequences[index])
+        if sequence in decisions:
+            raise ValueError("integrity_sequence_duplicate")
         decisions[sequence] = IntegrityDecision(
             now, state, scale, state != IntegrityState.UNTRUSTED,
             reanchor_ready, rolling, anchored, quality,
+            evidence_valid, cutoff, age_us, reason, generation,
         )
     return IntegrityPlan(decisions, tuple(transitions), config, closure)
 

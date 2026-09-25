@@ -433,6 +433,25 @@ class MainWindow(QMainWindow):
         if self._dataset is None:
             return
         self.export_dialog.OutputDirectory_Set(self._ExportDirectory_Default())
+        recorded_name = (
+            self._channel_resolver.RecordedNavigationSource_Get()
+            if self._channel_resolver is not None else "N/A"
+        ).replace("KF_6", "KF6")
+        sources = [(
+            self._replay_store.RECORDED_SOURCE_ID,
+            self._translator.Text_Get(
+                "export.source_recorded", algorithm=recorded_name
+            ),
+        )]
+        sources.extend((
+            entry.source_id,
+            self._translator.Text_Get(
+                "export.source_replay",
+                index=entry.run_index,
+                algorithm=entry.algorithm_name,
+            ),
+        ) for entry in self._replay_store.Entries_Get() if entry.analysis_ready)
+        self.export_dialog.Sources_Set(tuple(sources))
         self.export_dialog.Result_Clear()
         model = self.time_range.controller.model
         self.export_dialog.Range_Set((model.start, model.end), model.mission_duration)
@@ -784,8 +803,6 @@ class MainWindow(QMainWindow):
 
     def _Replay_ResultSet(self, result: AlgorithmResult) -> None:
         display_name = self._registry.Algorithm_Get(result.algorithm_id).metadata.display_name
-        if result.provenance == "Integrity-assisted KF6":
-            display_name += " · Integrity-assisted"
         restore_index = self._source_restore_index
         self._source_restore_index = None
         entry = self._replay_store.Result_Add(result, algorithm_name=display_name,
@@ -828,6 +845,13 @@ class MainWindow(QMainWindow):
                           ),
                           current_range=(self.time_range.controller.model.start,
                                          self.time_range.controller.model.end))
+        source_id = options.source_id or self._replay_store.ActiveSource_Get().source_id
+        try:
+            export_store = self._replay_store.Snapshot_Create(source_id)
+        except ValueError as error:
+            self.export_dialog.Result_Error(str(error))
+            return
+        options = replace(options, source_id=source_id)
         dataset = self._dataset
         exporter = FlightExporter(self._registry)
         worker = FunctionWorker(
@@ -835,7 +859,7 @@ class MainWindow(QMainWindow):
                 dataset,
                 output_path,
                 options=options,
-                replay_store=self._replay_store,
+                replay_store=export_store,
                 context=context,
             )
         )

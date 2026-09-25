@@ -172,11 +172,11 @@ def test_replay_product_removes_legacy_diagnostics_page(qtbot, language, diagnos
     page.algorithm_combo.setCurrentIndex(
         page.algorithm_combo.findData("silverstar.algorithm.kf6")
     )
-    mode_index = page.mode_combo.findData(ReplayMode.INTEGRITY_ASSISTED)
-    assert mode_index >= 0
-    page.mode_combo.setCurrentIndex(mode_index)
+    assert page.mode_combo.count() == 3
+    assert all(page.mode_combo.itemData(index) != "integrity_assisted"
+               for index in range(page.mode_combo.count()))
     request = page._Request_Get()
-    assert request.mode == ReplayMode.INTEGRITY_ASSISTED
+    assert request.mode == ReplayMode.RECORDED_CONFIGURATION
     assert page.Configuration_Get()["mode"] == ReplayMode.RECORDED_CONFIGURATION.value
 
 

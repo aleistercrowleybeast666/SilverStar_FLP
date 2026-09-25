@@ -188,7 +188,16 @@ class DecoderProfilePackage:
             FirmwareParameters_CheckPlugins,
         )
 
-        FirmwareParameters_CheckPlugins(semantics_document["firmware_algorithm_parameters"])
+        replay_declaration = semantics_document.get("metadata_declarations", {}).get(
+            "navigation_replay", {}
+        )
+        integrity_revision = replay_declaration.get("gnss_integrity_revision", 0)
+        if type(integrity_revision) is not int or integrity_revision not in (0, 1):
+            raise DecoderProfileError("gnss_integrity_revision_unsupported")
+        FirmwareParameters_CheckPlugins(
+            semantics_document["firmware_algorithm_parameters"],
+            integrity_revision=integrity_revision,
+        )
         semantics = semantics.Catalog_Bind(catalog)
         _CatalogSemantics_Validate(catalog, semantics)
         if not 1 <= catalog.schema_version <= 1:

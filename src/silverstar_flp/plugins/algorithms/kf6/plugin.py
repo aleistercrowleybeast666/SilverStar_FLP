@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -538,6 +538,326 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 tooltip_key="parameter.tooltip.baro_measurement_delay_ms",
                 required=False,
             ),
+            ParameterSpec(
+                "gnss_integrity_enable",
+                "int",
+                1,
+                0,
+                1,
+                "1",
+                representation="value",
+                precision=0,
+                order=27,
+                step=1,
+                label_key="parameter.gnss_integrity_enable",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_enable",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_window_s",
+                "int",
+                5,
+                1,
+                10,
+                "s",
+                representation="value",
+                precision=0,
+                order=28,
+                step=1,
+                label_key="parameter.gnss_integrity_window_s",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_window_s",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_max_gap_ms",
+                "int",
+                120,
+                40,
+                1200,
+                "ms",
+                representation="value",
+                precision=0,
+                order=29,
+                step=1,
+                label_key="parameter.gnss_integrity_max_gap_ms",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_max_gap_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_max_evidence_age_ms",
+                "int",
+                550,
+                0,
+                550,
+                "ms",
+                representation="value",
+                precision=0,
+                order=30,
+                step=1,
+                label_key="parameter.gnss_integrity_max_evidence_age_ms",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_max_evidence_age_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_reference_max_age_s",
+                "int",
+                30,
+                11,
+                300,
+                "s",
+                representation="value",
+                precision=0,
+                order=31,
+                step=1,
+                label_key="parameter.gnss_integrity_reference_max_age_s",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_reference_max_age_s",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_suspect_duration_ms",
+                "int",
+                2000,
+                100,
+                30000,
+                "ms",
+                representation="value",
+                precision=0,
+                order=32,
+                step=1,
+                label_key="parameter.gnss_integrity_suspect_duration_ms",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_suspect_duration_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_untrusted_duration_ms",
+                "int",
+                5000,
+                100,
+                30000,
+                "ms",
+                representation="value",
+                precision=0,
+                order=33,
+                step=1,
+                label_key="parameter.gnss_integrity_untrusted_duration_ms",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_untrusted_duration_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_recovery_duration_ms",
+                "int",
+                8000,
+                100,
+                30000,
+                "ms",
+                representation="value",
+                precision=0,
+                order=34,
+                step=1,
+                label_key="parameter.gnss_integrity_recovery_duration_ms",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_recovery_duration_ms",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_recovery_min_samples",
+                "int",
+                25,
+                1,
+                1000,
+                "samples",
+                representation="value",
+                precision=0,
+                order=35,
+                step=1,
+                label_key="parameter.gnss_integrity_recovery_min_samples",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_recovery_min_samples",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_rolling_threshold_m",
+                "float",
+                7.0,
+                0.1,
+                100.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=36,
+                step=0.01,
+                label_key="parameter.gnss_integrity_rolling_threshold_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_rolling_threshold_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_anchored_threshold_m",
+                "float",
+                15.0,
+                0.1,
+                200.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=37,
+                step=0.01,
+                label_key="parameter.gnss_integrity_anchored_threshold_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_anchored_threshold_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_recovery_rolling_m",
+                "float",
+                2.0,
+                0.1,
+                50.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=38,
+                step=0.01,
+                label_key="parameter.gnss_integrity_recovery_rolling_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_recovery_rolling_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_recovery_anchored_m",
+                "float",
+                8.0,
+                0.1,
+                100.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=39,
+                step=0.01,
+                label_key="parameter.gnss_integrity_recovery_anchored_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_recovery_anchored_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_hacc_max_m",
+                "float",
+                6.0,
+                0.1,
+                100.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=40,
+                step=0.01,
+                label_key="parameter.gnss_integrity_hacc_max_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_hacc_max_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_sacc_max_mps",
+                "float",
+                1.2,
+                0.01,
+                20.0,
+                "m/s",
+                representation="value",
+                precision=3,
+                order=41,
+                step=0.01,
+                label_key="parameter.gnss_integrity_sacc_max_mps",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_sacc_max_mps",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_velocity_bias_bound_mps",
+                "float",
+                0.15,
+                0.0,
+                5.0,
+                "m/s",
+                representation="value",
+                precision=3,
+                order=42,
+                step=0.01,
+                label_key="parameter.gnss_integrity_velocity_bias_bound_mps",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_velocity_bias_bound_mps",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_reference_renewal_max_m",
+                "float",
+                2.0,
+                0.1,
+                50.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=43,
+                step=0.01,
+                label_key="parameter.gnss_integrity_reference_renewal_max_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_reference_renewal_max_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_position_r_scale",
+                "float",
+                4.0,
+                1.0,
+                100.0,
+                "1",
+                representation="value",
+                precision=3,
+                order=44,
+                step=0.01,
+                label_key="parameter.gnss_integrity_position_r_scale",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_position_r_scale",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_reanchor_min_distance_m",
+                "float",
+                8.0,
+                0.1,
+                100.0,
+                "m",
+                representation="value",
+                precision=3,
+                order=45,
+                step=0.01,
+                label_key="parameter.gnss_integrity_reanchor_min_distance_m",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_reanchor_min_distance_m",
+                required=False,
+            ),
+            ParameterSpec(
+                "gnss_integrity_reanchor_covariance_floor_m2",
+                "float",
+                25.0,
+                0.01,
+                10000.0,
+                "m^2",
+                representation="value",
+                precision=3,
+                order=46,
+                step=0.01,
+                label_key="parameter.gnss_integrity_reanchor_covariance_floor_m2",
+                group_key="parameter_group.gnss_integrity",
+                tooltip_key="parameter.tooltip.gnss_integrity_reanchor_covariance_floor_m2",
+                required=False,
+            ),
         ),
         standard_outputs=(
             "attitude.q_nb",
@@ -853,17 +1173,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 source_end_timestamp_us=increments[-1].interval_end_timestamp_us,
             )
         parameters = self._Parameters_Resolve(dataset, request)
-        assistance = None
-        if request.mode == ReplayMode.INTEGRITY_ASSISTED:
-            if not dataset.Records_Get("ESTIMATOR_STEP"):
-                raise ValueError("integrity_assistance_requires_fixed_lag_log")
-            from silverstar_flp.analysis.integrity_assistance import (
-                IntegrityConfig,
-                IntegrityPlan_Build,
-            )
-            assistance = IntegrityPlan_Build(
-                dataset, IntegrityConfig(**request.integrity_parameters)
-            )
+        if parameters.get("gnss_integrity_enable", 0):
+            raise ValueError("kf6_integrity_replay_not_implemented")
         filter_instance = Kf6Filter.Kf6_Create(
             gnss_reacquire_outage_ms=parameters.get("gnss_reacquire_outage_ms", 300),
             process_accel_std_mps2=np.asarray(
@@ -943,7 +1254,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             replay_dataset = replace(dataset, records=replaced_records)
             snapshots, filter_instance, timing_diagnostics = Faithful_Run(
                 replay_dataset, filter_instance, q_nb, increments, parameters,
-                task_context, assistance=assistance,
+                task_context,
             )
             source_diagnostics.update(timing_diagnostics)
         else:
@@ -960,24 +1271,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             source_diagnostics["measurement_events"] = measurement_events
         if not snapshots:
             raise ValueError("replay_no_valid_kf6_output")
-        if assistance is not None:
-            decision_rows = tuple(assistance.decisions.values())
-            disabled_us = sum(
-                max(0, int(decision_rows[index + 1].timestamp_us - row.timestamp_us))
-                for index, row in enumerate(decision_rows[:-1])
-                if not row.position_en_allowed
-            )
-            source_diagnostics["integrity_assistance"] = {
-                "parameters": asdict(assistance.config),
-                "transitions": tuple((time, state.value) for time, state in assistance.transitions),
-                "disabled_duration_s": disabled_us * 1.0e-6,
-                "reanchor_count": len(source_diagnostics.get("integrity_analysis_events", ())),
-                "analysis_only": True,
-            }
-            diagnostic_metadata["mode"] = "analysis_only"
-            diagnostic_metadata["analysis_only_overrides"]["integrity_assistance"] = (
-                asdict(assistance.config)
-            )
         warnings = list(availability.warnings)
         fidelity = availability.fidelity
         state_decimation = tuple(system_config.payload.get("log_decimation", ()))
@@ -997,9 +1290,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         ):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_offline_field_analysis")
-        if assistance is not None:
-            fidelity = ReplayFidelity.APPROXIMATE
-            warnings.append("kf6_integrity_assisted_analysis_only")
         if "gnss_reacquire_outage_ms" not in parameters and dataset.Records_Get("GNSS_MEASUREMENT"):
             fidelity = ReplayFidelity.APPROXIMATE
             warnings.append("kf6_reacquisition_policy_changed")
@@ -1010,30 +1300,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         channels.update(RecomputedMeasurementChannels_Build(
             source_diagnostics.get("measurement_events", ())
         ))
-        if assistance is not None:
-            decision_rows = tuple(assistance.decisions.values())
-            integrity_time = np.asarray(
-                [row.timestamp_us for row in decision_rows], dtype=np.uint64
-            )
-            for name, values, unit, quantity in (
-                ("state", [
-                    ("TRUSTED", "SUSPECT", "UNTRUSTED", "RECOVERING").index(row.state.value)
-                    for row in decision_rows], "enum", "integrity_state"),
-                ("position_r_scale", [row.position_r_scale for row in decision_rows],
-                 "1", "scale"),
-                ("position_en_allowed", [float(row.position_en_allowed) for row in decision_rows],
-                 "1", "status"),
-                ("rolling_closure", [row.rolling_m for row in decision_rows],
-                 "m", "closure"),
-                ("anchored_closure", [row.anchored_m for row in decision_rows],
-                 "m", "closure"),
-            ):
-                series = _Series_Create(
-                    integrity_time, np.asarray(values), unit=unit, quantity=quantity
-                )
-                channels[f"kf6.integrity.{name}"] = replace(
-                    series, valid=np.isfinite(series.values)
-                )
         for channel_id in ("navigation.position_enu", "navigation.velocity_enu"):
             series = channels[channel_id]
             channels[channel_id] = replace(
@@ -1105,9 +1371,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 **source_diagnostics,
             },
             provenance=(
-                "Integrity-assisted KF6"
-                if assistance is not None
-                else "Analysis-only"
+                "Analysis-only"
                 if diagnostic_metadata["mode"] == "analysis_only"
                 else "What-if"
                 if request.mode == ReplayMode.WHAT_IF
@@ -1123,6 +1387,12 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         self, dataset: FlightDataset, request: ReplayRequest
     ) -> dict[str, float]:
         parameters = self.Parameters_Resolve(dataset, request)
+        metadata = (dataset.semantic_context.raw_metadata
+                    if dataset.semantic_context is not None else {})
+        revision = metadata.get("metadata_declarations", {}).get(
+            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        if revision == 0 and "gnss_integrity_enable" not in request.parameters:
+            parameters["gnss_integrity_enable"] = 0
         for dimension in ("1d", "2d", "3d"):
             if parameters[f"nis_{dimension}_hard"] <= parameters[f"nis_{dimension}_soft"]:
                 raise ValueError("nis_threshold_order_invalid")

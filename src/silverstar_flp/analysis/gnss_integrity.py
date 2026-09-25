@@ -35,6 +35,18 @@ class GnssIntegrityResult:
     anchor_reset_u: np.ndarray
     quality: np.ndarray
     summary: dict[str, dict[str, float | int]]
+    anchored_position_displacement_m: np.ndarray | None = None
+    anchored_velocity_displacement_m: np.ndarray | None = None
+    segment_en: np.ndarray | None = None
+    segment_u: np.ndarray | None = None
+    rolling_reason_en: tuple[str, ...] = ()
+    rolling_reason_u: tuple[str, ...] = ()
+    anchored_reason_en: tuple[str, ...] = ()
+    anchored_reason_u: tuple[str, ...] = ()
+    position_timestamp_us: np.ndarray | None = None
+    velocity_timestamp_us: np.ndarray | None = None
+    evidence_cutoff_us: np.ndarray | None = None
+    evidence_age_us: np.ndarray | None = None
 
 
 def GeoLocal_ToEnu(
@@ -79,41 +91,197 @@ def _Summary_Get(values: np.ndarray, eligible: int) -> dict[str, float | int]:
     }
 
 
-def _AnchoredClosure_Build(
-    time: np.ndarray,
-    position: np.ndarray,
-    velocity: np.ndarray,
-    group_valid: np.ndarray,
-    broken: np.ndarray,
-    mission_start_us: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Integrate only continuous, independently valid EN and U segments."""
-    residual = np.full(position.shape, np.nan, dtype=np.float64)
-    valid = np.zeros((len(time), 2), dtype=np.bool_)
-    anchor_reset = np.zeros((len(time), 2), dtype=np.bool_)
-    anchors: list[np.ndarray | None] = [None, None]
-    integrated = np.zeros(3, dtype=np.float64)
-    for index in range(len(time)):
-        for group, axes, required in ((0, (0, 1), (0, 2)), (1, (2,), (1, 3))):
-            if time[index] < mission_start_us or not all(
-                group_valid[index, item] for item in required
-            ):
-                anchors[group] = None
+def _EffectiveTimes_Get(dataset: FlightDataset, records: tuple) -> tuple[np.ndarray, np.ndarray]:
+    """Use the resolved times actually recorded by the estimator when available."""
+    measurements = {
+        (int(row.payload.get("sequence", row.record_sequence)),
+         int(row.payload.get("receive_timestamp_us", row.timestamp_us))): row.payload
+        for row in dataset.Records_Get("GNSS_MEASUREMENT")
+    }
+    position_us = np.empty(len(records), dtype=np.int64)
+    velocity_us = np.empty(len(records), dtype=np.int64)
+    for index, record in enumerate(records):
+        native = record.payload
+        sample_us = int(native.get("sample_timestamp_us", record.timestamp_us))
+        sequence = int(native.get("sequence", record.record_sequence))
+        resolved = measurements.get((sequence, int(native.get("receive_timestamp_us", sample_us))))
+        if resolved is None:
+            # Native-only synthetic logs have one common sample time.
+            position_us[index] = sample_us
+            velocity_us[index] = sample_us
+        else:
+            position_us[index] = int(resolved["position_measurement_timestamp_us"])
+            velocity_us[index] = int(resolved["velocity_measurement_timestamp_us"])
+    if np.any(np.diff(position_us) <= 0) or np.any(np.diff(velocity_us) <= 0):
+        raise ValueError("gnss_integrity_effective_times_nonmonotonic")
+    return position_us, velocity_us
+
+
+def _PositionAt(
+    target_us: int, last_index: int, times: np.ndarray, position: np.ndarray,
+    valid: np.ndarray, valid_indices: np.ndarray, gap_limit_us: int,
+) -> np.ndarray | None:
+    right_at = int(np.searchsorted(times[valid_indices], target_us, side="left"))
+    if right_at >= len(valid_indices):
+        return None
+    right = int(valid_indices[right_at])
+    if right > last_index:
+        return None
+    if times[right] == target_us:
+        return position[right].copy()
+    if right_at == 0:
+        return None
+    left = int(valid_indices[right_at - 1])
+    span = int(times[right] - times[left])
+    if span <= 0 or span > gap_limit_us or left >= last_index:
+        return None
+    fraction = (target_us - int(times[left])) / span
+    return position[left] + fraction * (position[right] - position[left])
+
+
+def _VelocityAt(
+    target_us: int, last_index: int, times: np.ndarray, velocity: np.ndarray,
+    valid: np.ndarray, bad_prefix: np.ndarray, broken_prefix: np.ndarray,
+    integral: np.ndarray, gap_limit_us: int,
+) -> tuple[np.ndarray, np.ndarray, int] | None:
+    right = int(np.searchsorted(times, target_us, side="left"))
+    if right > last_index:
+        return None
+    if times[right] == target_us:
+        if not valid[right]:
+            return None
+        return velocity[right].copy(), integral[right].copy(), right
+    if right == 0 or int(times[right] - times[right - 1]) > gap_limit_us:
+        return None
+    left = right - 1
+    if (bad_prefix[right + 1] != bad_prefix[left]
+            or broken_prefix[right] != broken_prefix[left]):
+        return None
+    fraction = (target_us - int(times[left])) / int(times[right] - times[left])
+    value = velocity[left] + fraction * (velocity[right] - velocity[left])
+    dt_s = (target_us - int(times[left])) * 1e-6
+    return value, integral[left] + .5 * (velocity[left] + value) * dt_s, left
+
+
+def _AlignedClosure_Build(
+    receive_us: np.ndarray, position_us: np.ndarray, velocity_us: np.ndarray,
+    position: np.ndarray, velocity: np.ndarray, group_valid: np.ndarray,
+    sequence_jump: np.ndarray, mission_start_us: int, window_us: int,
+    gap_limit_us: int,
+) -> tuple:
+    count = len(receive_us)
+    rolling_pos = np.full((count, 3), np.nan)
+    rolling_vel = np.full((count, 3), np.nan)
+    rolling_res = np.full((count, 3), np.nan)
+    anchored_pos = np.full((count, 3), np.nan)
+    anchored_vel = np.full((count, 3), np.nan)
+    anchored_res = np.full((count, 3), np.nan)
+    rolling_valid = np.zeros((count, 2), dtype=bool)
+    anchored_valid = np.zeros((count, 2), dtype=bool)
+    reset = np.zeros((count, 2), dtype=bool)
+    segment = np.zeros((count, 2), dtype=np.int32)
+    cutoff = np.minimum(position_us, velocity_us)
+    reasons_rolling = [["warmup"] * count for _ in range(2)]
+    reasons_anchored = [["before_mission"] * count for _ in range(2)]
+    for group, axes, pos_bit, vel_bit in ((0, (0, 1), 0, 2), (1, (2,), 1, 3)):
+        pos_valid = group_valid[:, pos_bit]
+        vel_valid = group_valid[:, vel_bit]
+        valid_positions = np.flatnonzero(pos_valid)
+        invalid_prefix = np.r_[0, np.cumsum((~vel_valid).astype(np.int64))]
+        break_step = (np.diff(velocity_us) > gap_limit_us) | sequence_jump
+        broken_prefix = np.r_[0, np.cumsum(break_step.astype(np.int64))]
+        integrated = np.zeros((count, len(axes)), dtype=np.float64)
+        for index in range(1, count):
+            if vel_valid[index] and vel_valid[index - 1] and not break_step[index - 1]:
+                integrated[index] = integrated[index - 1] + .5 * (
+                    velocity[index, list(axes)] + velocity[index - 1, list(axes)]
+                ) * (int(velocity_us[index]) - int(velocity_us[index - 1])) * 1e-6
+            else:
+                integrated[index] = integrated[index - 1]
+        reference: tuple[int, np.ndarray, np.ndarray, int, int] | None = None
+        generation = 0
+        for index in range(count):
+            if receive_us[index] < mission_start_us:
                 continue
-            if anchors[group] is None or index == 0 or broken[index - 1]:
-                anchors[group] = position[index, list(axes)].copy()
-                integrated[list(axes)] = 0.0
-                anchor_reset[index, group] = True
+            end_us = int(cutoff[index])
+            end_velocity = _VelocityAt(
+                end_us, index, velocity_us, velocity[:, list(axes)], vel_valid,
+                invalid_prefix, broken_prefix, integrated, gap_limit_us,
+            )
+            end_position = _PositionAt(
+                end_us, index, position_us, position[:, list(axes)], pos_valid,
+                valid_positions, gap_limit_us,
+            )
+            reason = "valid"
+            if index > 0 and sequence_jump[index - 1]:
+                reason = "sequence_jump"
+            elif index > 0 and velocity_us[index] - velocity_us[index - 1] > gap_limit_us:
+                reason = "time_gap"
+            elif not vel_valid[index] or end_velocity is None:
+                reason = "velocity_invalid"
+            if reason != "valid":
+                reference = None
+            elif end_position is None:
+                reason = "position_invalid"
+            if reference is None and reason == "valid":
+                assert end_position is not None and end_velocity is not None
+                generation += 1
+                reference = (end_us, end_position, end_velocity[1],
+                             end_velocity[2], int(broken_prefix[end_velocity[2]]))
+                reset[index, group] = True
+                reason = "anchor_reset"
+            if reference is not None and end_velocity is not None:
+                segment[index, group] = generation
+                ref_time, ref_pos, ref_int, ref_index, ref_break = reference
+                if (int(broken_prefix[end_velocity[2]]) != ref_break
+                        or invalid_prefix[end_velocity[2] + 1] != invalid_prefix[ref_index + 1]):
+                    reference = None
+                    reasons_anchored[group][index] = "velocity_invalid"
+                else:
+                    anchored_vel[index, list(axes)] = end_velocity[1] - ref_int
+                    if end_position is not None and not reset[index, group]:
+                        anchored_pos[index, list(axes)] = end_position - ref_pos
+                        anchored_res[index, list(axes)] = (
+                            anchored_pos[index, list(axes)] - anchored_vel[index, list(axes)]
+                        )
+                        anchored_valid[index, group] = True
+                    reasons_anchored[group][index] = reason
+            else:
+                reasons_anchored[group][index] = reason
+            start_us = end_us - window_us
+            if start_us < int(cutoff[0]):
                 continue
-            dt_s = (int(time[index]) - int(time[index - 1])) * 1e-6
-            integrated[list(axes)] += (
-                0.5 * (velocity[index - 1, list(axes)] + velocity[index, list(axes)]) * dt_s
+            start_velocity = _VelocityAt(
+                start_us, index, velocity_us, velocity[:, list(axes)], vel_valid,
+                invalid_prefix, broken_prefix, integrated, gap_limit_us,
             )
-            residual[index, list(axes)] = (
-                position[index, list(axes)] - anchors[group] - integrated[list(axes)]
+            if start_velocity is None or end_velocity is None:
+                reasons_rolling[group][index] = "velocity_invalid"
+                continue
+            if (int(broken_prefix[end_velocity[2]]) != int(broken_prefix[start_velocity[2]])
+                    or invalid_prefix[end_velocity[2] + 1]
+                    != invalid_prefix[start_velocity[2] + 1]):
+                reasons_rolling[group][index] = "time_gap" if (
+                    int(broken_prefix[end_velocity[2]]) != int(broken_prefix[start_velocity[2]])
+                ) else "velocity_invalid"
+                continue
+            rolling_vel[index, list(axes)] = end_velocity[1] - start_velocity[1]
+            start_position = _PositionAt(
+                start_us, index, position_us, position[:, list(axes)], pos_valid,
+                valid_positions, gap_limit_us,
             )
-            valid[index, group] = True
-    return residual, valid, anchor_reset
+            if start_position is None or end_position is None:
+                reasons_rolling[group][index] = "position_invalid"
+                continue
+            rolling_pos[index, list(axes)] = end_position - start_position
+            rolling_res[index, list(axes)] = (
+                rolling_pos[index, list(axes)] - rolling_vel[index, list(axes)]
+            )
+            rolling_valid[index, group] = True
+            reasons_rolling[group][index] = "valid"
+    return (rolling_pos, rolling_vel, rolling_res, rolling_valid,
+            anchored_pos, anchored_vel, anchored_res, anchored_valid,
+            reset, segment, cutoff, reasons_rolling, reasons_anchored)
 
 
 def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegrityResult:
@@ -127,6 +295,18 @@ def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegr
         raise ValueError("gnss_origin_unavailable")
     origin = tuple(int(initial.payload[field]) for field in fields)
     records = tuple(dataset.Records_Get("GNSS_NATIVE"))
+    measurements = tuple(dataset.Records_Get("GNSS_MEASUREMENT"))
+    if measurements:
+        observed = {
+            (int(row.payload.get("sequence", row.record_sequence)),
+             int(row.payload.get("receive_timestamp_us", row.timestamp_us)))
+            for row in measurements
+        }
+        records = tuple(
+            row for row in records
+            if (int(row.payload.get("sequence", row.record_sequence)),
+                int(row.payload.get("receive_timestamp_us", row.timestamp_us))) in observed
+        )
     if not records:
         raise ValueError("gnss_native_unavailable")
     descriptor_ids = {
@@ -177,58 +357,22 @@ def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegr
     group_valid[:, 1] &= np.isfinite(position[:, 2])
     group_valid[:, 2] &= np.isfinite(velocity[:, :2]).all(axis=1)
     group_valid[:, 3] &= np.isfinite(velocity[:, 2])
-    dt_us = np.diff(time)
-    cadence = float(np.median(dt_us)) if dt_us.size else 0.0
-    gap_limit_us = max(3.0 * cadence, 120_000.0)
+    position_us, velocity_us = _EffectiveTimes_Get(dataset, records)
     sequence_step = (np.diff(sequence) & 0xFFFFFFFF)
-    broken = (dt_us > gap_limit_us) | (sequence_step != 1)
-    broken_prefix = np.r_[0, np.cumsum(broken.astype(np.int64))]
-    invalid_prefix = np.vstack((
-        np.zeros((1, 4), dtype=np.int64),
-        np.cumsum((~group_valid).astype(np.int64), axis=0),
-    ))
-    dt_s = dt_us.astype(np.float64) * 1e-6
-    safe_velocity = np.where(np.isfinite(velocity), velocity, 0.0)
-    integrals = np.vstack((
-        np.zeros((1, 3), dtype=np.float64),
-        np.cumsum(.5 * (safe_velocity[1:] + safe_velocity[:-1]) * dt_s[:, None], axis=0),
-    ))
-    position_delta = np.full((len(time), 3), np.nan)
-    velocity_delta = np.full((len(time), 3), np.nan)
-    residual = np.full((len(time), 3), np.nan)
-    valid_en = np.zeros(len(time), dtype=bool)
-    valid_u = np.zeros(len(time), dtype=bool)
+    sequence_jump = sequence_step != 1
+    gap_limit_us = 120_000
     window_us = window_s * 1_000_000
-    eligible = int(np.count_nonzero(time - time[0] >= window_us))
-    for end in range(len(time)):
-        target = int(time[end]) - window_us
-        if target < time[0]:
-            continue
-        start = int(np.searchsorted(time, target, side="left"))
-        if end - start < 2 or time[end] - time[start] < .9 * window_us:
-            continue
-        if broken_prefix[end] != broken_prefix[start]:
-            continue
-        for horizontal, required, axes in (
-            (True, (0, 2), (0, 1)),
-            (False, (1, 3), (2,)),
-        ):
-            if any(invalid_prefix[end + 1, group] != invalid_prefix[start, group]
-                   for group in required):
-                continue
-            dp = position[end, list(axes)] - position[start, list(axes)]
-            dv = integrals[end, list(axes)] - integrals[start, list(axes)]
-            position_delta[end, list(axes)] = dp
-            velocity_delta[end, list(axes)] = dv
-            residual[end, list(axes)] = dp - dv
-            if horizontal:
-                valid_en[end] = True
-            else:
-                valid_u[end] = True
-    anchored, anchored_valid, anchor_reset = _AnchoredClosure_Build(
-        time, position, velocity, group_valid, broken,
-        int(dataset.start_timestamp_us or time[0]),
+    (position_delta, velocity_delta, residual, rolling_valid,
+     anchored_position, anchored_velocity, anchored, anchored_valid,
+     anchor_reset, segment, cutoff, rolling_reasons,
+     anchored_reasons) = _AlignedClosure_Build(
+        time, position_us, velocity_us, position, velocity, group_valid,
+        sequence_jump, int(dataset.start_timestamp_us or time[0]),
+        window_us, gap_limit_us,
     )
+    valid_en = rolling_valid[:, 0]
+    valid_u = rolling_valid[:, 1]
+    eligible = int(np.count_nonzero(cutoff - cutoff[0] >= window_us))
     horizontal_error = np.linalg.norm(residual[valid_en, :2], axis=1)
     vertical_error = np.abs(residual[valid_u, 2])
     anchored_horizontal = np.linalg.norm(anchored[anchored_valid[:, 0], :2], axis=1)
@@ -247,4 +391,13 @@ def GnssIntegrity_Build(dataset: FlightDataset, window_s: int = 5) -> GnssIntegr
                  "vertical": _Summary_Get(vertical_error, eligible),
                  "anchored_horizontal": _Summary_Get(anchored_horizontal, len(time)),
                  "anchored_vertical": _Summary_Get(anchored_vertical, len(time))},
+        anchored_position_displacement_m=anchored_position,
+        anchored_velocity_displacement_m=anchored_velocity,
+        segment_en=segment[:, 0], segment_u=segment[:, 1],
+        rolling_reason_en=tuple(rolling_reasons[0]),
+        rolling_reason_u=tuple(rolling_reasons[1]),
+        anchored_reason_en=tuple(anchored_reasons[0]),
+        anchored_reason_u=tuple(anchored_reasons[1]),
+        position_timestamp_us=position_us, velocity_timestamp_us=velocity_us,
+        evidence_cutoff_us=cutoff, evidence_age_us=time-cutoff,
     )

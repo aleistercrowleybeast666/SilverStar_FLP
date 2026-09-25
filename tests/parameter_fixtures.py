@@ -37,7 +37,12 @@ def FirmwareSets_Build(overrides=None):
             "parameters": [],
         }
         for p in contract["parameters"]:
-            value = (overrides or {}).get(name, {}).get(p["id"], p["default"])
+            overrides_for_plugin = (overrides or {}).get(name, {})
+            value = overrides_for_plugin.get(p["id"], p["default"])
+            # These revision-0 synthetic packages model the old KF6 firmware.
+            if (name == "kf6" and p["id"] == "gnss_integrity_enable" and
+                    p["id"] not in overrides_for_plugin):
+                value = 0
             if p["type"] == "float":
                 value = struct.unpack("<f", struct.pack("<f", value))[0]
             group["parameters"].append(

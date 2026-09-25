@@ -39,7 +39,11 @@ def _Closure(rolling, anchored, *, sacc=None, resets=()):
 
 def _Plan(rolling, anchored, **kwargs):
     result = _Closure(rolling, anchored, **kwargs)
-    return IntegrityDecisions_Build(result, np.arange(len(rolling)), IntegrityConfig())
+    return IntegrityDecisions_Build(
+        result, np.arange(len(rolling)),
+        IntegrityConfig(max_gap_ms=1200, reference_max_age_s=120,
+                        recovery_min_samples=1),
+    )
 
 
 def test_clean_remains_trusted_and_single_spike_cannot_disable():
@@ -105,3 +109,46 @@ def test_controlled_reanchor_changes_only_horizontal_position_and_covariance_blo
     np.testing.assert_array_equal(replay.state.covariance[:2, 2:], 0.0)
     np.testing.assert_array_equal(replay.state.covariance[2:, :2], 0.0)
     assert np.linalg.eigvalsh(replay.state.covariance).min() > 0.0
+
+
+def test_missing_quality_does_not_promote_suspect():
+    rolling = np.r_[np.full(6, 20.0), np.full(8, .1)]
+    anchored = np.r_[np.full(6, 30.0), np.full(8, .1)]
+    sacc = np.r_[np.full(6, .4), np.full(8, 5.0)]
+    plan = _Plan(rolling, anchored, sacc=sacc)
+    assert plan.decisions[5].state == IntegrityState.SUSPECT
+    assert plan.decisions[13].state == IntegrityState.SUSPECT
+    assert plan.decisions[13].reason == 'quality_unavailable'
+
+
+def test_reference_reset_cannot_prove_fixed_bias_disappeared():
+    anchored = np.r_[np.arange(30, dtype=float), np.full(14, 30.0),
+                     np.zeros(40)]
+    rolling = np.r_[np.full(44, 1.0), np.full(40, .5)]
+    plan = _Plan(rolling, anchored, resets=(44,))
+    assert plan.decisions[43].state == IntegrityState.UNTRUSTED
+    assert all(not row.reanchor_ready for row in list(plan.decisions.values())[44:])
+    assert all(row.state != IntegrityState.TRUSTED
+               for row in list(plan.decisions.values())[44:])
+    assert plan.decisions[70].reason == 'reference_untrusted_or_expired'
+
+
+def test_decisions_are_prefix_causal():
+    prefix = _Plan(np.r_[np.full(25, 1.0), np.full(20, 20.0)],
+                   np.r_[np.full(25, 1.0), np.full(20, 30.0)])
+    extended = _Plan(np.r_[np.full(25, 1.0), np.full(20, 20.0), np.zeros(30)],
+                     np.r_[np.full(25, 1.0), np.full(20, 30.0), np.zeros(30)])
+    assert tuple(prefix.decisions.values()) == tuple(list(extended.decisions.values())[:45])
+
+
+def test_long_clean_run_renews_only_bounded_trusted_reference():
+    count = 130
+    clean = _Closure(np.full(count, .1), np.zeros(count))
+    config = IntegrityConfig(max_gap_ms=1200, reference_max_age_s=30,
+                             recovery_min_samples=1)
+    plan = IntegrityDecisions_Build(clean, np.arange(count), config)
+    assert all(row.state == IntegrityState.TRUSTED for row in plan.decisions.values())
+    drift = _Closure(np.full(count, .1), np.arange(count, dtype=float) * .15)
+    plan = IntegrityDecisions_Build(drift, np.arange(count), config)
+    assert IntegrityState.SUSPECT in [state for _, state in plan.transitions]
+    assert plan.decisions[100].state != IntegrityState.TRUSTED

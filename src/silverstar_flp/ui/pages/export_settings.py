@@ -298,6 +298,10 @@ class ExportDialog(QDialog):
         self.export_theme_label = QLabel()
         self.export_theme_combo = StandardComboBox()
         form.addRow(self.export_theme_label, self.export_theme_combo)
+        self.export_source_label = QLabel()
+        self.export_source_combo = StandardComboBox()
+        self._source_options: tuple[tuple[str, str], ...] = ()
+        form.addRow(self.export_source_label, self.export_source_combo)
         self.page_mode_label = QLabel()
         self.page_mode = StandardComboBox()
         for value in ("5", "10", "30", "60", "120", "Custom", "Current View", "Full"):
@@ -396,6 +400,15 @@ class ExportDialog(QDialog):
         layout.addLayout(button_row)
         self.Language_Apply(translator)
 
+    def Sources_Set(self, sources: tuple[tuple[str, str], ...]) -> None:
+        self._source_options = sources
+        self.export_source_combo.clear()
+        self.export_source_combo.addItem(
+            self._translator.Text_Get("export.source_follow_ui"), None
+        )
+        for source_id, label in sources:
+            self.export_source_combo.addItem(label, source_id)
+
     def Range_Set(self, current, duration):
         self._current_range, self._mission_duration = current, duration
         self._GifMetadata_Refresh()
@@ -432,7 +445,10 @@ class ExportDialog(QDialog):
         if not folder_text:
             self.result_label.setText(self._translator.Text_Get("export.folder_required"))
             return
+        source_id = self.export_source_combo.currentData()
         options = ExportOptions(
+            source_mode="follow_ui" if source_id is None else "explicit",
+            source_id=source_id,
             language=self.export_language_combo.currentData(),
             ui_language=self._translator.language,
             theme=self.export_theme_combo.currentData(),
@@ -619,6 +635,11 @@ class ExportDialog(QDialog):
         self.browse_button.setText(translator.Text_Get("action.browse"))
         self.export_language_label.setText(translator.Text_Get("label.export_language"))
         self.export_theme_label.setText(translator.Text_Get("label.export_theme"))
+        self.export_source_label.setText(translator.Text_Get("export.source"))
+        if self.export_source_combo.count():
+            self.export_source_combo.setItemText(
+                0, translator.Text_Get("export.source_follow_ui")
+            )
         self.items_group.setTitle(translator.Text_Get("dialog.export.items"))
         labels = (
             "export.item.overview",

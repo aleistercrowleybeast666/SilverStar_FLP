@@ -2,7 +2,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, Qt, Signal
-from PySide6.QtWidgets import QHeaderView, QLabel, QPushButton, QTableView, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableView,
+    QVBoxLayout,
+    QWidget,
+)
 
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 
@@ -49,6 +57,10 @@ class DiagnosticTableModel(QAbstractTableModel):
                 return self.translator.Text_Get('diagnostic.failure.' + value)
             if column == 'source' and value in ('Recorded', 'Recomputed'):
                 return self.translator.Text_Get('diagnostic.source.' + value)
+            if column == 'group' and value in (
+                'position_en', 'position_u', 'velocity_en', 'velocity_u',
+            ):
+                return self.translator.Text_Get('diagnostic.group.' + value)
             if isinstance(value, bool):
                 return self.translator.Text_Get('diagnostic.yes' if value else 'diagnostic.no')
             if value is None:
@@ -72,24 +84,18 @@ class NavigationDiagnostics(QWidget):
         self._rows = []
         self._origin = 0
         self._interval = (0, float('inf'))
+        self._source_note = ''
+        self._empty_reason = ''
+        self._gnss_detail_columns = (
+            'source', 'failure', 'quality', 'innovation', 'variance',
+            'outage', 'consistency', 'inflation', 'factor', 'reanchor', 'reason',
+        )
         columns = {
             "gnss": (
-                "time",
-                "source",
-                "group",
-                "valid",
-                "failure",
-                "quality",
-                "result",
-                "innovation",
-                "nis",
-                "variance",
-                "outage",
-                "consistency",
-                "inflation",
-                "factor",
-                "reanchor",
-                "reason",
+                "time", "group", "valid", "result", "nis", "integrity_state",
+                "integrity_reason", "source", "failure", "quality", "innovation",
+                "variance", "outage", "consistency", "inflation", "factor",
+                "reanchor", "reason",
             ),
             "landing": (
                 "time",
@@ -120,6 +126,20 @@ class NavigationDiagnostics(QWidget):
         self.note = QLabel()
         self.note.setWordWrap(True)
         layout.addWidget(self.note)
+        if kind == "gnss":
+            self.count_note = QLabel()
+            self.count_note.setWordWrap(True)
+            layout.addWidget(self.count_note)
+            button_row = QHBoxLayout()
+            self.details_button = QPushButton(translator.Text_Get('diagnostic.details'))
+            self.details_button.setCheckable(True)
+            self.details_button.toggled.connect(self._Columns_Refresh)
+            button_row.addWidget(self.details_button)
+            self.full_range_button = QPushButton(translator.Text_Get('diagnostic.full_range'))
+            self.full_range_button.clicked.connect(lambda: self.TimeRange_Set(0, float('inf')))
+            button_row.addWidget(self.full_range_button)
+            button_row.addStretch(1)
+            layout.addLayout(button_row)
         if kind == "landing":
             self.recompute_button = QPushButton(translator.Text_Get("diagnostic.recompute_landing"))
             self.recompute_button.clicked.connect(self.recomputeRequested)
@@ -134,6 +154,66 @@ class NavigationDiagnostics(QWidget):
         self.table.verticalHeader().hide()
         TouchScroll_Enable(self.table)
         layout.addWidget(self.table)
+        if kind == 'gnss':
+            self._Columns_Refresh()
+
+    def _Columns_Refresh(self):
+        if self.kind != 'gnss':
+            return
+        detailed = self.details_button.isChecked()
+        for index, column in enumerate(self.model.columns):
+            self.table.setColumnHidden(
+                index, column in self._gnss_detail_columns and not detailed,
+            )
+
+    def _GnssRecordedRows_Build(self, dataset):
+        recovery = {
+            (r.payload['replay_epoch'], r.payload['source_sequence'],
+             r.payload['estimator_present_timestamp_us']): r.payload
+            for r in dataset.Records_Get('GNSS_RECOVERY')
+        }
+        rows = []
+        unmapped = 0
+        for record in dataset.Records_Get('GNSS_MEASUREMENT'):
+            p = record.payload
+            if 'group_update_result' not in p:
+                unmapped += 1
+                continue
+            evidence = recovery.get((
+                p['replay_epoch'], p['sequence'],
+                p['estimator_present_timestamp_us'],
+            ), {})
+            for group, name in enumerate(('position_en', 'position_u',
+                                          'velocity_en', 'velocity_u')):
+                axes = (0, 1) if group % 2 == 0 else (2,)
+                innovation = p[
+                    'position_innovation_m' if group < 2 else 'velocity_innovation_mps'
+                ]
+                variance = p[
+                    'position_variance_m2' if group < 2 else 'velocity_variance_m2ps2'
+                ]
+                row = dict(
+                    timestamp_us=p['estimator_present_timestamp_us'],
+                    source='Recorded', group=name,
+                    valid=bool(p['valid_group_mask'] & (1 << group)),
+                    result=p['group_update_result'][group],
+                    nis=p['group_nis'][group],
+                    innovation=tuple(innovation[a] for a in axes),
+                    variance=tuple(variance[a] for a in axes),
+                    replay_epoch=p['replay_epoch'], source_sequence=p['sequence'],
+                    operation_sequence=p.get('position_operation_sequence' if group < 2
+                                             else 'velocity_operation_sequence'),
+                )
+                for column, field in (('quality', 'quality_reject_mask'),
+                                      ('outage', 'outage'),
+                                      ('consistency', 'consistency_count'),
+                                      ('inflation', 'inflation_attempt_count'),
+                                      ('factor', 'inflation_factor'),
+                                      ('reanchor', 'reanchor_count'),
+                                      ('reason', 'reanchor_reason')):
+                    row[column] = evidence[field][group] if field in evidence else None
+                rows.append(row)
+        return rows, unmapped
 
     def Dataset_Set(self, dataset, resolver):
         self._dataset, self._resolver = dataset, resolver
@@ -141,46 +221,44 @@ class NavigationDiagnostics(QWidget):
         self._rows = []
         entry = resolver.store.SourceEntry_Get(resolver.store.ActiveSource_Get().source_id)
         if self.kind == 'gnss':
-            if entry:
-                self._rows = list(entry.diagnostics.get('gnss_group_updates', ()))
+            recorded, unmapped = self._GnssRecordedRows_Build(dataset)
+            is_kf6 = entry is not None and entry.algorithm_id is not None and (
+                entry.algorithm_id.endswith('.kf6')
+            )
+            replay_rows = tuple(entry.diagnostics.get('gnss_group_updates', ())) if entry else ()
+            if is_kf6 and replay_rows:
+                self._rows = [dict(row, source=f'Replay #{entry.run_index} · KF6')
+                              for row in replay_rows]
+                source_template = self.translator.Text_Get('diagnostic.gnss_replay_source')
+                self._source_note = source_template.format(
+                    index=entry.run_index,
+                )
+            elif is_kf6:
+                self._rows = []
+                self._source_note = self.translator.Text_Get('diagnostic.gnss_replay_missing')
             else:
-                recovery = {(r.payload['replay_epoch'], r.payload['source_sequence']): r.payload
-                            for r in dataset.Records_Get('GNSS_RECOVERY')}
-                for record in dataset.Records_Get('GNSS_MEASUREMENT'):
-                    p = record.payload
-                    if 'group_update_result' not in p:
-                        continue
-                    evidence = recovery.get((p['replay_epoch'], p['sequence']), {})
-                    for group, name in enumerate(('Pos EN', 'Pos U', 'Vel EN', 'Vel U')):
-                        axes = (0, 1) if group % 2 == 0 else (2,)
-                        innovation = p[
-                            "position_innovation_m" if group < 2 else "velocity_innovation_mps"
-                        ]
-                        variance = p[
-                            "position_variance_m2" if group < 2 else "velocity_variance_m2ps2"
-                        ]
-                        row = dict(
-                            timestamp_us=p["estimator_present_timestamp_us"],
-                            source="Recorded",
-                            group=name,
-                            valid=bool(p["valid_group_mask"] & (1 << group)),
-                            result=p["group_update_result"][group],
-                            nis=p["group_nis"][group],
-                            innovation=tuple(innovation[a] for a in axes),
-                            variance=tuple(variance[a] for a in axes),
-                        )
-                        for column, field in (('quality','quality_reject_mask'),('outage','outage'),
-                                              ('consistency','consistency_count'),('inflation','inflation_attempt_count'),
-                                              ('factor','inflation_factor'),('reanchor','reanchor_count'),('reason','reanchor_reason')):
-                            row[column] = evidence[field][group] if field in evidence else None
-                        self._rows.append(row)
+                self._rows = recorded
+                self._source_note = self.translator.Text_Get('diagnostic.gnss_recorded_source')
+                if entry is not None:
+                    self._source_note += ' · ' + self.translator.Text_Get(
+                        'diagnostic.gnss_fallback_recorded',
+                    )
+            self._empty_reason = (
+                'diagnostic.gnss_mapping_failed' if unmapped and not recorded
+                else 'diagnostic.gnss_no_record' if not recorded and not entry
+                else 'diagnostic.gnss_replay_missing' if is_kf6 and not replay_rows
+                else 'diagnostic.gnss_no_window'
+            )
             for row in self._rows:
                 quality = row.get('quality')
                 row['failure'] = ('liveness' if quality is not None and int(quality) & 257 else
                                   'quality' if quality else
                                   'estimator' if row.get('valid') and row.get('result') == 2 else
                                   'none' if row.get('valid') else 'unknown')
-            self.note.setText(self.translator.Text_Get('diagnostic.gnss_note'))
+                row['integrity_state'] = row.get('integrity_state')
+                row['integrity_reason'] = row.get('integrity_reason')
+            self.note.setText(self.translator.Text_Get('diagnostic.gnss_note') +
+                              '\n' + self._source_note)
         elif self.kind == 'landing':
             records = [(r.payload, 'Recorded') for r in dataset.Records_Get('LANDING_DIAGNOSTIC')]
             recomputed = getattr(self, '_recomputed', None)
@@ -231,5 +309,14 @@ class NavigationDiagnostics(QWidget):
 
     def TimeRange_Set(self, start, end):
         self._interval = start, end
-        self.model.Rows_Set(dict(row, time=(row['timestamp_us']-self._origin)*1e-6)
-            for row in self._rows if start <= (row['timestamp_us']-self._origin)*1e-6 <= end)
+        visible = [dict(row, time=(row['timestamp_us']-self._origin)*1e-6)
+                   for row in self._rows
+                   if start <= (row['timestamp_us']-self._origin)*1e-6 <= end]
+        self.model.Rows_Set(visible)
+        if self.kind == 'gnss':
+            counts = self.translator.Text_Get('diagnostic.gnss_counts').format(
+                total=len(self._rows), visible=len(visible),
+            )
+            if not visible:
+                counts += ' · ' + self.translator.Text_Get(self._empty_reason)
+            self.count_note.setText(counts)

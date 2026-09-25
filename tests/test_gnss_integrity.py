@@ -15,6 +15,7 @@ from silverstar_flp.export.service import ExportLanguage, ExportTheme, FlightExp
 def Dataset_Build(
     *, velocity_e=1.0, position_e_rate=1.0, noise=False,
     gap=False, invalid_pos_u=False, invalid_vel_en=False, position_usable=1,
+    invalid_pos_en_range=None,
 ):
     origin = dict(gnss_origin_latitude_e7=0, gnss_origin_longitude_e7=0,
                   gnss_origin_height_mm=0, origin_valid_flags=1)
@@ -36,7 +37,10 @@ def Dataset_Build(
             latitude_e7=0, longitude_e7=round(east / east_per_e7),
             ellipsoid_height_mm=0, velocity_enu_mps=(velocity_e, 0.0, 0.0),
             valid_group_mask=(0x0F & (~2 if invalid_pos_u else 0x0F)
-                              & (~4 if invalid_vel_en else 0x0F)),
+                              & (~4 if invalid_vel_en else 0x0F)
+                              & (~1 if invalid_pos_en_range is not None
+                                 and invalid_pos_en_range[0] <= index <= invalid_pos_en_range[1]
+                                 else 0x0F)),
             velocity_valid_mask=7, position_usable=position_usable,
             measurement_timestamp_trusted=1,
             horizontal_accuracy_m=1.0, vertical_accuracy_m=2.0,
@@ -108,6 +112,23 @@ def test_anchored_closure_detects_drift_and_resets_after_gap():
     assert len(resets) == 2
     assert np.isnan(gapped.anchored_residual_m[resets[1], 0])
     assert gapped.anchored_valid_en[-1]
+
+
+def test_short_position_loss_keeps_velocity_chain_and_trailing_window():
+    result = GnssIntegrity_Build(
+        Dataset_Build(invalid_pos_en_range=(275, 281)), 5,
+    )
+    # The position gap must not erase a continuous velocity integral or the
+    # original anchor. A trailing window needs valid endpoints, not every
+    # intermediate position epoch.
+    assert not result.valid_en[278]
+    assert np.isfinite(result.anchored_velocity_displacement_m[278, 0])
+    assert np.isnan(result.anchored_position_displacement_m[278, 0])
+    assert result.anchored_reason_en[278] == "position_invalid"
+    assert result.valid_en[282]
+    assert result.anchor_reset_en.sum() == 1
+    assert result.segment_en[282] == result.segment_en[274]
+    assert result.rolling_reason_en[282] == "valid"
 
 
 def test_legacy_aggregate_validity_is_only_fallback():
@@ -182,8 +203,13 @@ def test_integrity_gui_has_five_independent_tabs_and_shared_time_range():
     assert page.plot_tabs.count() == 5
     assert page.plot_tabs.widget(0) is page.plots[0]
     assert page.plot_tabs.widget(4) is page.plots[4]
-    assert len(page.plots[1].listDataItems()) == 6
-    assert any("Anchored" in item.name() for item in page.plots[1].listDataItems())
+    assert len(page.plots[0].listDataItems()) == 2
+    assert len(page.plots[1].listDataItems()) == 1
+    assert len(page.plots[2].listDataItems()) == 2
+    assert len(page.plots[3].listDataItems()) == 2
+    page.quality_combo.setCurrentIndex(page.quality_combo.findData("velocity"))
+    assert len(page.plots[3].listDataItems()) == 1
+    assert page.plots[3].getPlotItem().getAxis("left").labelText == "m/s"
     page.TimeRange_Set(3.0, 8.0)
     for plot in page.plots:
         low, high = plot.getViewBox().viewRange()[0]
@@ -191,5 +217,51 @@ def test_integrity_gui_has_five_independent_tabs_and_shared_time_range():
     page.window_combo.setCurrentIndex(page.window_combo.findData(2))
     assert page._result.window_s == 2
     page.Language_Apply(Translator("zh_CN"))
-    assert page.plot_tabs.tabText(1) == "水平闭合误差 / m"
+    assert page.plot_tabs.tabText(1) == "水平位置与速度差值"
     page.close()
+
+
+def test_different_resolved_times_close_during_high_acceleration():
+    origin = dict(gnss_origin_latitude_e7=0, gnss_origin_longitude_e7=0,
+                  gnss_origin_height_mm=0, origin_valid_flags=1)
+    initial = DecodedRecord(0, 'INITIAL_STATE', 1, 0, 0, 0, 0, origin, 0)
+    east_per_e7 = GeoLocal_ToEnu(
+        np.array([0]), np.array([1]), np.array([0]), (0, 0, 0),
+    )[0, 0]
+    native = []
+    measurements = []
+    for index in range(501):
+        receive_us = 1_000_000 + index * 40_000
+        position_s = (receive_us - 1_000_000) * 1e-6
+        velocity_s = position_s - .270
+        payload = dict(
+            source_descriptor_id=1, instance_id=0, sequence=index,
+            sample_timestamp_us=receive_us, receive_timestamp_us=receive_us,
+            latitude_e7=0,
+            longitude_e7=round((3.0 * position_s * position_s) / east_per_e7),
+            ellipsoid_height_mm=0,
+            velocity_enu_mps=(6.0 * velocity_s, 0.0, 0.0),
+            valid_group_mask=15, horizontal_accuracy_m=1.0,
+            vertical_accuracy_m=1.0, speed_accuracy_mps=.1, satellite_count=15,
+        )
+        native.append(DecodedRecord(0, 'GNSS_NATIVE', 1, 0, index + 1,
+                                    receive_us, 0, payload, 0))
+        measurement = dict(
+            sequence=index, receive_timestamp_us=receive_us, replay_epoch=1,
+            position_measurement_timestamp_us=receive_us,
+            velocity_measurement_timestamp_us=receive_us - 270_000,
+        )
+        measurements.append(DecodedRecord(
+            0, 'GNSS_MEASUREMENT', 1, 0, index + 1, receive_us,
+            0, measurement, 0,
+        ))
+    dataset = FlightDataset(
+        Path('accelerating.bin'), 0, {}, ParserDiagnostics(),
+        {'INITIAL_STATE': (initial,), 'GNSS_NATIVE': tuple(native),
+         'GNSS_MEASUREMENT': tuple(measurements)}, {},
+    )
+    result = GnssIntegrity_Build(dataset, 5)
+    assert result.valid_en[-1]
+    assert result.evidence_age_us[-1] == 270_000
+    assert result.summary['horizontal']['p95_m'] < .05
+    assert result.rolling_reason_en[-1] == 'valid'

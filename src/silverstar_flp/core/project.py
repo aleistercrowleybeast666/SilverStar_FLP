@@ -192,6 +192,8 @@ def ReplayConfiguration_Validate(configuration: Any) -> None:
         configuration["parameter_schema_identity"]
     ):
         raise ValueError("project_parameter_schema_mismatch")
+    if configuration["mode"] == "integrity_assisted":
+        raise ValueError("project_legacy_integrity_assistance_unsupported")
     ReplayMode(configuration["mode"])
     if configuration["input_source"] not in ("corrected_imu", "recorded_inertial_increment"):
         raise ValueError("project_replay_input_invalid")

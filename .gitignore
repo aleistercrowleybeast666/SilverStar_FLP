@@ -22,3 +22,4 @@ projects/*.ssflp
 /.codex_container_stage_*/
 /packaging-temp/
 # Tests use tmp_path / .acceptance; do not globally ignore PNG/JSON/CSV or source logs.
+tests/.integrity-*/

@@ -103,11 +103,19 @@ class ExportOptions:
     gif_range_mode: str = "Current View"
     current_range: tuple[float, float] | None = None
     gnss_integrity_window_s: int = 5
+    source_mode: str = "follow_ui"
+    source_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "language", ExportLanguage(self.language))
         object.__setattr__(self, "theme", ExportTheme(self.theme))
         object.__setattr__(self, "ui_language", str(self.ui_language))
+        if self.source_mode not in ("follow_ui", "explicit"):
+            raise ValueError("export_source_mode_invalid")
+        if self.source_mode == "explicit" and not self.source_id:
+            raise ValueError("export_source_id_required")
+        if self.source_id is not None and not isinstance(self.source_id, str):
+            raise ValueError("export_source_id_invalid")
         if self.ui_theme not in ("light", "dark"):
             raise ValueError("export_ui_theme_invalid")
         if self.page_mode not in ('5', '10', '30', '60', '120', 'Custom', 'Current View', 'Full'):
@@ -504,7 +512,9 @@ class FlightExporter:
         generated: list[ExportGenerated] = []
         skipped: list[ExportSkipped] = []
         failures: list[ExportFailure] = []
-        store = self._Store_Prepare(replay_store, algorithm_results or {})
+        source_store = self._Store_Prepare(replay_store, algorithm_results or {})
+        resolved_source_id = requested.source_id or source_store.ActiveSource_Get().source_id
+        store = source_store.Snapshot_Create(resolved_source_id)
         resolver = ChannelResolver(dataset, store)
         mission_bounds = resolver.MissionReplayBounds_Get()
         flight_bounds = FlightDisplayBounds_Get(dataset, mission_bounds)
@@ -514,7 +524,7 @@ class FlightExporter:
             TrajectoryBounds_Calculate(flight_position, flight_bounds)
             if flight_position is not None else trajectory_bounds
         )
-        channels = resolver.ExplorerChannels_Get()
+        channels = self._SourceChannels_Get(resolver)
         if requested.selected_channels:
             selected = set(requested.selected_channels)
             channels = {name: series for name, series in channels.items() if name in selected}
@@ -907,7 +917,10 @@ class FlightExporter:
                 resolved_theme,
                 requested.theme,
                 store,
+                requested,
                 tuple(channels),
+                tuple(pages),
+                selected,
             )
             files.append(manifest_path)
             generated.append(
@@ -928,6 +941,27 @@ class FlightExporter:
             tuple(generated),
             tuple(skipped),
         )
+
+    @staticmethod
+    def _SourceChannels_Get(resolver: ChannelResolver) -> dict[str, TimeSeries]:
+        source = resolver.store.ActiveSource_Get()
+        channels = resolver.ExplorerChannels_Get()
+        if source.kind != AnalysisSourceKind.RECORDED:
+            return {
+                name: series for name, series in channels.items()
+                if ".recorded." not in name
+            }
+        recorded_namespace = resolver.RecordedNavigationSource_Get()
+        if recorded_namespace == "KF_6":
+            excluded = "pure_ins.recorded."
+        elif recorded_namespace == "Pure INS":
+            excluded = "kf6.recorded."
+        else:
+            excluded = ""
+        return {
+            name: series for name, series in channels.items()
+            if not excluded or not name.startswith(excluded)
+        }
 
     @staticmethod
     def _Language_Resolve(language: ExportLanguage, ui_language: str) -> ExportLanguage:
@@ -1058,7 +1092,10 @@ class FlightExporter:
         theme: ExportTheme,
         theme_mode: ExportTheme,
         store: ReplayResultStore,
+        options: ExportOptions,
         exported_channel_ids: tuple[str, ...],
+        page_ranges: tuple[tuple[float, float], ...],
+        gif_range: tuple[float, float],
     ) -> None:
         active = store.ActiveSource_Get()
         source_hash = hashlib.sha256()
@@ -1242,6 +1279,39 @@ class FlightExporter:
             "theme": theme.value,
             "theme_mode": theme_mode.value,
             "resolved_theme": theme.value,
+            "firmware_gnss_integrity_revision": (
+                semantic_context.raw_metadata.get("metadata_declarations", {}).get(
+                    "navigation_replay", {}).get("gnss_integrity_revision", 0)
+                if semantic_context is not None else None
+            ),
+            "requested_time_range": {
+                "page_mode": options.page_mode,
+                "page_duration_s": options.page_duration,
+                "current_view_s": options.current_range,
+                "gif_range_mode": options.gif_range_mode,
+            },
+            "resolved_time_range": {
+                "pages_s": page_ranges,
+                "gif_s": gif_range,
+            },
+            "requested_topics": {
+                "overview": options.include_overview,
+                "diagnostics": options.include_diagnostics,
+                "events": options.include_events,
+                "csv": options.include_csv,
+                "full_covariance_keyframes": options.include_full_covariance_keyframes,
+                "plots": options.include_plots,
+                "trajectory_3d": options.include_trajectory_3d,
+                "attitude_gif": options.include_attitude_gif,
+                "selected_channels": options.selected_channels,
+            },
+            "resolved_topics": tuple(item["item_id"] for item in generated_payload),
+            "requested_source_mode": options.source_mode,
+            "requested_source_id": (
+                options.source_id if options.source_mode == "explicit" else None
+            ),
+            "resolved_source_id": active.source_id,
+            "resolved_result_id": active.result_id,
             "active_analysis_source": active.source_id,
             "active_source_kind": active.kind.value,
             "generated": generated_payload,
@@ -1458,11 +1528,6 @@ class FlightExporter:
         ordered: list[AnalysisSource] = []
         ordered.extend(
             source for source in sources if source.source_id == active.source_id
-        )
-        ordered.extend(
-            source
-            for source in sources
-            if source.kind == AnalysisSourceKind.RECORDED and source not in ordered
         )
         for source in ordered:
             if source.algorithm_id is None:

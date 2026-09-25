@@ -73,7 +73,7 @@ class ReplayStoredResult:
     def kind(self) -> AnalysisSourceKind:
         return (
             AnalysisSourceKind.WHAT_IF
-            if self.mode in (ReplayMode.WHAT_IF, ReplayMode.INTEGRITY_ASSISTED)
+            if self.mode == ReplayMode.WHAT_IF
             else AnalysisSourceKind.RECOMPUTED
         )
 
@@ -138,10 +138,10 @@ class ReplayResultStore:
         algorithm_name: str | None = None,
         restored_run_index: int | None = None,
     ) -> ReplayStoredResult:
+        if result.provenance == "Integrity-assisted KF6":
+            raise ValueError("legacy_integrity_assistance_result_unsupported")
         mode = (
-            ReplayMode.INTEGRITY_ASSISTED
-            if result.provenance == "Integrity-assisted KF6"
-            else ReplayMode.WHAT_IF
+            ReplayMode.WHAT_IF
             if result.provenance == "What-if"
             else (
                 ReplayMode.OFFLINE
@@ -157,7 +157,6 @@ class ReplayResultStore:
         algorithm_key = result.algorithm_id.rsplit(".", 1)[-1]
         mode_key = {
             ReplayMode.WHAT_IF: "what_if",
-            ReplayMode.INTEGRITY_ASSISTED: "integrity_assisted",
             ReplayMode.OFFLINE: "offline",
             ReplayMode.RECORDED_CONFIGURATION: "recomputed",
         }[mode]
@@ -194,6 +193,19 @@ class ReplayResultStore:
 
     def SourceEntry_Get(self, source_id: str) -> ReplayStoredResult | None:
         return self._by_source_id.get(source_id)
+
+    def Snapshot_Create(self, source_id: str) -> ReplayResultStore:
+        snapshot = ReplayResultStore()
+        if source_id == self.RECORDED_SOURCE_ID:
+            return snapshot
+        entry = self.SourceEntry_Get(source_id)
+        if entry is None or not entry.analysis_ready:
+            raise ValueError(f"export_source_unavailable:{source_id}")
+        snapshot._entries.append(entry)
+        snapshot._by_result_id[entry.result_id] = entry
+        snapshot._by_source_id[entry.source_id] = entry
+        snapshot._active_source_id = entry.source_id
+        return snapshot
 
     def Sources_Get(self) -> tuple[AnalysisSource, ...]:
         sources = [AnalysisSource(self.RECORDED_SOURCE_ID, AnalysisSourceKind.RECORDED)]

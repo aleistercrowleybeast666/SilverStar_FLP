@@ -201,6 +201,10 @@ def test_what_if_edit_reset_project_roundtrip_and_exact_baseline(tmp_path, firmw
         bad[field] = "old"
         with pytest.raises(ValueError, match="schema_mismatch"):
             ReplayConfiguration_Validate(bad)
+    old_mode = copy.deepcopy(loaded.replay_configurations["draft"])
+    old_mode["mode"] = "integrity_assisted"
+    with pytest.raises(ValueError, match="legacy_integrity_assistance_unsupported"):
+        ReplayConfiguration_Validate(old_mode)
     old = json.loads(doc.project_path.read_text())
     old["version"] = 2
     doc.project_path.write_text(json.dumps(old))

@@ -4,6 +4,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from silverstar_flp.core.analysis_source import (
     AnalysisSourceKind,
     ChannelResolver,
@@ -46,6 +48,8 @@ def test_recomputed_and_what_if_results_coexist_and_resolve_independently(
     )
 
     store = ReplayResultStore()
+    with pytest.raises(ValueError, match="legacy_integrity_assistance_result_unsupported"):
+        store.Result_Add(replace(recomputed, provenance="Integrity-assisted KF6"))
     recorded_entry = store.Result_Add(recomputed, algorithm_name="Pure INS")
     what_if_entry = store.Result_Add(what_if, algorithm_name="Pure INS")
     assert len(store.Entries_Get()) == 2
@@ -90,6 +94,61 @@ def test_recomputed_and_what_if_results_coexist_and_resolve_independently(
     )
     assert manifest["active_analysis_source"] == what_if_entry.source_id
     assert manifest["active_source_kind"] == "what_if"
+
+    recorded_export = tmp_path / "recorded_export"
+    FlightExporter().export(
+        dataset,
+        recorded_export,
+        options=ExportOptions(
+            source_mode="explicit",
+            source_id=ReplayResultStore.RECORDED_SOURCE_ID,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_plots=False,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+        replay_store=store,
+    )
+    recorded_manifest = json.loads(
+        (recorded_export / "Export_Manifest_ZH.json").read_text(encoding="utf-8")
+    )
+    assert recorded_manifest["requested_source_mode"] == "explicit"
+    assert recorded_manifest["resolved_source_id"] == "recorded"
+    assert recorded_manifest["resolved_result_id"] is None
+    assert recorded_manifest["replay_results"] == []
+    assert recorded_manifest["requested_time_range"]["page_mode"] == "30"
+    assert recorded_manifest["resolved_time_range"]["pages_s"]
+    assert "manifest" in recorded_manifest["resolved_topics"]
+    assert recorded_manifest["requested_topics"]["selected_channels"] == []
+    assert store.ActiveSource_Get().source_id == what_if_entry.source_id
+
+    selected_export = tmp_path / "selected_recompute_export"
+    FlightExporter().export(
+        dataset,
+        selected_export,
+        options=ExportOptions(
+            source_mode="explicit",
+            source_id=recorded_entry.source_id,
+            include_overview=False,
+            include_diagnostics=False,
+            include_events=False,
+            include_csv=False,
+            include_plots=False,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+        replay_store=store,
+    )
+    selected_manifest = json.loads(
+        (selected_export / "Export_Manifest_ZH.json").read_text(encoding="utf-8")
+    )
+    assert selected_manifest["resolved_source_id"] == recorded_entry.source_id
+    assert selected_manifest["resolved_result_id"] == recorded_entry.result_id
+    assert len(selected_manifest["replay_results"]) == 1
+    assert store.ActiveSource_Get().source_id == what_if_entry.source_id
 
 
 def test_recorded_navigation_resolver_prefers_kf6(tmp_path: Path) -> None:

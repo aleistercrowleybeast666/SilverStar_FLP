@@ -401,7 +401,7 @@ class ReplayPage(QWidget):
     def _Mode_Refresh(self) -> None:
         mode = self.mode_combo.currentData()
         what_if = mode == ReplayMode.WHAT_IF
-        if mode in (ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED):
+        if mode == ReplayMode.RECORDED_CONFIGURATION:
             self._parameter_baseline_values = dict(self._recorded_parameter_values)
         elif mode == ReplayMode.WHAT_IF:
             firmware = self._dataset is not None and self._CurrentPlugin_Get().FirmwareMember_Is(
@@ -412,6 +412,13 @@ class ReplayPage(QWidget):
             )
         else:
             self._parameter_baseline_values = dict(self._offline_parameter_values)
+        metadata = (self._dataset.semantic_context.raw_metadata
+                    if self._dataset is not None and
+                    self._dataset.semantic_context is not None else {})
+        revision = metadata.get("metadata_declarations", {}).get(
+            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        if revision == 0 and "gnss_integrity_enable" in self._parameter_specs:
+            self._parameter_baseline_values["gnss_integrity_enable"] = 0
         for parameter_id, editor in self._parameter_widgets.items():
             editor.blockSignals(True)
             editor.setValue(
@@ -457,9 +464,6 @@ class ReplayPage(QWidget):
     def Configuration_Get(self) -> dict:
         plugin = self._CurrentPlugin_Get()
         mode = ReplayMode(self.mode_combo.currentData())
-        if mode == ReplayMode.INTEGRITY_ASSISTED:
-            # Analysis-only mode is an ephemeral run choice, not project configuration.
-            mode = ReplayMode.RECORDED_CONFIGURATION
         values = (
             self._ActualValues_Get()
             if mode == ReplayMode.WHAT_IF
@@ -545,7 +549,7 @@ class ReplayPage(QWidget):
         self.availability_label.setToolTip("\n".join(availability.warnings))
         mode_available = (
             configuration.recorded_available
-            if mode in (ReplayMode.RECORDED_CONFIGURATION, ReplayMode.INTEGRITY_ASSISTED)
+            if mode == ReplayMode.RECORDED_CONFIGURATION
             or (mode == ReplayMode.WHAT_IF and configuration.firmware_member)
             else configuration.offline_available
         )
@@ -627,9 +631,7 @@ class ReplayPage(QWidget):
                 f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s ({coverage[0]}–{coverage[1]} µs)"
             )
         mode_code = (
-            "replay.mode.integrity_assisted"
-            if entry.mode == ReplayMode.INTEGRITY_ASSISTED
-            else "status.what_if" if entry.mode == ReplayMode.WHAT_IF
+            "status.what_if" if entry.mode == ReplayMode.WHAT_IF
             else "status.recomputed"
         )
         input_text = self._InputSource_Text_Get(entry.input_source)
@@ -780,11 +782,7 @@ class ReplayPage(QWidget):
         return self._store.Entry_Get(result_id)
 
     def _EntryMode_Text(self, entry, mode_code):
-        key = (
-            "replay.mode.integrity_assisted"
-            if entry.mode == ReplayMode.INTEGRITY_ASSISTED
-            else "diagnostic.analysis" if entry.analysis_only else mode_code
-        )
+        key = "diagnostic.analysis" if entry.analysis_only else mode_code
         return self._translator.Text_Get(key)
 
     def _RecordedSourceLabel_Get(self):
@@ -867,7 +865,9 @@ class ReplayPage(QWidget):
         )
 
     def Result_Error(self, message: str) -> None:
-        self.result_label.setText(message)
+        key = f"error.code.{message}"
+        translated = self._translator.Text_Get(key)
+        self.result_label.setText(message if translated == key else translated)
         self._Availability_Refresh()
 
     def Task_Busy(self) -> None:
@@ -938,11 +938,6 @@ class ReplayPage(QWidget):
         self.mode_combo.addItem(
             self._translator.Text_Get("replay.mode.what_if"), ReplayMode.WHAT_IF
         )
-        if self.algorithm_combo.currentData() == "silverstar.algorithm.kf6":
-            self.mode_combo.addItem(
-                self._translator.Text_Get("replay.mode.integrity_assisted"),
-                ReplayMode.INTEGRITY_ASSISTED,
-            )
         self.mode_combo.setCurrentIndex(max(self.mode_combo.findData(mode), 0))
         self.mode_combo.blockSignals(False)
 

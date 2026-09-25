@@ -75,8 +75,8 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     assert page.parameters_group.title() == "假设参数"
     assert page.Fidelity_Text_Get(ReplayFidelity.EXACT) == "完整复现"
     assert page.Fidelity_Text_Get(ReplayFidelity.UNAVAILABLE) == "不可复算"
-    assert len(page._parameter_labels) == 26
-    assert page.parameter_group_combo.count() == 4
+    assert len(page._parameter_labels) == 46
+    assert page.parameter_group_combo.count() == 5
     assert page.parameter_group_combo.currentText() == "过程模型"
     assert page.parameters_form.rowCount() == 4
     assert page._parameter_labels["process_accel_std_e"].text() == ("过程加速度标准差 E")
@@ -143,6 +143,7 @@ def test_what_if_groups_dirty_and_reset_use_recorded_configuration(
         "Initial Covariance",
         "Measurement Noise",
         "Consistency Gating",
+        "GNSS Position Self-Check",
     ]
     assert page.parameters_form.rowCount() == 4
     for axis, expected in zip("enu", recorded_process, strict=True):

@@ -373,6 +373,7 @@ def test_kf6_declares_estimator_visualization_and_parameter_groups() -> None:
         "parameter_group.initial_covariance",
         "parameter_group.measurement_noise",
         "parameter_group.consistency_gating",
+        "parameter_group.gnss_integrity",
     }
 
 

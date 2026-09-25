@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from silverstar_flp.analysis.gnss_integrity import WINDOW_SECONDS, GnssIntegrity_Build
@@ -30,6 +29,37 @@ class GnssIntegrityPage(QWidget):
         self.window_combo.currentIndexChanged.connect(self._Rebuild)
         controls.addWidget(self.window_label)
         controls.addWidget(self.window_combo)
+        self.axis_label = QLabel()
+        self.axis_combo = StandardComboBox()
+        self.axis_combo.addItem("E", 0)
+        self.axis_combo.addItem("N", 1)
+        self.axis_combo.currentIndexChanged.connect(self._Render)
+        controls.addWidget(self.axis_label)
+        controls.addWidget(self.axis_combo)
+        self.closure_label = QLabel()
+        self.closure_combo = StandardComboBox()
+        self.closure_combo.addItem("", "anchored")
+        self.closure_combo.addItem("", "recent")
+        self.closure_combo.addItem("", "anchored_e")
+        self.closure_combo.addItem("", "anchored_n")
+        self.closure_combo.currentIndexChanged.connect(self._Render)
+        controls.addWidget(self.closure_label)
+        controls.addWidget(self.closure_combo)
+        self.vertical_label = QLabel()
+        self.vertical_combo = StandardComboBox()
+        for mode in ("anchored_displacement", "anchored_difference",
+                     "recent_displacement", "recent_difference"):
+            self.vertical_combo.addItem("", mode)
+        self.vertical_combo.currentIndexChanged.connect(self._Render)
+        controls.addWidget(self.vertical_label)
+        controls.addWidget(self.vertical_combo)
+        self.quality_label = QLabel()
+        self.quality_combo = StandardComboBox()
+        self.quality_combo.addItem("", "position")
+        self.quality_combo.addItem("", "velocity")
+        self.quality_combo.currentIndexChanged.connect(self._Render)
+        controls.addWidget(self.quality_label)
+        controls.addWidget(self.quality_combo)
         controls.addStretch(1)
         layout.addLayout(controls)
         self.note = QLabel()
@@ -46,7 +76,9 @@ class GnssIntegrityPage(QWidget):
             _Plot_Prepare(plot, self._theme)
             self.plot_tabs.addTab(plot, "")
         layout.addWidget(self.plot_tabs, 1)
+        self.plot_tabs.currentChanged.connect(self._ModeControls_Update)
         self.Language_Apply(translator)
+        self._ModeControls_Update()
 
     def Dataset_Set(self, dataset):
         self._dataset = dataset
@@ -66,56 +98,123 @@ class GnssIntegrityPage(QWidget):
         self._result = result
         self._Render()
 
-    def _Render(self):
+    def _ModeControls_Update(self, *_args):
+        tab = self.plot_tabs.currentIndex()
+        for widgets, visible in (
+            ((self.axis_label, self.axis_combo), tab == 0),
+            ((self.closure_label, self.closure_combo), tab == 1),
+            ((self.vertical_label, self.vertical_combo), tab == 2),
+            ((self.quality_label, self.quality_combo), tab == 3),
+        ):
+            for widget in widgets:
+                widget.setVisible(visible)
+
+    def _Trace_Draw(self, plot, time, traces, title, unit, resets=None):
+        colors = ("#2b77c2", "#ec8a20", "#1a9d6c")
+        for index, (values, name) in enumerate(traces):
+            plotted = np.asarray(values, dtype=np.float64).copy()
+            if resets is not None:
+                reset_indices = np.flatnonzero(resets)
+                plotted[reset_indices[1:]] = np.nan
+            plot.plot(time, plotted, pen=pg.mkPen(colors[index], width=1.5),
+                      connect="finite", name=name)
+        plot.setTitle(title)
+        plot.setLabel("left", unit)
+        plot.setLabel("bottom", self._translator.Text_Get("timeline.time"))
+        if resets is not None:
+            for index in np.flatnonzero(resets):
+                plot.addItem(pg.InfiniteLine(
+                    pos=float(time[index]), angle=90,
+                    pen=pg.mkPen("#9299a5", width=1),
+                ))
+
+    def _Render(self, *_args):
         result = self._result
         if result is None:
             return
         _Plot_Reset(self.plots)
         t = (result.timestamp_us.astype(np.float64) - self._origin) * 1e-6
-        pos = result.position_displacement_m
-        vel = result.velocity_displacement_m
-        residual = result.residual_m
-        horizontal_norm = np.linalg.norm(residual[:, :2], axis=1)
-        horizontal_norm[~result.valid_en] = np.nan
-        anchored = result.anchored_residual_m
-        anchored_norm = np.linalg.norm(anchored[:, :2], axis=1)
-        anchored_norm[~result.anchored_valid_en] = np.nan
         label = self._translator.Text_Get
-        solid = Qt.PenStyle.SolidLine
-        dashed = Qt.PenStyle.DashLine
-        traces = (
-            ((pos[:, 0], label("integrity.pos_e"), solid),
-             (vel[:, 0], label("integrity.vel_e"), solid),
-             (pos[:, 1], label("integrity.pos_n"), solid),
-             (vel[:, 1], label("integrity.vel_n"), solid)),
-            ((residual[:, 0], label("integrity.res_e"), solid),
-             (residual[:, 1], label("integrity.res_n"), solid),
-             (horizontal_norm, label("integrity.res_en"), solid),
-             (anchored[:, 0], label("integrity.anchored_e"), dashed),
-             (anchored[:, 1], label("integrity.anchored_n"), dashed),
-             (anchored_norm, label("integrity.anchored_en"), dashed)),
-            ((pos[:, 2], label("integrity.pos_u"), solid),
-             (vel[:, 2], label("integrity.vel_u"), solid),
-             (residual[:, 2], label("integrity.res_u"), solid),
-             (anchored[:, 2], label("integrity.anchored_u"), dashed)),
-            ((result.quality[:, 0], label("integrity.hacc"), solid),
-             (result.quality[:, 1], label("integrity.vacc"), solid),
-             (result.quality[:, 2], label("integrity.sacc"), solid)),
-            ((result.quality[:, 3], label("integrity.satellites_label"), solid),),
+        anchored_pos = result.anchored_position_displacement_m
+        anchored_vel = result.anchored_velocity_displacement_m
+        if anchored_pos is None or anchored_vel is None:
+            anchored_pos = result.position_displacement_m
+            anchored_vel = result.velocity_displacement_m
+        axis = int(self.axis_combo.currentData())
+        self._Trace_Draw(
+            self.plots[0], t,
+            ((anchored_pos[:, axis], label("integrity.position_change")),
+             (anchored_vel[:, axis], label("integrity.velocity_integral"))),
+            label("integrity.displacement") + f" · {'E' if axis == 0 else 'N'}",
+            "m", result.anchor_reset_en,
         )
-        colors = (
-            "#2b77c2", "#ec8a20", "#1a9d6c", "#a44ca0", "#c54545", "#008c9e",
+        recent = np.linalg.norm(result.residual_m[:, :2], axis=1)
+        recent[~result.valid_en] = np.nan
+        anchored = np.linalg.norm(result.anchored_residual_m[:, :2], axis=1)
+        anchored[~result.anchored_valid_en] = np.nan
+        closure_mode = self.closure_combo.currentData()
+        if closure_mode == "recent":
+            closure_values = recent
+            closure_title = label("integrity.closure_recent").format(
+                seconds=result.window_s
+            )
+            closure_resets = None
+        else:
+            closure_values = (
+                result.anchored_residual_m[:, 0]
+                if closure_mode == "anchored_e" else
+                result.anchored_residual_m[:, 1]
+                if closure_mode == "anchored_n" else anchored
+            )
+            closure_title = label("integrity.closure_cumulative")
+            closure_resets = result.anchor_reset_en
+        self._Trace_Draw(
+            self.plots[1], t, ((closure_values, closure_title),),
+            closure_title, "m", closure_resets,
         )
-        titles = (
-            "integrity.displacement", "integrity.closure",
-            "integrity.vertical", "integrity.quality", "integrity.satellites",
+        vertical_mode = self.vertical_combo.currentData()
+        if vertical_mode.startswith("anchored"):
+            vertical_pos = anchored_pos[:, 2]
+            vertical_vel = anchored_vel[:, 2]
+            vertical_residual = result.anchored_residual_m[:, 2]
+            vertical_resets = result.anchor_reset_u
+            vertical_title = label("integrity.vertical_cumulative")
+        else:
+            vertical_pos = result.position_displacement_m[:, 2]
+            vertical_vel = result.velocity_displacement_m[:, 2]
+            vertical_residual = result.residual_m[:, 2]
+            vertical_resets = None
+            vertical_title = label("integrity.vertical_recent").format(
+                seconds=result.window_s
+            )
+        vertical_traces = (
+            ((vertical_residual, label("integrity.vertical_difference")),)
+            if vertical_mode.endswith("difference")
+            else ((vertical_pos, label("integrity.position_change")),
+                  (vertical_vel, label("integrity.velocity_integral")))
         )
-        for plot, series, title in zip(self.plots, traces, titles, strict=True):
-            for index, (values, name, style) in enumerate(series):
-                plot.plot(t, values, pen=pg.mkPen(colors[index], width=1.5, style=style),
-                          connect="finite", name=name)
-            plot.setTitle(label(title))
-            plot.setLabel("bottom", label("timeline.time"))
+        self._Trace_Draw(
+            self.plots[2], t, vertical_traces, vertical_title, "m",
+            vertical_resets,
+        )
+        if self.quality_combo.currentData() == "velocity":
+            quality_traces = ((result.quality[:, 2], label("integrity.sacc")),)
+            quality_unit = "m/s"
+        else:
+            quality_traces = (
+                (result.quality[:, 0], label("integrity.hacc")),
+                (result.quality[:, 1], label("integrity.vacc")),
+            )
+            quality_unit = "m"
+        self._Trace_Draw(
+            self.plots[3], t, quality_traces,
+            label("integrity.receiver_precision"), quality_unit,
+        )
+        self._Trace_Draw(
+            self.plots[4], t,
+            ((result.quality[:, 3], label("integrity.satellites_label")),),
+            label("integrity.satellites"), label("integrity.satellites_unit"),
+        )
         self._Summary_Set()
         self.TimeRange_Set(*self._interval)
 
@@ -129,6 +228,21 @@ class GnssIntegrityPage(QWidget):
         for plot in self.plots:
             plot.setLimits(xMin=start, xMax=end)
             plot.setXRange(start, end, padding=0)
+        if self._result is not None:
+            resets = np.flatnonzero(self._result.anchor_reset_en)
+            visible = [index for index in resets
+                       if float(self._result.timestamp_us[index] - self._origin) * 1e-6 <= end]
+            if visible:
+                index = visible[-1]
+                reference_time = float(self._result.timestamp_us[index] - self._origin) * 1e-6
+                self.note.setText(self._translator.Text_Get(
+                    "integrity.reference_current",
+                    segment=len(visible), time=reference_time,
+                ) + "\n" + self._translator.Text_Get("integrity.analysis_only"))
+            else:
+                self.note.setText(self._translator.Text_Get(
+                    "integrity.warmup", seconds=self._result.window_s,
+                ) + "\n" + self._translator.Text_Get("integrity.analysis_only"))
 
     def _Summary_Set(self):
         if self._result is None:
@@ -147,7 +261,10 @@ class GnssIntegrityPage(QWidget):
             en=max(0, int(np.count_nonzero(self._result.anchor_reset_en)) - 1),
             u=max(0, int(np.count_nonzero(self._result.anchor_reset_u)) - 1),
         ))
-        self.summary.setText("\n".join(lines))
+        self.summary.setText(
+            self._translator.Text_Get("integrity.summary_scope") + "\n" +
+            "\n".join(lines)
+        )
 
     def Theme_Apply(self, theme):
         self._theme = theme
@@ -157,6 +274,24 @@ class GnssIntegrityPage(QWidget):
     def Language_Apply(self, translator):
         self._translator = translator
         self.window_label.setText(translator.Text_Get("integrity.window"))
+        self.axis_label.setText(translator.Text_Get("integrity.component"))
+        self.closure_label.setText(translator.Text_Get("integrity.display"))
+        self.vertical_label.setText(translator.Text_Get("integrity.display"))
+        self.quality_label.setText(translator.Text_Get("integrity.display"))
+        for combo, codes in (
+            (self.closure_combo, ("integrity.cumulative_magnitude",
+                                  "integrity.recent_magnitude",
+                                  "integrity.cumulative_e",
+                                  "integrity.cumulative_n")),
+            (self.vertical_combo, ("integrity.vertical_cumulative_displacement",
+                                   "integrity.vertical_cumulative_difference",
+                                   "integrity.vertical_recent_displacement",
+                                   "integrity.vertical_recent_difference")),
+            (self.quality_combo, ("integrity.position_precision",
+                                  "integrity.velocity_precision")),
+        ):
+            for index, code in enumerate(codes):
+                combo.setItemText(index, translator.Text_Get(code))
         self.note.setText(translator.Text_Get("integrity.analysis_only"))
         for index, code in enumerate((
             "integrity.displacement", "integrity.closure", "integrity.vertical",
