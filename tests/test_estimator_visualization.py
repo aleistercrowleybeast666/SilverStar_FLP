@@ -360,11 +360,11 @@ def test_kf6_declares_estimator_visualization_and_parameter_groups() -> None:
     assert {
         group.measurement_group_id for group in visualization.measurement_groups
     } == {
-        "gnss_position",
-        "gnss_velocity",
+        "gnss_position_en", "gnss_position_u",
+        "gnss_velocity_en", "gnss_velocity_u",
         "barometric_altitude",
     }
-    assert {group.dimension for group in visualization.measurement_groups} == {1, 3}
+    assert {group.dimension for group in visualization.measurement_groups} == {1, 2}
     assert PureInsAlgorithmPlugin.metadata.estimator_visualization is None
     assert {
         parameter.group_key for parameter in Kf6AlgorithmPlugin.metadata.parameter_schema
@@ -577,24 +577,15 @@ def test_configured_without_valid_updates_keeps_blank_plots_and_nis_thresholds(
     )
 
     assert not manifest.failures
-    for name in (
-        "KF6_Recorded_Innovation_GNSS_Position_EN.png",
-        "KF6_Recorded_Innovation_GNSS_Velocity_EN.png",
-        "KF6_Recorded_NIS_GNSS_Position_EN.png",
-        "KF6_Recorded_NIS_GNSS_Velocity_EN.png",
-        "KF6_Recorded_Measurement_Std_GNSS_Position_EN.png",
-        "KF6_Recorded_Measurement_Std_GNSS_Velocity_EN.png",
-    ):
-        assert name in calls
-        series, message, _ = calls[name]
-        assert series is None
-        assert message.startswith("No valid GNSS")
-    assert len(
-        calls["KF6_Recorded_NIS_GNSS_Position_EN.png"][2]
-    ) == 4
-    assert len(
-        calls["KF6_Recorded_NIS_GNSS_Velocity_EN.png"][2]
-    ) == 4
+    for group in ("Position_EN", "Position_U", "Velocity_EN", "Velocity_U"):
+        for kind in ("Innovation", "NIS", "Measurement_Std"):
+            name = f"KF6_Recorded_{kind}_GNSS_{group}_EN.png"
+            assert name in calls
+            series, message, thresholds = calls[name]
+            assert series is None
+            assert message.startswith("No valid GNSS")
+            if kind == "NIS":
+                assert len(thresholds) == 2
 
 
 def test_full_p_keyframes_use_plugin_metadata_for_15_state_estimator(
@@ -649,7 +640,8 @@ def test_gnss_nis_group_references_are_shared_by_gui_and_export(tmp_path):
         tmp_path / "parameters",
     )
     groups = Kf6AlgorithmPlugin.metadata.estimator_visualization.measurement_groups
-    expected = (6.635, 10.828, 9.210, 13.816)
+    expected_1d = (6.635, 10.828)
+    expected_2d = (9.210, 13.816)
     for language in ("en_US", "zh_CN"):
         page = StateEstimationPage(Translator(language))
         page.Dataset_Set(dataset)
@@ -664,16 +656,9 @@ def test_gnss_nis_group_references_are_shared_by_gui_and_export(tmp_path):
                         for spec in Kf6AlgorithmPlugin.metadata.parameter_schema},
                 ExportLanguage.EN if language == "en_US" else ExportLanguage.ZH,
             )
-            if group.measurement_group_id.startswith("gnss"):
-                assert not group.soft_threshold_parameter_id
-                assert not group.hard_threshold_parameter_id
-                assert all("nis_3d" not in line.parameter_id for line in group.NisThresholds_Get())
-                np.testing.assert_allclose([line[0] for line in thresholds], expected, rtol=1e-6)
-                title = page.nis_plot.getPlotItem().titleLabel.text
-                assert Translator(language).Text_Get(group.nis_description_key) in title
-                assert "max(" in page.nis_plot.getPlotItem().titleLabel.text
-            else:
-                np.testing.assert_allclose(
-                    [line[0] for line in thresholds], expected[:2], rtol=1e-6
-                )
+            expected = (expected_2d if group.measurement_group_id.endswith("_en")
+                        else expected_1d)
+            np.testing.assert_allclose([line[0] for line in thresholds], expected, rtol=1e-6)
+            assert len(group.NisThresholds_Get()) == 2
+            assert "max(" not in page.nis_plot.getPlotItem().titleLabel.text
         page.close()

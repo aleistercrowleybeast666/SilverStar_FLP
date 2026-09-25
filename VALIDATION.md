@@ -612,3 +612,48 @@ The eight existing opt-in real-log gates skipped because `SILVERSTAR_CURRENT_LOG
 No CF-33 physical touchscreen/stylus or hardware-driver acceptance is claimed. No known remaining
 failure in the executed GUI, comparison, replay or export regression suite.
 
+## 2026-09-25 — Four-group NIS, receiver GNSS closure, and display/export follow-up
+
+This round changes only FLP Python, UI, tests and documentation. Recorded GNSS NIS/update
+diagnostics now show Position EN/U and Velocity EN/U separately, with matching 2D/1D references;
+legacy aggregate channels remain available for compatibility. GNSS Integrity computes an
+analysis-only receiver-native position/velocity closure over 1/2/5/10 s trailing windows.
+Flight/3D/GIF visual bounds use final successful landing candidate start when recorded; State
+Estimation keeps Landing Confirmed and Data Explorer keeps all source records. The shared
+TimeRange is visible only on Flight and State Estimation, with three handles and one-window
+shift buttons. Both GUI theme modes and resolved export theme are recorded in the manifest.
+
+Local read-only 2026-09-24 input pair was exact-paired with decoder 1.2:
+
+- `D:/stm32_project/SS_0_5_TEST_2/LOG/SS0000.BIN`: 1,103,483 B, SHA-256
+  `b20da913ffc599a92eafb8191841b4bdd1d1e81277ed5ffc39ce81384c986d9b`, 369 GNSS_NATIVE epochs.
+- `D:/stm32_project/SS_0_5_TEST_2/LOG/SS0001.BIN`: 28,296,615 B, SHA-256
+  `d5297f7a901684922360e0c3158c6759d9725755df5959dd0018059bc9b7def3`, 9,518 GNSS_NATIVE epochs.
+- `D:/stm32_project/SS_0_5_TEST_2/HARDWARE/SS_0_5_TEST_2.ssdecoder`: SHA-256
+  `3fc7000fc027b153b604596850d516eb7960892afc22a6c6681da9d57a95d7bd`.
+
+Both opened with `data_quality.status=clean`. These accessible files lack the `(3)` suffix
+from the requested filenames; no identity with those unavailable copies is assumed. Closure
+statistics below use metres. Coverage is valid trailing windows / eligible epochs; EN uses
+`|Residual_EN|`, U uses `|Residual_U|`. No value is a formal NIS or firmware gate.
+
+| Log | Window | EN valid / coverage | EN median / P95 / max | U valid / coverage | U median / P95 / max |
+|---|---:|---:|---:|---:|---:|
+| SS0000 | 1 s | 313 / 90.99% | 1.055 / 1.953 / 2.138 | 313 / 90.99% | 1.383 / 4.400 / 4.809 |
+| SS0000 | 2 s | 263 / 82.45% | 2.217 / 3.521 / 3.648 | 263 / 82.45% | 1.458 / 8.427 / 8.832 |
+| SS0000 | 5 s | 148 / 60.66% | 4.817 / 6.291 / 6.384 | 148 / 60.66% | 1.400 / 5.190 / 5.329 |
+| SS0000 | 10 s | 23 / 19.33% | 10.152 / 10.509 / 10.544 | 23 / 19.33% | 4.375 / 4.749 / 4.783 |
+| SS0001 | 1 s | 9493 / 100.00% | 0.144 / 1.069 / 2.244 | 9493 / 100.00% | 0.181 / 1.240 / 4.774 |
+| SS0001 | 2 s | 9468 / 100.00% | 0.250 / 2.101 / 3.732 | 9468 / 100.00% | 0.304 / 2.354 / 8.661 |
+| SS0001 | 5 s | 9393 / 100.00% | 0.560 / 5.330 / 7.258 | 9393 / 100.00% | 0.611 / 5.388 / 9.765 |
+| SS0001 | 10 s | 9268 / 100.00% | 0.982 / 10.416 / 11.719 | 9268 / 100.00% | 1.000 / 11.178 / 17.329 |
+
+The final SS0000 export smoke generated three categorized `GNSSIntegrity/` PNGs plus
+`Summary_ZH.csv`, `Summary_ZH.txt` and selected-window sample CSV: **6 files, 0 failures**.
+The manifest recorded `theme_mode=follow_ui`, `resolved_theme=dark`. Generated smoke files
+were removed after verification; the BIN and decoder were never modified or copied into Git.
+
+Verification: `ruff check src tests` **passed**; product and tracked test Python compilation
+**passed**; full pytest **351 passed, 9 opt-in external-data skips** in 234.36 s. Focused
+GNSS Integrity export tests passed in both languages; landing, time-range, NIS and theme
+regressions passed. No commit, push, tag or release was made.

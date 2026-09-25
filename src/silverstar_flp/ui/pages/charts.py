@@ -27,11 +27,16 @@ from silverstar_flp.core.analysis_source import (
 from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector, Quaternion_ToEulerEnuDeg
-from silverstar_flp.core.mission import MissionReplayBounds
+from silverstar_flp.core.mission import (
+    EstimatedLandingOnset_Get,
+    FlightDisplayBounds_Get,
+    MissionReplayBounds,
+)
 from silverstar_flp.core.time_range import DisplayIndices_Get
 from silverstar_flp.core.trajectory import (
     TimeSeriesGapSummary_Get,
     TrajectoryBounds,
+    TrajectoryBounds_Calculate,
     TrajectoryCameraDistance_Get,
     TrajectoryOrigin_Get,
     TrajectoryPhaseSegments_Build,
@@ -685,8 +690,20 @@ class FlightPage(QWidget):
         velocity = self._resolver.Series_Get("navigation.velocity_enu", source_id)
         position = self._resolver.Series_Get("navigation.position_enu", source_id)
         attitude = self._resolver.Series_Get("attitude.q_nb", source_id)
-        self._mission_bounds = self._resolver.MissionReplayBounds_Get(source_id)
+        self._mission_bounds = FlightDisplayBounds_Get(
+            self._dataset, self._resolver.MissionReplayBounds_Get(source_id)
+        )
         end = self._mission_bounds.end_timestamp_us
+        onset = EstimatedLandingOnset_Get(self._dataset)
+        confirmed_end = self._resolver.MissionReplayBounds_Get(source_id).end_timestamp_us
+        if onset is not None and onset < confirmed_end:
+            self.source_detail_label.setText(
+                self.source_detail_label.text() + " · " +
+                self._translator.Text_Get(
+                    "flight.estimated_landing_onset",
+                    seconds=(onset - start) * 1e-6,
+                )
+            )
         for series, plot in ((velocity, self.velocity_plot), (position, self.position_plot)):
             _Series_Plot(plot, series, start, end_timestamp_us=end,
                          colors=color_allocators[plot],
@@ -736,7 +753,10 @@ class FlightPage(QWidget):
         self._attitude = attitude
         self._deploy_timestamp_us = _Event_Timestamp(self._dataset, 0x29)
         self._landing_timestamp_us = _Event_Timestamp(self._dataset, 0x2A)
-        self._trajectory_bounds = self._resolver.TrajectoryBounds_Get(source_id)
+        self._trajectory_bounds = (
+            TrajectoryBounds_Calculate(position, self._mission_bounds)
+            if position is not None else None
+        )
         self._trajectory_origin = (
             np.asarray(self._trajectory_bounds.origin_enu, dtype=np.float32)
             if self._trajectory_bounds is not None
@@ -751,8 +771,9 @@ class FlightPage(QWidget):
         self._ThreeD_Refresh(0)
 
     def TimeRange_Set(self, start_us: int, end_us: int) -> None:
-        self._start_timestamp_us = start_us
-        self._end_timestamp_us = end_us
+        visual_end = self._mission_bounds.end_timestamp_us if self._mission_bounds else end_us
+        self._start_timestamp_us = min(start_us, visual_end)
+        self._end_timestamp_us = min(max(end_us, self._start_timestamp_us), visual_end)
         self._playback_time_us = start_us
         self.playback_slider.setValue(0)
         self._Trajectory3d_Prepare(reset_camera=False)

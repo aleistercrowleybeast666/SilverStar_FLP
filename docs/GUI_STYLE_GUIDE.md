@@ -80,7 +80,7 @@ All three dialogs follow the active Light/Dark theme and interface language.
 
 ## KF6 comparison sampling
 
-Flight position/velocity draw only the selected source. Shared TimeRange controls all time plots;
+Flight position/velocity draw only the selected source. Shared TimeRange controls Flight and State Estimation plots;
 min/max envelope preserves peaks and gaps. Export PNGs default to categorized 30 s pages; GIF
 uses the full selected interval at constant speed capped to 30 s motion plus 1 s hold. See
 [Field Log Replay](Field_Log_Replay.md).
@@ -105,9 +105,11 @@ Qt touch tests do not certify the physical Windows touch driver.
 ## NIS reference semantics and sparse preflight
 
 MeasurementGroupSpec owns NIS description and reference-line metadata, shared by the State
-Estimation page and exported PNGs. KF6 GNSS position/velocity are max(EN 2D, U 1D), so display
-four explicitly named U/1D and EN/2D soft/hard references and explain that they are not a single
-aggregate pass/fail gate. Never bind these aggregates to nis_3d_*; barometer retains 1D gates.
+Estimation page and exported PNGs. KF6 GNSS position/velocity show four independent groups:
+Position EN, Position U, Velocity EN and Velocity U. EN groups use their 2D soft/hard
+references; U groups use 1D references. Recorded values come directly from
+GNSS_MEASUREMENT.group_nis and group results; recomputed KF6 exposes equivalent group channels.
+The aggregate maxima remain available only as compatibility data. Barometer retains 1D gates.
 Reference values come from the selected source's actual parameters. Do not infer group NIS
 from an aggregate, or add KF6-specific branches to the page/export renderer.
 
@@ -136,6 +138,12 @@ refreshing the same dataset after a replay. See [diagnostic behavior](KF6_FIELD_
 
 ## Shared TimeRange and diagnostics
 
-The shared range bar has two handles plus presets/Start/End/Duration, above the five normal pages.
-State Estimation adds read-only GNSS/Landing/Mechanization child tabs. Landing recompute uses the
-existing worker. Persist source/range in .ssflp; do not change raw/replay/CSV data for display.
+The shared range bar appears only on Flight and State Estimation. It has start/end handles, a
+center handle that shifts the whole interval, one-window left/right buttons, and
+presets/Start/End/Duration. Data Explorer always shows the complete log. State Estimation adds
+read-only GNSS, GNSS Integrity, Landing and Mechanization child tabs. GNSS Integrity compares
+receiver-native position change with trapezoidal velocity integration over 1/2/5/10 s windows;
+it is analysis-only, not NIS or a firmware gate. Flight visuals end at the final successful
+landing candidate start when evidenced, while State Estimation retains Landing Confirmed.
+Landing recompute uses the existing worker. Persist source/range in .ssflp; do not change
+raw/replay/CSV data for display.

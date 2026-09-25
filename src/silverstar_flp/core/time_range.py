@@ -57,6 +57,16 @@ class TimeRangeController:
         start = min(self.model.start, self.model.mission_duration - duration)
         return self.Range_Set(start, start + duration)
 
+    def Window_Shift(self, direction: int) -> TimeRangeModel:
+        if direction not in (-1, 1):
+            raise ValueError("time_range_direction_invalid")
+        duration = self.model.duration
+        limit = self.model.mission_duration
+        if duration >= limit:
+            return self.Range_Set(0.0, limit)
+        start = min(max(self.model.start + direction * duration, 0.0), limit - duration)
+        return self.Range_Set(start, start + duration)
+
     def Preset_Set(self, preset: str) -> TimeRangeModel:
         if preset == "Full":
             return self.Range_Set(0.0, self.model.mission_duration)

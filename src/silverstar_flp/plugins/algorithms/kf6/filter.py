@@ -92,6 +92,9 @@ class Kf6Filter:
     last_group_nis: NDArray[np.float32] = field(
         default_factory=lambda: np.zeros(4, dtype=np.float32)
     )
+    last_group_result: NDArray[np.int32] = field(
+        default_factory=lambda: np.full(4, 5, dtype=np.int32)
+    )
     predict_count: int = 0
     counters: dict[str, int] = field(default_factory=dict)
     health_flags: int = 0
@@ -400,6 +403,7 @@ class Kf6Filter:
         self._previous_epoch = epoch
 
     def Kf6_GnssGroupResultProcess(self, group: Kf6GnssGroup, result: Kf6UpdateResult) -> None:
+        self.last_group_result[int(group)] = int(result)
         state = self._reacquire_groups[int(group)]
         bit = 1 << int(group)
         if self._previous_epoch is None or not self._previous_epoch.valid_group_mask & bit:

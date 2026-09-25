@@ -142,10 +142,13 @@ def test_actual_default_replay_equals_frozen_legacy_multiplier_one(tmp_path, sou
         for plugin in builtin_registry().algorithms:
             result = plugin.run(ds, ReplayRequest(input_source=source))
             assert dict(result.parameters) == dict(plugin.recorded_parameters(ds))
-            for name, series in result.channels.items():
-                np.testing.assert_array_equal(
-                    series.values, baseline[plugin.metadata.plugin_id + "." + source + "." + name]
-                )
+            prefix = plugin.metadata.plugin_id + "." + source + "."
+            for key in baseline.files:
+                if not key.startswith(prefix):
+                    continue
+                name = key.removeprefix(prefix)
+                assert name in result.channels
+                np.testing.assert_array_equal(result.channels[name].values, baseline[key])
             assert (
                 result.diagnostics["config_source"]
                 == "Firmware build configuration from .ssdecoder"

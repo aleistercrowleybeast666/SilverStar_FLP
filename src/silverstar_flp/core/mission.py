@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 import numpy as np
@@ -35,6 +35,45 @@ def MissionLandingTimestamp_Get(
         and (start is None or int(record.timestamp_us) >= start)
     )
     return min(candidates, default=None)
+
+
+def EstimatedLandingOnset_Get(dataset: FlightDataset) -> int | None:
+    """Final successful candidate start, with confirmed LANDING as fallback."""
+    start = dataset.start_timestamp_us
+    confirmed = MissionLandingTimestamp_Get(dataset, start_timestamp_us=start)
+    if confirmed is None:
+        return None
+    completed = [
+        record for record in dataset.Records_Get("LANDING_DIAGNOSTIC")
+        if int(record.payload.get("transition", -1)) == 3
+        and int(record.payload.get("candidate_start_timestamp_us", 0)) > 0
+        and (start is None or
+             int(record.payload["candidate_start_timestamp_us"]) >= start)
+        and int(record.payload["candidate_start_timestamp_us"]) <= confirmed
+    ]
+    if not completed:
+        return confirmed
+    final = max(completed, key=lambda record: (
+        int(record.payload.get("evaluation_timestamp_us", record.timestamp_us)),
+        record.record_sequence,
+    ))
+    return int(final.payload["candidate_start_timestamp_us"])
+
+
+def FlightDisplayBounds_Get(
+    dataset: FlightDataset, mission_bounds: MissionReplayBounds,
+) -> MissionReplayBounds:
+    """Flight-only visual horizon; the recorded mission bounds remain intact."""
+    onset = EstimatedLandingOnset_Get(dataset)
+    if onset is None or mission_bounds.end_reason != MissionReplayEndReason.LANDING:
+        return mission_bounds
+    if onset >= mission_bounds.end_timestamp_us:
+        return mission_bounds
+    return replace(
+        mission_bounds,
+        end_timestamp_us=max(mission_bounds.start_timestamp_us, onset),
+        end_reason=MissionReplayEndReason.SOURCE_END,
+    )
 
 
 def _DatasetValidEndTimestamp_Get(dataset: FlightDataset) -> int | None:

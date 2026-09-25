@@ -400,6 +400,7 @@ class MainWindow(QMainWindow):
     def _Page_Select(self, index: int) -> None:
         if 0 <= index < self.pages.count():
             self.pages.setCurrentIndex(index)
+            self.time_range.setVisible(index in (2, 3))
             if self._dataset is not None and not self._suspend_dirty:
                 previous = self._project.ui_state.get("page_index", 0)
                 if previous != index:
@@ -743,16 +744,17 @@ class MainWindow(QMainWindow):
         import pyqtgraph as pg
         if self._dataset is None or not hasattr(self, "pages"):
             return
-        for plot in self.pages.findChildren(pg.PlotWidget):
-            plot.setLimits(xMin=model.start, xMax=max(model.end, model.start + .001))
-            plot.setXRange(model.start, max(model.end, model.start + .001), padding=0)
+        for page in (self.flight_page, self.state_estimation_page):
+            for plot in page.findChildren(pg.PlotWidget):
+                plot.setLimits(xMin=model.start, xMax=max(model.end, model.start + .001))
+                plot.setXRange(model.start, max(model.end, model.start + .001), padding=0)
         if self._channel_resolver is not None:
             origin = self._channel_resolver.MissionReplayBounds_Get().start_timestamp_us
             self.flight_page.TimeRange_Set(origin + round(model.start * 1e6),
                                            origin + round(model.end * 1e6))
-        self.explorer_page.TimeRange_Set(model.start, model.end)
         for panel in self.state_estimation_page.navigation_diagnostics.values():
             panel.TimeRange_Set(model.start, model.end)
+        self.state_estimation_page.gnss_integrity.TimeRange_Set(model.start, model.end)
         self._Project_MarkDirty()
 
     def _LandingReplay_Start(self):
@@ -844,7 +846,10 @@ class MainWindow(QMainWindow):
             self.export_dialog.Result_Error(self._translator.Text_Get("status.no_data"))
             return
         selected = self.explorer_page.ExportChannels_Get()
-        options = replace(options, selected_channels=selected,
+        options = replace(options, selected_channels=selected, ui_theme=self._theme,
+                          gnss_integrity_window_s=int(
+                              self.state_estimation_page.gnss_integrity.window_combo.currentData()
+                          ),
                           current_range=(self.time_range.controller.model.start,
                                          self.time_range.controller.model.end))
         dataset = self._dataset
@@ -1209,7 +1214,6 @@ class MainWindow(QMainWindow):
         WindowCaption_Apply(self, theme)
         self.flight_page.Theme_Apply(theme)
         self.state_estimation_page.Theme_Apply(theme)
-        self.export_dialog.Theme_Set(theme)
 
     @staticmethod
     def _DropPaths_Validate(urls: list[QUrl]) -> tuple[Path, ...] | None:

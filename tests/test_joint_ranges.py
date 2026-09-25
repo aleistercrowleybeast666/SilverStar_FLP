@@ -4,6 +4,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 import pytest
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from silverstar_flp.core.dataset import TimeSeries
@@ -48,6 +50,56 @@ def test_controls_synchronize_without_recursion(language):
     bar.show()
     app.processEvents()
     assert bar.minimumSizeHint().width() <= 700
+    bar.close()
+
+
+def test_three_handle_drag_shift_buttons_and_touch_hitbox():
+    app = QApplication.instance() or QApplication([])
+    bar = TimeRangeBar(Translator("en_US"))
+    bar.Mission_Set(120)
+    bar.controller.Range_Set(30, 60)
+    bar._Changed(bar.controller.model)
+    bar.resize(700, 115)
+    bar.show()
+    app.processEvents()
+    slider = bar.slider
+    slider.resize(520, 44)
+    left = round(slider._Position_Get(30))
+    right = round(slider._Position_Get(60))
+    center = (left + right) // 2
+    y = slider.height() // 2
+    QTest.mousePress(slider, Qt.MouseButton.LeftButton, pos=QPoint(left + 17, y))
+    assert slider._handle == 0
+    slider._Move(slider._Position_Get(20))
+    assert bar.controller.model.start == pytest.approx(20)
+    QTest.mouseRelease(slider, Qt.MouseButton.LeftButton, pos=QPoint(left + 17, y))
+    QTest.mousePress(slider, Qt.MouseButton.LeftButton,
+                     pos=QPoint(round(slider._Position_Get(60)), y))
+    assert slider._handle == 1
+    slider._Move(slider._Position_Get(70))
+    assert bar.controller.model.end == pytest.approx(70)
+    QTest.mouseRelease(slider, Qt.MouseButton.LeftButton)
+    duration = bar.controller.model.duration
+    midpoint = (bar.controller.model.start + bar.controller.model.end) / 2
+    center = round(slider._Position_Get(midpoint))
+    QTest.mousePress(slider, Qt.MouseButton.LeftButton, pos=QPoint(center, y))
+    assert slider._handle == 2
+    slider._Move(center + 40)
+    assert bar.controller.model.duration == pytest.approx(duration)
+    QTest.mouseRelease(slider, Qt.MouseButton.LeftButton)
+    bar.controller.Range_Set(30, 60)
+    bar._Changed(bar.controller.model)
+    bar.shift_right.click()
+    assert (bar.start.value(), bar.end.value()) == (60, 90)
+    bar.shift_right.click()
+    assert (bar.start.value(), bar.end.value()) == (90, 120)
+    bar.shift_right.click()
+    assert (bar.start.value(), bar.end.value()) == (90, 120)
+    bar.shift_left.click()
+    assert (bar.start.value(), bar.end.value()) == (60, 90)
+    bar.Mission_Set(20)
+    bar.shift_right.click()
+    assert (bar.start.value(), bar.end.value()) == (0, 20)
     bar.close()
 
 

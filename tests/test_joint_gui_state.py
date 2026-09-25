@@ -30,6 +30,9 @@ def test_range_shell_1000_700_language_theme_and_pointer(qtbot, tmp_path, langua
     qtbot.wait(30)
     assert window.width() == 1000 and window.height() == 700
     bar = window.time_range
+    assert not bar.isVisible()
+    window._Page_Select(2)
+    assert bar.isVisible()
     assert bar.width() >= bar.minimumSizeHint().width()
     for control in (bar.preset, bar.duration, bar.start, bar.end, bar.slider):
         assert control.isEnabled() and control.isVisible()

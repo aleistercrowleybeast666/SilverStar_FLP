@@ -32,6 +32,7 @@ from silverstar_flp.plugins.api.algorithm import (
     StateGroupSpec,
 )
 from silverstar_flp.plugins.registry import PluginRegistry, builtin_registry
+from silverstar_flp.ui.gnss_integrity import GnssIntegrityPage
 from silverstar_flp.ui.navigation_diagnostics import NavigationDiagnostics
 from silverstar_flp.ui.pages.charts import (
     TraceColorAllocator,
@@ -138,6 +139,9 @@ class StateEstimationPage(QWidget):
             panel = NavigationDiagnostics(kind, translator)
             self.navigation_diagnostics[kind] = panel
             self.tabs.addTab(panel, translator.Text_Get("diagnostic." + kind))
+        self.gnss_integrity = GnssIntegrityPage(translator)
+        self.tabs.insertTab(self.tabs.indexOf(self.navigation_diagnostics["landing"]),
+                            self.gnss_integrity, translator.Text_Get("diagnostic.gnss_integrity"))
         layout.addWidget(self.tabs)
         self.Language_Apply(translator)
 
@@ -251,6 +255,7 @@ class StateEstimationPage(QWidget):
 
     def _ChartViews_Reset(self) -> None:
         _PlotViews_Reset(self._Plots_Get())
+        self.gnss_integrity.ChartViews_Reset()
 
     def Dataset_Set(
         self,
@@ -262,6 +267,7 @@ class StateEstimationPage(QWidget):
         self._Estimator_Select()
         for panel in self.navigation_diagnostics.values():
             panel.Dataset_Set(dataset, self._resolver)
+        self.gnss_integrity.Dataset_Set(dataset)
 
     def _Estimator_Select(self) -> None:
         if self._dataset is None or self._resolver is None:
@@ -696,7 +702,9 @@ class StateEstimationPage(QWidget):
             result_series = self._Series_Get(group.update_result_channel)
             if result_series is None:
                 continue
-            selected = np.flatnonzero(result_series.timestamp_us >= np.uint64(start))
+            selected = np.flatnonzero(
+                result_series.valid & (result_series.timestamp_us >= np.uint64(start))
+            )
             attempt_series = self._Series_Get(group.attempt_mask_channel)
             dimension_series = self._Series_Get(group.dimension_channel)
             nis_series = self._Series_Get(group.nis_channel)
@@ -803,8 +811,12 @@ class StateEstimationPage(QWidget):
         self._theme = theme
         for plot in self._Plots_Get():
             _Plot_Prepare(plot, theme)
+        self.gnss_integrity.Theme_Apply(theme)
 
     def Language_Apply(self, translator: Translator) -> None:
+        self.gnss_integrity.Language_Apply(translator)
+        self.tabs.setTabText(self.tabs.indexOf(self.gnss_integrity),
+                             translator.Text_Get("diagnostic.gnss_integrity"))
         for kind, panel in self.navigation_diagnostics.items():
             panel.translator = translator
             panel.model.translator = translator

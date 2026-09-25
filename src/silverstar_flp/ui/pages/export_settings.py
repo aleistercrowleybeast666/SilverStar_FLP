@@ -566,7 +566,7 @@ class ExportDialog(QDialog):
     def Language_Apply(self, translator: Translator) -> None:
         self._translator = translator
         language = str(self.export_language_combo.currentData() or ExportLanguage.FOLLOW_UI.value)
-        theme = str(self.export_theme_combo.currentData() or ExportTheme.LIGHT.value)
+        theme = str(self.export_theme_combo.currentData() or ExportTheme.FOLLOW_UI.value)
 
         self.export_language_combo.blockSignals(True)
         self.export_language_combo.clear()
@@ -587,6 +587,10 @@ class ExportDialog(QDialog):
 
         self.export_theme_combo.blockSignals(True)
         self.export_theme_combo.clear()
+        self.export_theme_combo.addItem(
+            translator.Text_Get("export.language_follow_ui"),
+            ExportTheme.FOLLOW_UI.value,
+        )
         self.export_theme_combo.addItem(
             translator.Text_Get("theme.light"),
             ExportTheme.LIGHT.value,

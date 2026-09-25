@@ -337,24 +337,23 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     page.show()
     application.processEvents()
 
-    assert page.tabs.count() == 8
+    assert page.tabs.count() == 9
     assert not hasattr(page, "source_combo")
     assert "Recorded" in page.source_value_label.text()
     assert page.state_group_combo.count() == 2
-    assert page.innovation_measurement_combo.count() == 3
-    assert page.nis_measurement_combo.count() == 3
-    assert page.measurement_group_combo.count() == 3
+    assert page.innovation_measurement_combo.count() == 5
+    assert page.nis_measurement_combo.count() == 5
+    assert page.measurement_group_combo.count() == 5
     assert len(page.covariance_plot.listDataItems()) == 3
-    assert len(page.innovation_plot.listDataItems()) == 3
-    assert len(page.nis_plot.listDataItems()) == 5
-    assert len(page.measurement_uncertainty_plot.listDataItems()) == 3
+    assert len(page.innovation_plot.listDataItems()) == 0
+    assert len(page.nis_plot.listDataItems()) == 0
+    assert len(page.measurement_uncertainty_plot.listDataItems()) == 0
     assert len(page.measurement_r_scale_plot.listDataItems()) == 1
     assert len(page.measurement_age_plot.listDataItems()) == 1
-    assert page.update_table.rowCount() == 24
-    assert page.update_table.item(0, 1).text() == "GNSS Position"
-    assert page.update_table.item(0, 3).text() == "Accepted"
-    assert page.update_table.item(1, 3).text() == "Soft Weighted"
-    assert page.update_table.item(2, 3).text() == "NIS Rejected"
+    assert page.update_table.rowCount() == 8
+    assert all(page.update_table.item(row, 1).text() == "Barometric Altitude"
+               for row in range(page.update_table.rowCount()))
+    assert page.gnss_integrity.window_combo.currentData() == 5
     assert page.reset_charts_button.text() == "Reset Charts"
     page.nis_plot.setXRange(200.0, 201.0, padding=0)
     page.nis_plot.setYRange(200.0, 201.0, padding=0)
@@ -366,9 +365,8 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     assert page.reset_charts_button.text() == "复位图表"
     assert page.tabs.tabText(3) == "序贯更新"
     assert page.tabs.tabText(2) == "归一化新息平方（NIS）"
-    assert page.update_table.item(0, 3).text() == "接受"
-    assert page.update_table.item(1, 3).text() == "软加权"
-    assert page.update_table.item(2, 3).text() == "NIS拒绝"
+    assert all(page.update_table.item(row, 3).text() == "NIS拒绝"
+               for row in range(page.update_table.rowCount()))
     page.close()
 
 

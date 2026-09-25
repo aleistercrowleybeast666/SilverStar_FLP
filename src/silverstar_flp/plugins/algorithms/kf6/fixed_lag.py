@@ -430,6 +430,7 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
     previous_order = None
     last_prediction = None
     results = [3, 3, 3]
+    group_result = np.full(4, 5, dtype=np.int32)
     attempt_mask = 0
 
     def snapshot_append():
@@ -438,22 +439,30 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
         state = history.state
         snapshots.append(
             _ReplaySnapshot(
-                last_prediction,
-                q.copy(),
-                state.state.copy(),
-                state.covariance.copy(),
-                state.last_position_innovation.copy(),
-                state.last_velocity_innovation.copy(),
-                float(state.last_baro_innovation),
-                float(state.last_position_nis),
-                float(state.last_velocity_nis),
-                float(state.last_baro_nis),
-                *results,
-                attempt_mask,
-                np.ones(3, dtype=np.float32),
-                state.last_position_effective_variance.copy(),
-                state.last_velocity_effective_variance.copy(),
-                float(state.last_baro_effective_variance),
+                timestamp_us=last_prediction,
+                q_nb=q.copy(),
+                state=state.state.copy(),
+                covariance=state.covariance.copy(),
+                position_innovation=state.last_position_innovation.copy(),
+                velocity_innovation=state.last_velocity_innovation.copy(),
+                baro_innovation=float(state.last_baro_innovation),
+                position_nis=float(state.last_position_nis),
+                velocity_nis=float(state.last_velocity_nis),
+                group_nis=state.last_group_nis.copy(),
+                group_result=group_result.copy(),
+                baro_nis=float(state.last_baro_nis),
+                position_result=results[0],
+                velocity_result=results[1],
+                baro_result=results[2],
+                attempt_mask=attempt_mask,
+                r_scale=np.ones(3, dtype=np.float32),
+                position_measurement_variance=(
+                    state.last_position_effective_variance.copy()
+                ),
+                velocity_measurement_variance=(
+                    state.last_velocity_effective_variance.copy()
+                ),
+                baro_measurement_variance=float(state.last_baro_effective_variance),
             )
         )
 
@@ -465,6 +474,7 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
             evidence.clear()
             last_prediction = previous_order = None
             results, attempt_mask = [3, 3, 3], 0
+            group_result.fill(5)
         if previous_order is not None and order != previous_order + 1:
             mismatches.append(('operation_gap', previous_order, order))
         previous_order = order
@@ -473,6 +483,7 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
             snapshot_append()
             last_prediction = None
             results = [3, 3, 3]
+            group_result.fill(5)
             attempt_mask = 0
             increment = by_sequence.get(
                 (int(p["source_sequence"]), int(p["interval_end_timestamp_us"]))
@@ -561,6 +572,9 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
             ):
                 reanchor_times.append(history.present)
             if event.kind != 4 and outcome:
+                for g in range(4):
+                    if event.kind & (1 if g < 2 else 2):
+                        group_result[g] = int(outcome['results'][g])
                 for g, name in enumerate(("Pos EN", "Pos U", "Vel EN", "Vel U")):
                     if not event.kind & (1 if g < 2 else 2):
                         continue

@@ -92,7 +92,13 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert not hasattr(window, "attitude_page")
     assert not hasattr(window, "navigation_page")
     assert window.flight_page.tabs.count() == 6
-    assert window.state_estimation_page.tabs.count() == 8
+    assert window.state_estimation_page.tabs.count() == 9
+    for row, visible in enumerate((False, False, True, True, False)):
+        window.navigation_list.setCurrentRow(row)
+        application.processEvents()
+        assert window.time_range.isVisible() is visible
+    assert window.explorer_page._time_range is None
+    window.navigation_list.setCurrentRow(0)
     assert window.explorer_page.tabs.count() == 3
     assert (
         window.overview_page.calibration_group.geometry().top()

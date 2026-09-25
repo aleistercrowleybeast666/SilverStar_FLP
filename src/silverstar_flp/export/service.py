@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from silverstar_flp.analysis.gnss_integrity import WINDOW_SECONDS, GnssIntegrity_Build
 from silverstar_flp.analysis.overview import FlightSummary_Build
 from silverstar_flp.core.analysis_source import (
     AnalysisSource,
@@ -27,6 +28,7 @@ from silverstar_flp.core.dataset import FlightDataset, TimeSeries
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.core.math import Quaternion_RotateVector
 from silverstar_flp.core.mission import (
+    FlightDisplayBounds_Get,
     MissionReplayBounds,
     MissionReplayBounds_Get,
     MissionReplayEndReason,
@@ -76,6 +78,7 @@ class ExportLanguage(StrEnum):
 
 
 class ExportTheme(StrEnum):
+    FOLLOW_UI = "follow_ui"
     LIGHT = "light"
     DARK = "dark"
 
@@ -84,7 +87,8 @@ class ExportTheme(StrEnum):
 class ExportOptions:
     language: ExportLanguage = ExportLanguage.FOLLOW_UI
     ui_language: str = "zh_CN"
-    theme: ExportTheme = ExportTheme.LIGHT
+    theme: ExportTheme = ExportTheme.FOLLOW_UI
+    ui_theme: str = "light"
     include_overview: bool = True
     include_diagnostics: bool = True
     include_events: bool = True
@@ -98,17 +102,22 @@ class ExportOptions:
     page_duration: float = 30.0
     gif_range_mode: str = "Current View"
     current_range: tuple[float, float] | None = None
+    gnss_integrity_window_s: int = 5
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "language", ExportLanguage(self.language))
         object.__setattr__(self, "theme", ExportTheme(self.theme))
         object.__setattr__(self, "ui_language", str(self.ui_language))
+        if self.ui_theme not in ("light", "dark"):
+            raise ValueError("export_ui_theme_invalid")
         if self.page_mode not in ('5', '10', '30', '60', '120', 'Custom', 'Current View', 'Full'):
             raise ValueError('export_page_mode_invalid')
         if not np.isfinite(self.page_duration) or self.page_duration <= 0:
             raise ValueError('export_page_duration_invalid')
         if self.gif_range_mode not in ('Current View', 'Full'):
             raise ValueError('export_gif_range_invalid')
+        if self.gnss_integrity_window_s not in WINDOW_SECONDS:
+            raise ValueError("export_gnss_integrity_window_invalid")
         if self.current_range is not None:
             start, end = self.current_range
             if not np.isfinite([start, end]).all() or start < 0 or end < start:
@@ -481,6 +490,10 @@ class FlightExporter:
     ) -> ExportManifest:
         requested = options or ExportOptions()
         language = self._Language_Resolve(requested.language, requested.ui_language)
+        resolved_theme = (
+            ExportTheme(requested.ui_theme)
+            if requested.theme == ExportTheme.FOLLOW_UI else requested.theme
+        )
         task_context = context or TaskContext()
         output = Path(output_directory)
         if output.exists() and (not output.is_dir() or any(output.iterdir())):
@@ -494,7 +507,13 @@ class FlightExporter:
         store = self._Store_Prepare(replay_store, algorithm_results or {})
         resolver = ChannelResolver(dataset, store)
         mission_bounds = resolver.MissionReplayBounds_Get()
+        flight_bounds = FlightDisplayBounds_Get(dataset, mission_bounds)
         trajectory_bounds = resolver.TrajectoryBounds_Get()
+        flight_position = resolver.Series_Get("navigation.position_enu")
+        flight_trajectory_bounds = (
+            TrajectoryBounds_Calculate(flight_position, flight_bounds)
+            if flight_position is not None else trajectory_bounds
+        )
         channels = resolver.ExplorerChannels_Get()
         if requested.selected_channels:
             selected = set(requested.selected_channels)
@@ -508,13 +527,33 @@ class FlightExporter:
         duration = (mission_bounds.end_timestamp_us - mission_bounds.start_timestamp_us) * 1e-6
         pages = ExportPages_Get(duration, requested.page_mode, requested.page_duration,
                                 requested.current_range)
-        selected = ((0.0, duration) if requested.gif_range_mode == "Full" else
-                    requested.current_range or (0.0, min(duration, 30.0)))
-        gif_bounds = replace(mission_bounds,
-            start_timestamp_us=mission_bounds.start_timestamp_us + round(selected[0] * 1e6),
-            end_timestamp_us=mission_bounds.start_timestamp_us + round(selected[1] * 1e6))
+        flight_duration = (flight_bounds.end_timestamp_us - flight_bounds.start_timestamp_us) * 1e-6
+        selected = ((0.0, flight_duration) if requested.gif_range_mode == "Full" else
+                    requested.current_range or (0.0, min(flight_duration, 30.0)))
+        selection_duration = selected[1] - selected[0]
+        if selected[0] >= flight_duration:
+            selected = (max(0.0, flight_duration - selection_duration), flight_duration)
+        else:
+            selected = (selected[0], min(selected[1], flight_duration))
+        gif_bounds = replace(
+            flight_bounds,
+            start_timestamp_us=flight_bounds.start_timestamp_us + round(selected[0] * 1e6),
+            end_timestamp_us=flight_bounds.start_timestamp_us + round(selected[1] * 1e6),
+            end_reason=(flight_bounds.end_reason if selected[1] >= flight_duration
+                        else MissionReplayEndReason.SOURCE_END),
+        )
         gif_metadata = GifMetadata_Get(*selected)
         gif_metadata["analysis_source"] = store.ActiveSource_Get().source_id
+        integrity_results = {}
+        integrity_error = None
+        if requested.include_plots and dataset.Records_Get("GNSS_NATIVE"):
+            try:
+                integrity_results = {
+                    window: GnssIntegrity_Build(dataset, window)
+                    for window in WINDOW_SECONDS
+                }
+            except (ValueError, KeyError, TypeError) as error:
+                integrity_error = str(error)
 
         standard_plot_units = (
             self._StandardPlotWorkUnitCount_Get(
@@ -523,7 +562,7 @@ class FlightExporter:
                 plot_directory,
                 suffix,
                 language,
-                requested.theme,
+                resolved_theme,
             )
             if requested.include_plots
             else 0
@@ -543,7 +582,7 @@ class FlightExporter:
             deploy_timestamp = _Event_Timestamp(dataset, _EVENT_DEPLOY)
             landing_timestamp = (
                 gif_bounds.end_timestamp_us
-                if mission_bounds.end_reason == MissionReplayEndReason.LANDING
+                if gif_bounds.end_reason == MissionReplayEndReason.LANDING
                 else None
             )
             gif_main_frame_count = int(
@@ -576,6 +615,7 @@ class FlightExporter:
             + (len(channels) if requested.include_csv else 0)
             + int(full_covariance is not None)
             + standard_plot_units * len(pages)
+            + (3 * len(pages) + 3 if integrity_results else 0)
             + int(requested.include_trajectory_3d)
             + gif_frame_units
             + int(requested.include_attitude_gif)
@@ -753,10 +793,49 @@ class FlightExporter:
                 try:
                     self._StandardPlots_Write(
                         dataset, resolver, PlotDirectory(plot_directory, page_start, page_end),
-                        suffix, language, requested.theme, attempt, skip,
+                        suffix, language, resolved_theme, attempt, skip,
                     )
                 finally:
                     self._plot_page_range = None
+
+        if integrity_results:
+            integrity_dir = output / "GNSSIntegrity"
+            selected_integrity = integrity_results[requested.gnss_integrity_window_s]
+            for page_start, page_end in pages:
+                for kind in ("Position_Velocity_Displacement", "Closure_Error", "Receiver_Quality"):
+                    interval = f"{page_start:010.3f}-{page_end:010.3f}"
+                    stem = f"{kind}_Window_{selected_integrity.window_s}s_{interval}{suffix}.png"
+                    path = integrity_dir / kind / stem
+                    attempt(
+                        f"gnss_integrity:{kind}:{interval}", path,
+                        lambda p=path, k=kind, a=page_start, b=page_end:
+                            self._GnssIntegrityPlot_Write(
+                                dataset, selected_integrity, k, p, language,
+                                resolved_theme, a, b,
+                            ),
+                        kind,
+                    )
+            summary_csv = integrity_dir / f"Summary{suffix}.csv"
+            attempt("gnss_integrity:summary_csv", summary_csv,
+                    lambda: self._GnssIntegritySummaryCsv_Write(integrity_results, summary_csv),
+                    "GNSS Integrity Summary CSV")
+            summary_txt = integrity_dir / f"Summary{suffix}.txt"
+            attempt("gnss_integrity:summary_txt", summary_txt,
+                    lambda: self._GnssIntegritySummaryText_Write(
+                        integrity_results, summary_txt, language
+                    ),
+                    "GNSS Integrity Summary")
+            samples_stem = (
+                f"Position_Velocity_Closure_Window_{selected_integrity.window_s}s"
+                f"{suffix}.csv"
+            )
+            samples_csv = integrity_dir / samples_stem
+            attempt("gnss_integrity:samples_csv", samples_csv,
+                    lambda: self._GnssIntegritySamplesCsv_Write(
+                        dataset, selected_integrity, samples_csv
+                    ), "GNSS Integrity Samples")
+        elif requested.include_plots and dataset.Records_Get("GNSS_NATIVE"):
+            skip("gnss_integrity", "GNSS Integrity", integrity_error or "unavailable")
 
         if requested.include_trajectory_3d:
             path = output / "Trajectory3D" / f"Trajectory_3D{suffix}.png"
@@ -771,9 +850,9 @@ class FlightExporter:
                     ),
                     path,
                     language,
-                    requested.theme,
-                    mission_bounds=mission_bounds,
-                    trajectory_bounds=trajectory_bounds,
+                    resolved_theme,
+                    mission_bounds=flight_bounds,
+                    trajectory_bounds=flight_trajectory_bounds,
                 ),
                 item_name("trajectory_3d"),
             )
@@ -794,10 +873,10 @@ class FlightExporter:
                     ),
                     path,
                     language,
-                    requested.theme,
+                    resolved_theme,
                     progress,
                     mission_bounds=gif_bounds,
-                    trajectory_bounds=trajectory_bounds,
+                    trajectory_bounds=flight_trajectory_bounds,
                 ),
                 item_name("flight_replay_gif"),
             )
@@ -825,6 +904,7 @@ class FlightExporter:
                 skipped,
                 failures,
                 language,
+                resolved_theme,
                 requested.theme,
                 store,
                 tuple(channels),
@@ -843,7 +923,7 @@ class FlightExporter:
             output,
             tuple(files),
             language,
-            requested.theme,
+            resolved_theme,
             tuple(failures),
             tuple(generated),
             tuple(skipped),
@@ -976,6 +1056,7 @@ class FlightExporter:
         failures: list[ExportFailure],
         language: ExportLanguage,
         theme: ExportTheme,
+        theme_mode: ExportTheme,
         store: ReplayResultStore,
         exported_channel_ids: tuple[str, ...],
     ) -> None:
@@ -1159,6 +1240,8 @@ class FlightExporter:
             "replay_results": replay_payload,
             "language": language.value,
             "theme": theme.value,
+            "theme_mode": theme_mode.value,
+            "resolved_theme": theme.value,
             "active_analysis_source": active.source_id,
             "active_source_kind": active.kind.value,
             "generated": generated_payload,
@@ -2086,6 +2169,123 @@ class FlightExporter:
         figure.savefig(path, facecolor=background)
         plt.close(figure)
 
+    @staticmethod
+    def _GnssIntegritySummaryCsv_Write(results, path: Path) -> None:
+        with path.open("w", encoding="utf-8", newline="") as output:
+            writer = csv.writer(output)
+            writer.writerow(("window_s", "group", "valid_window_count", "coverage",
+                             "median_m", "p95_m", "max_m"))
+            for window, result in results.items():
+                for group, stats in result.summary.items():
+                    writer.writerow((window, group, stats["valid_window_count"],
+                                     stats["coverage"], stats["median_m"],
+                                     stats["p95_m"], stats["max_m"]))
+
+    @staticmethod
+    def _GnssIntegritySummaryText_Write(
+        results, path: Path, language: ExportLanguage
+    ) -> None:
+        translator = Translator(language.value)
+        lines = [
+            translator.Text_Get("diagnostic.gnss_integrity"),
+            translator.Text_Get("integrity.analysis_only"),
+            translator.Text_Get("integrity.coverage_note"),
+        ]
+        for window, result in results.items():
+            for group, stats in result.summary.items():
+                label_key = ("integrity.horizontal" if group == "horizontal"
+                             else "integrity.vertical_group")
+                lines.append(
+                    f"{window}s " + translator.Text_Get(
+                        "integrity.summary", group=translator.Text_Get(label_key),
+                        count=stats["valid_window_count"],
+                        coverage=stats["coverage"] * 100,
+                        median=stats["median_m"], p95=stats["p95_m"],
+                        maximum=stats["max_m"],
+                    )
+                )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _GnssIntegritySamplesCsv_Write(dataset, result, path: Path) -> None:
+        origin = dataset.start_timestamp_us or int(result.timestamp_us[0])
+        with path.open("w", encoding="utf-8", newline="") as output:
+            writer = csv.writer(output)
+            writer.writerow(("time_s", "valid_en", "valid_u", "position_e_m",
+                             "position_n_m", "position_u_m", "velocity_e_m",
+                             "velocity_n_m", "velocity_u_m", "residual_e_m",
+                             "residual_n_m", "residual_en_norm_m", "residual_u_m"))
+            for index, timestamp in enumerate(result.timestamp_us):
+                position = result.position_displacement_m[index]
+                velocity = result.velocity_displacement_m[index]
+                residual = result.residual_m[index]
+                writer.writerow((
+                    (int(timestamp) - origin) * 1e-6,
+                    int(result.valid_en[index]), int(result.valid_u[index]),
+                    *position, *velocity, residual[0], residual[1],
+                    float(np.linalg.norm(residual[:2])) if result.valid_en[index] else np.nan,
+                    residual[2],
+                ))
+
+    def _GnssIntegrityPlot_Write(
+        self, dataset, result, kind: str, path: Path,
+        language: ExportLanguage, theme: ExportTheme,
+        page_start: float, page_end: float,
+    ) -> None:
+        self._Matplotlib_Configure()
+        from matplotlib import pyplot as plt
+        background, foreground, _ = self._Plot_Configure(theme)
+        translator = Translator(language.value)
+        label = translator.Text_Get
+        figure, axis = plt.subplots(figsize=(11, 5), dpi=140)
+        self._Axes_Style(figure, axis, theme)
+        origin = dataset.start_timestamp_us or int(result.timestamp_us[0])
+        t = (result.timestamp_us.astype(np.float64) - origin) * 1e-6
+        keep = (t >= page_start) & (t <= page_end)
+        t = t[keep]
+        p = result.position_displacement_m[keep]
+        v = result.velocity_displacement_m[keep]
+        r = result.residual_m[keep]
+        q = result.quality[keep]
+        if kind == "Position_Velocity_Displacement":
+            traces = ((p[:, 0], label("integrity.pos_e")),
+                      (v[:, 0], label("integrity.vel_e")),
+                      (p[:, 1], label("integrity.pos_n")),
+                      (v[:, 1], label("integrity.vel_n")),
+                      (p[:, 2], label("integrity.pos_u")),
+                      (v[:, 2], label("integrity.vel_u")))
+            ylabel = label("integrity.displacement")
+        elif kind == "Closure_Error":
+            norm = np.linalg.norm(r[:, :2], axis=1)
+            norm[~result.valid_en[keep]] = np.nan
+            traces = ((r[:, 0], label("integrity.res_e")),
+                      (r[:, 1], label("integrity.res_n")),
+                      (norm, label("integrity.res_en")),
+                      (r[:, 2], label("integrity.res_u")))
+            ylabel = label("integrity.closure")
+        else:
+            traces = ((q[:, 0], label("integrity.hacc")),
+                      (q[:, 1], label("integrity.vacc")),
+                      (q[:, 2], label("integrity.sacc")))
+            ylabel = label("integrity.quality")
+            satellite_axis = axis.twinx()
+            satellite_axis.plot(t, q[:, 3], color="#9467bd", linewidth=1.0,
+                                label=label("integrity.satellites_label"))
+            satellite_axis.set_ylabel(label("integrity.satellites_label"),
+                                       color=foreground)
+            satellite_axis.tick_params(colors=foreground)
+        for index, (values, trace_label) in enumerate(traces):
+            axis.plot(t, values, color=_PlotColor_Get(index),
+                      linewidth=1.1, label=trace_label)
+        axis.set_xlim(page_start, max(page_end, page_start + .001))
+        axis.set_xlabel(label("timeline.time"), color=foreground)
+        axis.set_ylabel(ylabel, color=foreground)
+        axis.set_title(f"{ylabel} ({result.window_s} s)", color=foreground)
+        axis.legend(facecolor=background, labelcolor=foreground)
+        figure.tight_layout()
+        figure.savefig(path, facecolor=background)
+        plt.close(figure)
+
     def _StandardPlotWorkUnitCount_Get(
         self,
         dataset: FlightDataset,
@@ -2126,7 +2326,9 @@ class FlightExporter:
     ) -> None:
         labels = _LABELS[language]
         active = resolver.store.ActiveSource_Get()
-        mission_bounds = resolver.MissionReplayBounds_Get(active.source_id)
+        mission_bounds = FlightDisplayBounds_Get(
+            dataset, resolver.MissionReplayBounds_Get(active.source_id)
+        )
 
         def flight_layers(channel_id: str) -> tuple[tuple[TimeSeries, str, str], ...]:
             series = self._Series_Require(resolver.Series_Get(channel_id), channel_id)

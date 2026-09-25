@@ -563,6 +563,73 @@ def _StableSeries_Adapt(
             series[stable_id] = derived
             aliases[stable_id] = stable_id
 
+    # GNSS_MEASUREMENT owns four independent recorded update groups. Keep the
+    # aggregate ESTIMATOR channels for Data Explorer compatibility only.
+    measurements = tuple(
+        sorted(
+            (
+                record for record in dataset.Records_Get("GNSS_MEASUREMENT")
+                if "group_nis" in record.payload and "group_update_result" in record.payload
+            ),
+            key=lambda record: (record.timestamp_us, record.record_sequence),
+        )
+    )
+    for group_index, group_name in enumerate(
+        ("position_en", "position_u", "velocity_en", "velocity_u")
+    ):
+        selected = tuple(
+            record for record in measurements
+            if len(record.payload["group_nis"]) > group_index
+            and len(record.payload["group_update_result"]) > group_index
+        )
+        if not selected:
+            continue
+        timestamps = np.asarray(
+            [int(record.payload.get("estimator_present_timestamp_us", record.timestamp_us))
+             for record in selected], dtype=np.uint64
+        )
+        group_valid = np.asarray(
+            [bool(int(record.payload.get("valid_group_mask", 0)) & (1 << group_index))
+             for record in selected], dtype=np.bool_
+        )
+        results = np.asarray(
+            [int(record.payload["group_update_result"][group_index]) for record in selected],
+            dtype=np.float64,
+        )
+        nis = np.asarray(
+            [float(record.payload["group_nis"][group_index]) for record in selected],
+            dtype=np.float64,
+        )
+        for suffix, values, valid, unit, quantity in (
+            ("nis", nis, group_valid & np.isin(results, (0, 1, 2)), "1", "nis"),
+            ("update_result", results, group_valid, "enum", "update_result"),
+        ):
+            channel = f"kf6.recorded.{suffix}.{group_name}"
+            series[channel] = TimeSeries(
+                timestamp_us=timestamps, values=values, unit=unit,
+                quantity=quantity, source="GNSS_MEASUREMENT",
+                valid=valid & np.isfinite(values),
+                metadata={"record_name": "GNSS_MEASUREMENT",
+                          "field_name": f"group_{suffix}", "group_index": group_index},
+            )
+            aliases[channel] = channel
+        field = "position_innovation_m" if group_index < 2 else "velocity_innovation_mps"
+        axes = (0, 1) if group_index % 2 == 0 else (2,)
+        values = np.asarray(
+            [[float(record.payload[field][axis]) for axis in axes] for record in selected],
+            dtype=np.float64,
+        )
+        channel = f"kf6.recorded.innovation.{group_name}"
+        series[channel] = TimeSeries(
+            timestamp_us=timestamps, values=values, unit="m" if group_index < 2 else "m/s",
+            quantity="innovation", source="GNSS_MEASUREMENT",
+            valid=group_valid & np.all(np.isfinite(values), axis=1),
+            columns=("E", "N") if len(axes) == 2 else ("U",),
+            metadata={"record_name": "GNSS_MEASUREMENT",
+                      "field_name": field, "group_index": group_index},
+        )
+        aliases[channel] = channel
+
     for canonical in package.semantics.canonical_channels:
         channel_id = canonical.get("channel_id")
         capability = canonical.get("capability")

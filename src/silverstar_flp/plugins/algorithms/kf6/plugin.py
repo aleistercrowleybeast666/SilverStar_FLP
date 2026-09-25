@@ -49,7 +49,6 @@ from silverstar_flp.plugins.api.algorithm import (
     EstimatorVisualizationSpec,
     FullCovarianceSpec,
     MeasurementGroupSpec,
-    NisThresholdSpec,
     ParameterSpec,
     ReplayFidelity,
     ReplayMode,
@@ -78,6 +77,8 @@ class _ReplaySnapshot:
     baro_innovation: float
     position_nis: float
     velocity_nis: float
+    group_nis: np.ndarray
+    group_result: np.ndarray
     baro_nis: float
     position_result: int
     velocity_result: int
@@ -619,62 +620,44 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 ),
             ),
             measurement_groups=(
-                MeasurementGroupSpec(
-                    "gnss_position",
-                    "measurement.gnss_position",
-                    3,
-                    ("E", "N", "U"),
-                    "kf6.innovation.position",
-                    "kf6.nis.position",
-                    "kf6.update_result",
-                    "kf6.measurement_r_scale",
-                    measurement_age_channel="kf6.measurement_age.gnss",
-                    effective_r_channel="kf6.measurement_r.position",
-                    update_result_index=0,
-                    r_scale_index=0,
-                    attempt_mask_channel="kf6.measurement_attempt_mask",
-                    attempt_mask_bit=0x01,
-                    nis_description_key="state.nis_group_max_description",
-                    nis_reference_thresholds=(
-                        NisThresholdSpec("nis_1d_soft", "state.nis_u_soft_reference"),
-                        NisThresholdSpec("nis_1d_hard", "state.nis_u_hard_reference", True),
-                        NisThresholdSpec("nis_2d_soft", "state.nis_en_soft_reference"),
-                        NisThresholdSpec("nis_2d_hard", "state.nis_en_hard_reference", True),
-                    ),
-                    unit="m",
-                    file_stem="GNSS_Position",
-                    configuration_fields=("configured_gnss_rate_hz",),
-                    measurement_record_names=("GNSS_MEASUREMENT",),
-                    measurement_validity_channel="gnss.measurement.position_enu",
-                ),
-                MeasurementGroupSpec(
-                    "gnss_velocity",
-                    "measurement.gnss_velocity",
-                    3,
-                    ("E", "N", "U"),
-                    "kf6.innovation.velocity",
-                    "kf6.nis.velocity",
-                    "kf6.update_result",
-                    "kf6.measurement_r_scale",
-                    measurement_age_channel="kf6.measurement_age.gnss",
-                    effective_r_channel="kf6.measurement_r.velocity",
-                    update_result_index=1,
-                    r_scale_index=1,
-                    attempt_mask_channel="kf6.measurement_attempt_mask",
-                    attempt_mask_bit=0x02,
-                    dimension_channel="kf6.velocity_update_dimension",
-                    nis_description_key="state.nis_group_max_description",
-                    nis_reference_thresholds=(
-                        NisThresholdSpec("nis_1d_soft", "state.nis_u_soft_reference"),
-                        NisThresholdSpec("nis_1d_hard", "state.nis_u_hard_reference", True),
-                        NisThresholdSpec("nis_2d_soft", "state.nis_en_soft_reference"),
-                        NisThresholdSpec("nis_2d_hard", "state.nis_en_hard_reference", True),
-                    ),
-                    unit="m/s",
-                    file_stem="GNSS_Velocity",
-                    configuration_fields=("configured_gnss_rate_hz",),
-                    measurement_record_names=("GNSS_MEASUREMENT",),
-                    measurement_validity_channel="gnss.measurement.velocity_enu",
+                *(
+                    MeasurementGroupSpec(
+                        group_id, label_key, dimension, components, innovation,
+                        f"kf6.nis.{group_id.removeprefix('gnss_')}",
+                        f"kf6.update_result.{group_id.removeprefix('gnss_')}",
+                        "kf6.measurement_r_scale",
+                        measurement_age_channel="kf6.measurement_age.gnss",
+                        effective_r_channel="",
+                        r_scale_index=scale_index,
+                        attempt_mask_channel="",
+                        attempt_mask_bit=0,
+                        soft_threshold_parameter_id=soft,
+                        hard_threshold_parameter_id=hard,
+                        unit=unit,
+                        file_stem=stem,
+                        configuration_fields=("configured_gnss_rate_hz",),
+                        measurement_record_names=("GNSS_MEASUREMENT",),
+                        measurement_validity_channel=validity,
+                    )
+                    for (group_id, label_key, dimension, components, innovation,
+                         scale_index, soft, hard, unit, stem, validity) in (
+                        ("gnss_position_en", "measurement.gnss_position_en", 2, ("E", "N"),
+                         "kf6.innovation.position_en", 0,
+                         "nis_2d_soft", "nis_2d_hard", "m", "GNSS_Position_EN",
+                         "gnss.measurement.position_enu"),
+                        ("gnss_position_u", "measurement.gnss_position_u", 1, ("U",),
+                         "kf6.innovation.position_u", 0,
+                         "nis_1d_soft", "nis_1d_hard", "m", "GNSS_Position_U",
+                         "gnss.measurement.position_enu"),
+                        ("gnss_velocity_en", "measurement.gnss_velocity_en", 2, ("E", "N"),
+                         "kf6.innovation.velocity_en", 1,
+                         "nis_2d_soft", "nis_2d_hard", "m/s", "GNSS_Velocity_EN",
+                         "gnss.measurement.velocity_enu"),
+                        ("gnss_velocity_u", "measurement.gnss_velocity_u", 1, ("U",),
+                         "kf6.innovation.velocity_u", 1,
+                         "nis_1d_soft", "nis_1d_hard", "m/s", "GNSS_Velocity_U",
+                         "gnss.measurement.velocity_enu"),
+                    )
                 ),
                 MeasurementGroupSpec(
                     "barometric_altitude",
@@ -1301,6 +1284,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             velocity_result = int(Kf6UpdateResult.REJECTED_INVALID)
             baro_result = int(Kf6UpdateResult.REJECTED_INVALID)
             attempt_mask = 0
+            filter_instance.last_group_result.fill(5)
             r_scale = np.ones(3, dtype=np.float32)
             while (
                 measurement_index < len(schedule)
@@ -1336,6 +1320,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     baro_innovation=float(filter_instance.last_baro_innovation),
                     position_nis=float(filter_instance.last_position_nis),
                     velocity_nis=float(filter_instance.last_velocity_nis),
+                    group_nis=filter_instance.last_group_nis.copy(),
+                    group_result=filter_instance.last_group_result.copy(),
                     baro_nis=float(filter_instance.last_baro_nis),
                     position_result=position_result,
                     velocity_result=velocity_result,
@@ -1596,4 +1582,30 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 quantity="variance",
             ),
         }
+        group_nis = np.asarray([item.group_nis for item in snapshots], dtype=np.float64)
+        group_result = np.asarray([item.group_result for item in snapshots], dtype=np.float64)
+        for index, name in enumerate(("position_en", "position_u", "velocity_en", "velocity_u")):
+            attempted = group_result[:, index] != 5
+            nis_valid = attempted & np.isin(group_result[:, index], (0, 1, 2))
+            channels[f"kf6.nis.{name}"] = replace(
+                _Series_Create(timestamps, group_nis[:, index], unit="1", quantity="nis"),
+                valid=nis_valid,
+            )
+            channels[f"kf6.update_result.{name}"] = replace(
+                _Series_Create(
+                    timestamps, group_result[:, index], unit="enum", quantity="update_result"
+                ),
+                valid=attempted,
+            )
+            base = (np.asarray([item.position_innovation for item in snapshots])
+                    if index < 2 else
+                    np.asarray([item.velocity_innovation for item in snapshots]))
+            selected = base[:, :2] if index % 2 == 0 else base[:, 2:3]
+            channels[f"kf6.innovation.{name}"] = replace(
+                _Series_Create(
+                    timestamps, selected, unit="m" if index < 2 else "m/s",
+                    quantity="innovation", columns=("E", "N") if index % 2 == 0 else ("U",),
+                ),
+                valid=attempted,
+            )
         return channels
