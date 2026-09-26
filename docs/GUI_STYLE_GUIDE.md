@@ -140,10 +140,12 @@ refreshing the same dataset after a replay. See [diagnostic behavior](KF6_FIELD_
 
 The shared range bar appears only on Flight and State Estimation. It has start/end handles, a
 center handle that shifts the whole interval, one-window left/right buttons, and
-presets/Start/End/Duration. Data Explorer always shows the complete log. State Estimation adds
-read-only GNSS, GNSS Integrity, Landing and Mechanization child tabs. GNSS Integrity compares
-receiver-native position change with trapezoidal velocity integration over 1/2/5/10 s windows;
-it is analysis-only, not NIS or a firmware gate. Flight visuals end at the final successful
+presets/Start/End/Duration. Data Explorer always shows the complete log. State Estimation has six child tabs: State Uncertainty, Innovation, NIS,
+Measurements, GNSS Position Self-Check and Landing. NIS keeps a four-row GNSS
+group summary; Measurements uses two linked plots. GNSS Position Self-Check has
+three plot pages for horizontal displacement, horizontal closure and receiver
+quality. It compares receiver-native position and velocity within the same
+solution epoch and shows evidence gaps and state transitions. Flight visuals end at the final successful
 landing candidate start when evidenced, while State Estimation retains Landing Confirmed.
 Landing recompute uses the existing worker. Persist source/range in .ssflp; do not change
 raw/replay/CSV data for display.

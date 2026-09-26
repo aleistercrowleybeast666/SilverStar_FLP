@@ -73,8 +73,7 @@ def test_sigma_timing_and_measurement_plot_alignment(
     np.testing.assert_allclose(curves[3].getData()[1], (4, 6, 8))
     assert len(page.measurement_age_plot.listDataItems()) == 2
     assert "ms" in page.measurement_age_plot.getAxis("left").labelText
-    plots = (page.measurement_uncertainty_plot,
-             page.measurement_r_scale_plot, page.measurement_age_plot)
+    plots = (page.measurement_uncertainty_plot, page.measurement_age_plot)
     left_edges = [plot.getPlotItem().vb.sceneBoundingRect().left() for plot in plots]
     assert max(left_edges) - min(left_edges) <= 2.0
     page.measurement_age_plot.setXRange(.1, .2, padding=0)

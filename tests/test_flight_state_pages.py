@@ -338,7 +338,7 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     page.show()
     application.processEvents()
 
-    assert page.tabs.count() == 8
+    assert page.tabs.count() == 6
     assert not hasattr(page, "source_combo")
     assert "Recorded" in page.source_value_label.text()
     assert page.state_group_combo.count() == 2
@@ -349,13 +349,10 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     assert len(page.innovation_plot.listDataItems()) == 0
     assert len(page.nis_plot.listDataItems()) == 0
     assert len(page.measurement_uncertainty_plot.listDataItems()) == 0
-    assert len(page.measurement_r_scale_plot.listDataItems()) == 0
     assert len(page.measurement_age_plot.listDataItems()) == 0
     assert "Unavailable" in page.measurement_unavailable_label.text()
-    assert page.update_table.rowCount() == 8
-    assert all(page.update_table.item(row, 1).text() == "Barometric Altitude"
-               for row in range(page.update_table.rowCount()))
-    assert page.gnss_integrity.window_combo.currentData() == 5
+    assert page.nis_summary.rowCount() == 4
+    assert page.gnss_integrity.plot_tabs.count() == 3
     assert page.reset_charts_button.text() == "Reset Charts"
     page.nis_plot.setXRange(200.0, 201.0, padding=0)
     page.nis_plot.setYRange(200.0, 201.0, padding=0)
@@ -365,10 +362,9 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     page.Language_Apply(Translator("zh_CN"))
     application.processEvents()
     assert page.reset_charts_button.text() == "复位图表"
-    assert page.tabs.tabText(3) == "序贯更新"
+    assert page.tabs.tabText(3) == "量测"
     assert page.tabs.tabText(2) == "归一化新息平方（NIS）"
-    assert all(page.update_table.item(row, 3).text() == "NIS拒绝"
-               for row in range(page.update_table.rowCount()))
+    assert page.nis_summary.horizontalHeaderItem(0).text() == "量测"
     page.close()
 
 

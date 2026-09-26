@@ -840,9 +840,6 @@ class MainWindow(QMainWindow):
             return
         selected = self.explorer_page.ExportChannels_Get()
         options = replace(options, selected_channels=selected, ui_theme=self._theme,
-                          gnss_integrity_window_s=int(
-                              self.state_estimation_page.gnss_integrity.window_combo.currentData()
-                          ),
                           current_range=(self.time_range.controller.model.start,
                                          self.time_range.controller.model.end))
         source_id = options.source_id or self._replay_store.ActiveSource_Get().source_id

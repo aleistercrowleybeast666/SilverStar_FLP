@@ -75,11 +75,11 @@ def test_recorded_group_nis_and_results_are_distinct_in_state_view(tmp_path):
                    for line in group.NisThresholds_Get()) if group_id.endswith("_en") else all(
                        line.parameter_id.startswith("nis_1d")
                        for line in group.NisThresholds_Get())
-    result_rows = [(page.update_table.item(row, 1).text(),
-                    page.update_table.item(row, 3).text())
-                   for row in range(page.update_table.rowCount())]
-    assert ("GNSS Position EN", "NIS Rejected") in result_rows
-    assert ("GNSS Position U", "Accepted") in result_rows
-    assert ("GNSS Velocity EN", "Soft Weighted") in result_rows
-    assert ("GNSS Velocity U", "Accepted") in result_rows
+    assert page.nis_summary.rowCount() == 4
+    labels = [page.nis_summary.item(row, 0).text() for row in range(4)]
+    assert labels == ["GNSS Position EN", "GNSS Position U",
+                      "GNSS Velocity EN", "GNSS Velocity U"]
+    assert page.nis_summary.item(0, 3).text() == "2"
+    assert page.nis_summary.item(1, 1).text() == "2"
+    assert page.nis_summary.item(2, 2).text() == "2"
     page.close()

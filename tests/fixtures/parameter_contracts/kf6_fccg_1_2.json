@@ -604,29 +604,6 @@
       }
     },
     {
-      "id": "gnss_integrity_window_s",
-      "type": "integer",
-      "default": 5,
-      "legacy_default": 5,
-      "unit": "s",
-      "representation": "value",
-      "min": 1,
-      "max": 10,
-      "precision": 0,
-      "step": 1,
-      "group": "gnss_integrity",
-      "order": 28,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_WINDOW_S",
-      "display_names": {
-        "en_US": "Causal rolling evidence window",
-        "zh_CN": "因果滚动证据窗口"
-      },
-      "description": {
-        "en_US": "Causal rolling evidence window. Actual onboard value.",
-        "zh_CN": "因果滚动证据窗口；机载实际使用值。"
-      }
-    },
-    {
       "id": "gnss_integrity_max_gap_ms",
       "type": "integer",
       "default": 120,
@@ -638,7 +615,7 @@
       "precision": 0,
       "step": 1,
       "group": "gnss_integrity",
-      "order": 29,
+      "order": 28,
       "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_MAX_GAP_MS",
       "display_names": {
         "en_US": "Maximum evidence sample gap",
@@ -650,49 +627,49 @@
       }
     },
     {
-      "id": "gnss_integrity_max_evidence_age_ms",
-      "type": "integer",
-      "default": 550,
-      "legacy_default": 550,
-      "unit": "ms",
+      "id": "gnss_integrity_error_threshold_m",
+      "type": "float",
+      "default": 10.0,
+      "legacy_default": 10.0,
+      "unit": "m",
       "representation": "value",
-      "min": 0,
-      "max": 550,
-      "precision": 0,
-      "step": 1,
+      "min": 0.1,
+      "max": 200.0,
+      "precision": 3,
+      "step": 0.01,
       "group": "gnss_integrity",
-      "order": 30,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_MAX_EVIDENCE_AGE_MS",
+      "order": 29,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_ERROR_THRESHOLD_M",
       "display_names": {
-        "en_US": "Maximum age of aligned evidence",
-        "zh_CN": "对齐证据最大年龄"
+        "en_US": "Error threshold",
+        "zh_CN": "错误阈值"
       },
       "description": {
-        "en_US": "Maximum age of aligned evidence. Actual onboard value.",
-        "zh_CN": "对齐证据最大年龄；机载实际使用值。"
+        "en_US": "Error threshold for GNSS-native horizontal position/velocity closure.",
+        "zh_CN": "GNSS 原生水平位置/速度闭合检测的错误阈值。"
       }
     },
     {
-      "id": "gnss_integrity_reference_max_age_s",
-      "type": "integer",
-      "default": 30,
-      "legacy_default": 30,
-      "unit": "s",
+      "id": "gnss_integrity_recovery_threshold_m",
+      "type": "float",
+      "default": 4.0,
+      "legacy_default": 4.0,
+      "unit": "m",
       "representation": "value",
-      "min": 11,
-      "max": 300,
-      "precision": 0,
-      "step": 1,
+      "min": 0.1,
+      "max": 100.0,
+      "precision": 3,
+      "step": 0.01,
       "group": "gnss_integrity",
-      "order": 31,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_REFERENCE_MAX_AGE_S",
+      "order": 30,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_RECOVERY_THRESHOLD_M",
       "display_names": {
-        "en_US": "Trusted reference maximum age",
-        "zh_CN": "可信参考最大有效期"
+        "en_US": "Recovery threshold",
+        "zh_CN": "恢复阈值"
       },
       "description": {
-        "en_US": "Trusted reference maximum age. Actual onboard value.",
-        "zh_CN": "可信参考最大有效期；机载实际使用值。"
+        "en_US": "Recovery threshold for GNSS-native horizontal position/velocity closure.",
+        "zh_CN": "GNSS 原生水平位置/速度闭合检测的恢复阈值。"
       }
     },
     {
@@ -707,7 +684,7 @@
       "precision": 0,
       "step": 1,
       "group": "gnss_integrity",
-      "order": 32,
+      "order": 31,
       "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_SUSPECT_DURATION_MS",
       "display_names": {
         "en_US": "Continuous abnormal time before suspect",
@@ -719,7 +696,7 @@
       }
     },
     {
-      "id": "gnss_integrity_untrusted_duration_ms",
+      "id": "gnss_integrity_reject_duration_ms",
       "type": "integer",
       "default": 5000,
       "legacy_default": 5000,
@@ -730,15 +707,15 @@
       "precision": 0,
       "step": 1,
       "group": "gnss_integrity",
-      "order": 33,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_UNTRUSTED_DURATION_MS",
+      "order": 32,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_REJECT_DURATION_MS",
       "display_names": {
-        "en_US": "Further abnormal time before pause",
-        "zh_CN": "进入暂停所需追加异常时间"
+        "en_US": "Additional rejection duration",
+        "zh_CN": "额外拒绝持续时间"
       },
       "description": {
-        "en_US": "Further abnormal time before pause. Actual onboard value.",
-        "zh_CN": "进入暂停所需追加异常时间；机载实际使用值。"
+        "en_US": "Additional rejection duration for GNSS-native horizontal position/velocity closure.",
+        "zh_CN": "GNSS 原生水平位置/速度闭合检测的额外拒绝持续时间。"
       }
     },
     {
@@ -753,7 +730,7 @@
       "precision": 0,
       "step": 1,
       "group": "gnss_integrity",
-      "order": 34,
+      "order": 33,
       "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_RECOVERY_DURATION_MS",
       "display_names": {
         "en_US": "Continuous healthy recovery evidence time",
@@ -765,118 +742,26 @@
       }
     },
     {
-      "id": "gnss_integrity_recovery_min_samples",
-      "type": "integer",
-      "default": 25,
-      "legacy_default": 25,
-      "unit": "samples",
-      "representation": "value",
-      "min": 1,
-      "max": 1000,
-      "precision": 0,
-      "step": 1,
-      "group": "gnss_integrity",
-      "order": 35,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_RECOVERY_MIN_SAMPLES",
-      "display_names": {
-        "en_US": "Minimum valid recovery samples",
-        "zh_CN": "最少有效恢复样本数"
-      },
-      "description": {
-        "en_US": "Minimum valid recovery samples. Actual onboard value.",
-        "zh_CN": "最少有效恢复样本数；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_rolling_threshold_m",
+      "id": "gnss_integrity_position_r_scale",
       "type": "float",
-      "default": 7.0,
-      "legacy_default": 7.0,
-      "unit": "m",
+      "default": 4.0,
+      "legacy_default": 4.0,
+      "unit": "1",
       "representation": "value",
-      "min": 0.1,
+      "min": 1.0,
       "max": 100.0,
       "precision": 3,
       "step": 0.01,
       "group": "gnss_integrity",
-      "order": 36,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_ROLLING_THRESHOLD_M",
+      "order": 34,
+      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_POSITION_R_SCALE",
       "display_names": {
-        "en_US": "Rolling horizontal closure threshold",
-        "zh_CN": "滚动水平闭合门限"
+        "en_US": "Suspect/recovering Pos EN R multiplier",
+        "zh_CN": "可疑和恢复观察时水平位置 R 倍率"
       },
       "description": {
-        "en_US": "Rolling horizontal closure threshold. Actual onboard value.",
-        "zh_CN": "滚动水平闭合门限；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_anchored_threshold_m",
-      "type": "float",
-      "default": 15.0,
-      "legacy_default": 15.0,
-      "unit": "m",
-      "representation": "value",
-      "min": 0.1,
-      "max": 200.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 37,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_ANCHORED_THRESHOLD_M",
-      "display_names": {
-        "en_US": "Base trusted-reference closure threshold",
-        "zh_CN": "可信参考闭合基本门限"
-      },
-      "description": {
-        "en_US": "Base trusted-reference closure threshold. Actual onboard value.",
-        "zh_CN": "可信参考闭合基本门限；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_recovery_rolling_m",
-      "type": "float",
-      "default": 2.0,
-      "legacy_default": 2.0,
-      "unit": "m",
-      "representation": "value",
-      "min": 0.1,
-      "max": 50.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 38,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_RECOVERY_ROLLING_M",
-      "display_names": {
-        "en_US": "Rolling recovery threshold",
-        "zh_CN": "滚动恢复门限"
-      },
-      "description": {
-        "en_US": "Rolling recovery threshold. Actual onboard value.",
-        "zh_CN": "滚动恢复门限；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_recovery_anchored_m",
-      "type": "float",
-      "default": 8.0,
-      "legacy_default": 8.0,
-      "unit": "m",
-      "representation": "value",
-      "min": 0.1,
-      "max": 100.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 39,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_RECOVERY_ANCHORED_M",
-      "display_names": {
-        "en_US": "Trusted-reference recovery threshold",
-        "zh_CN": "可信参考恢复门限"
-      },
-      "description": {
-        "en_US": "Trusted-reference recovery threshold. Actual onboard value.",
-        "zh_CN": "可信参考恢复门限；机载实际使用值。"
+        "en_US": "Suspect/recovering Pos EN R multiplier. Actual onboard value.",
+        "zh_CN": "可疑和恢复观察时水平位置 R 倍率；机载实际使用值。"
       }
     },
     {
@@ -891,7 +776,7 @@
       "precision": 3,
       "step": 0.01,
       "group": "gnss_integrity",
-      "order": 40,
+      "order": 35,
       "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_HACC_MAX_M",
       "display_names": {
         "en_US": "Maximum receiver hAcc for evidence",
@@ -914,7 +799,7 @@
       "precision": 3,
       "step": 0.01,
       "group": "gnss_integrity",
-      "order": 41,
+      "order": 36,
       "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_SACC_MAX_MPS",
       "display_names": {
         "en_US": "Maximum receiver sAcc for evidence",
@@ -923,121 +808,6 @@
       "description": {
         "en_US": "Maximum receiver sAcc for evidence. Actual onboard value.",
         "zh_CN": "证据允许的接收机 sAcc 上限；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_velocity_bias_bound_mps",
-      "type": "float",
-      "default": 0.15,
-      "legacy_default": 0.15,
-      "unit": "m/s",
-      "representation": "value",
-      "min": 0.0,
-      "max": 5.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 42,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_VELOCITY_BIAS_BOUND_MPS",
-      "display_names": {
-        "en_US": "Conservative velocity bias growth bound",
-        "zh_CN": "保守速度偏差增长界"
-      },
-      "description": {
-        "en_US": "Conservative velocity bias growth bound. Actual onboard value.",
-        "zh_CN": "保守速度偏差增长界；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_reference_renewal_max_m",
-      "type": "float",
-      "default": 2.0,
-      "legacy_default": 2.0,
-      "unit": "m",
-      "representation": "value",
-      "min": 0.1,
-      "max": 50.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 43,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_REFERENCE_RENEWAL_MAX_M",
-      "display_names": {
-        "en_US": "Maximum discrepancy for trusted reference renewal",
-        "zh_CN": "可信参考续期最大差值"
-      },
-      "description": {
-        "en_US": "Maximum discrepancy for trusted reference renewal. Actual onboard value.",
-        "zh_CN": "可信参考续期最大差值；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_position_r_scale",
-      "type": "float",
-      "default": 4.0,
-      "legacy_default": 4.0,
-      "unit": "1",
-      "representation": "value",
-      "min": 1.0,
-      "max": 100.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 44,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_POSITION_R_SCALE",
-      "display_names": {
-        "en_US": "Suspect/recovering Pos EN R multiplier",
-        "zh_CN": "可疑和恢复观察时水平位置 R 倍率"
-      },
-      "description": {
-        "en_US": "Suspect/recovering Pos EN R multiplier. Actual onboard value.",
-        "zh_CN": "可疑和恢复观察时水平位置 R 倍率；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_reanchor_min_distance_m",
-      "type": "float",
-      "default": 8.0,
-      "legacy_default": 8.0,
-      "unit": "m",
-      "representation": "value",
-      "min": 0.1,
-      "max": 100.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 45,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_REANCHOR_MIN_DISTANCE_M",
-      "display_names": {
-        "en_US": "Minimum historical offset for controlled reanchor",
-        "zh_CN": "历史受控重锚最小偏移"
-      },
-      "description": {
-        "en_US": "Minimum historical offset for controlled reanchor. Actual onboard value.",
-        "zh_CN": "历史受控重锚最小偏移；机载实际使用值。"
-      }
-    },
-    {
-      "id": "gnss_integrity_reanchor_covariance_floor_m2",
-      "type": "float",
-      "default": 25.0,
-      "legacy_default": 25.0,
-      "unit": "m^2",
-      "representation": "value",
-      "min": 0.01,
-      "max": 10000.0,
-      "precision": 3,
-      "step": 0.01,
-      "group": "gnss_integrity",
-      "order": 46,
-      "generated_symbol": "SYSTEM_ESTIMATOR_GNSS_INTEGRITY_REANCHOR_COVARIANCE_FLOOR_M2",
-      "display_names": {
-        "en_US": "Conservative reanchor covariance floor",
-        "zh_CN": "保守重锚协方差下限"
-      },
-      "description": {
-        "en_US": "Conservative reanchor covariance floor. Actual onboard value.",
-        "zh_CN": "保守重锚协方差下限；机载实际使用值。"
       }
     }
   ]

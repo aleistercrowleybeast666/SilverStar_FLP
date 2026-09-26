@@ -133,10 +133,9 @@ class StateEstimationPage(QWidget):
         self._CovarianceTab_Build()
         self._InnovationTab_Build()
         self._NisTab_Build()
-        self._UpdatesTab_Build()
         self._MeasurementsTab_Build()
         self.navigation_diagnostics = {}
-        for kind in ("gnss", "landing"):
+        for kind in ("landing",):
             panel = NavigationDiagnostics(kind, translator)
             self.navigation_diagnostics[kind] = panel
             self.tabs.addTab(panel, translator.Text_Get("diagnostic." + kind))
@@ -199,21 +198,15 @@ class StateEstimationPage(QWidget):
         layout.addLayout(controls)
         self.nis_plot = self._Plot_Create()
         layout.addWidget(self.nis_plot)
+        self.nis_summary = QTableWidget(4, 6)
+        TouchScroll_Enable(self.nis_summary)
+        self.nis_summary.setMaximumHeight(182)
+        self.nis_summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.nis_summary.verticalHeader().setVisible(False)
+        self.nis_summary.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.nis_summary)
         self.tabs.addTab(widget, "")
-
-    def _UpdatesTab_Build(self) -> None:
-        self.update_table = QTableWidget(0, 7)
-        TouchScroll_Enable(self.update_table)
-        self.update_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
-        self.update_table.horizontalHeader().setSectionResizeMode(
-            6, QHeaderView.ResizeMode.Stretch
-        )
-        self.update_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.update_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.update_table.verticalHeader().setVisible(False)
-        self.tabs.addTab(self.update_table, "")
 
     def _MeasurementsTab_Build(self) -> None:
         widget = QWidget()
@@ -230,23 +223,19 @@ class StateEstimationPage(QWidget):
         layout.addLayout(controls)
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.measurement_uncertainty_plot = self._Plot_Create()
-        self.measurement_r_scale_plot = self._Plot_Create()
         self.measurement_age_plot = self._Plot_Create()
         self._measurement_x_syncing = False
         for plot in (
             self.measurement_uncertainty_plot,
-            self.measurement_r_scale_plot,
             self.measurement_age_plot,
         ):
             plot.getViewBox().sigXRangeChanged.connect(self._MeasurementXRange_Sync)
         self.measurement_uncertainty_plot.getAxis("bottom").setStyle(showValues=False)
-        self.measurement_r_scale_plot.getAxis("bottom").setStyle(showValues=False)
         self.measurement_unavailable_label = QLabel()
         self.measurement_unavailable_label.setObjectName("muted")
         self.measurement_unavailable_label.setWordWrap(True)
         layout.addWidget(self.measurement_unavailable_label)
         splitter.addWidget(self.measurement_uncertainty_plot)
-        splitter.addWidget(self.measurement_r_scale_plot)
         splitter.addWidget(self.measurement_age_plot)
         layout.addWidget(splitter)
         self.tabs.addTab(widget, "")
@@ -263,7 +252,6 @@ class StateEstimationPage(QWidget):
             self.innovation_plot,
             self.nis_plot,
             self.measurement_uncertainty_plot,
-            self.measurement_r_scale_plot,
             self.measurement_age_plot,
         )
 
@@ -337,6 +325,7 @@ class StateEstimationPage(QWidget):
         self.source_value_label.setText(
             _Source_Label(self._translator, self._resolver, selected.source_id)
         )
+        self.gnss_integrity.Parameters_Set(self._source_parameters)
         self._Selectors_Refresh()
         self._Refresh()
 
@@ -409,7 +398,7 @@ class StateEstimationPage(QWidget):
         ):
             combo.clear()
         _Plot_Reset(self._Plots_Get())
-        self.update_table.setRowCount(0)
+        self.nis_summary.clearContents()
 
     def _Selectors_Refresh(self) -> None:
         if self._visualization is None:
@@ -470,7 +459,7 @@ class StateEstimationPage(QWidget):
         self._Innovation_Refresh()
         self._Nis_Refresh()
         self._Measurements_Refresh()
-        self._Updates_Set()
+        self._NisSummary_Set()
 
     def _StartTimestamp_Get(self) -> int:
         if self._dataset is None:
@@ -717,7 +706,6 @@ class StateEstimationPage(QWidget):
         try:
             for plot in (
                 self.measurement_uncertainty_plot,
-                self.measurement_r_scale_plot,
                 self.measurement_age_plot,
             ):
                 view = plot.getViewBox()
@@ -729,7 +717,6 @@ class StateEstimationPage(QWidget):
     def _MeasurementAxes_Align(self) -> None:
         plots = (
             self.measurement_uncertainty_plot,
-            self.measurement_r_scale_plot,
             self.measurement_age_plot,
         )
         metrics = QFontMetrics(self.font())
@@ -740,7 +727,6 @@ class StateEstimationPage(QWidget):
     def _Measurements_Refresh(self) -> None:
         plots = (
             self.measurement_uncertainty_plot,
-            self.measurement_r_scale_plot,
             self.measurement_age_plot,
         )
         _Plot_Reset(plots)
@@ -777,22 +763,6 @@ class StateEstimationPage(QWidget):
             self._translator.Text_Get("state.measurement_unavailable",
                                       values=", ".join(unavailable)) if unavailable else ""
         )
-        r_scale = _Series_ColumnSelect(
-            self._Series_Get(group.r_scale_channel), group.r_scale_index,
-        )
-        reference_scale = _Series_ColumnSelect(
-            self._ReferenceSeries_Get(group.r_scale_channel), group.r_scale_index,
-        )
-        _Series_Plot(
-            self.measurement_r_scale_plot, reference_scale, self._StartTimestamp_Get(),
-            colors=TraceColorAllocator(), prefix=f"{self._ReferenceLabel_Get()} · ",
-            reference=True,
-        )
-        _Series_Plot(
-            self.measurement_r_scale_plot, r_scale, self._StartTimestamp_Get(),
-            colors=TraceColorAllocator(),
-            prefix=self._translator.Text_Get("state.r_scale_short"),
-        )
         timing_colors = TraceColorAllocator()
         receive_age = self._Series_Get(group.measurement_age_channel)
         fixed_lag = self._Series_Get(group.fixed_lag_latency_channel)
@@ -814,89 +784,44 @@ class StateEstimationPage(QWidget):
         self.measurement_uncertainty_plot.setTitle(
             f"{self._translator.Text_Get('state.measurement_sigma')} · {label}"
         )
-        self.measurement_r_scale_plot.setTitle(
-            f"{self._translator.Text_Get('state.r_scale_short')} · {label}"
-        )
         self.measurement_age_plot.setTitle(
             f"{self._translator.Text_Get('state.measurement_timing')} · {label}"
         )
         self.measurement_uncertainty_plot.setLabel("left", group.unit)
-        self.measurement_r_scale_plot.setLabel("left", "1")
         self.measurement_age_plot.setLabel("left", "ms")
         self._MeasurementAxes_Align()
 
-    def _Updates_Set(self) -> None:
-        if self._visualization is None:
-            self.update_table.setRowCount(0)
-            return
-        rows: list[tuple[int, int, tuple[str, ...]]] = []
-        start = self._StartTimestamp_Get()
-        for group_order, group in enumerate(self._visualization.measurement_groups):
-            result_series = self._Series_Get(group.update_result_channel)
-            if result_series is None:
-                continue
-            selected = np.flatnonzero(
-                result_series.valid & (result_series.timestamp_us >= np.uint64(start))
-            )
-            attempt_series = self._Series_Get(group.attempt_mask_channel)
-            dimension_series = self._Series_Get(group.dimension_channel)
-            nis_series = self._Series_Get(group.nis_channel)
-            r_scale_series = self._Series_Get(group.r_scale_channel)
-            age_series = self._Series_Get(group.measurement_age_channel)
-            for index in selected:
-                timestamp = int(result_series.timestamp_us[index])
-                attempt = self._NearestValue_Get(attempt_series, timestamp, 0)
-                if (
-                    attempt_series is not None
-                    and group.attempt_mask_bit
-                    and (int(attempt) & group.attempt_mask_bit) == 0
-                ):
-                    continue
-                result = self._SeriesValue_Get(
-                    result_series,
-                    int(index),
-                    group.update_result_index,
-                )
-                dimension = self._NearestValue_Get(
-                    dimension_series,
-                    timestamp,
-                    0,
-                    fallback=float(group.dimension),
-                )
-                nis = self._NearestValue_Get(nis_series, timestamp, 0)
-                r_scale = self._NearestValue_Get(
-                    r_scale_series,
-                    timestamp,
-                    group.r_scale_index,
-                )
-                age = self._NearestValue_Get(age_series, timestamp, 0)
-                age_text = self._Number_Text(age)
-                if age_series is not None and age_text != "—" and age_series.unit:
-                    age_text = f"{age_text} {age_series.unit}"
-                values = (
-                    f"{(timestamp - start) * 1.0e-6:.6f}",
-                    self._translator.Text_Get(group.label_key),
-                    str(int(dimension)) if np.isfinite(dimension) else "—",
-                    self._UpdateResult_Text(result),
-                    self._Number_Text(nis),
-                    self._Number_Text(r_scale),
-                    age_text,
-                )
-                rows.append((timestamp, group_order, values))
-        rows.sort(key=lambda item: (item[0], item[1]))
-        if len(rows) > 2000:
-            indices = np.linspace(0, len(rows) - 1, 2000, dtype=int)
-            rows = [rows[index] for index in indices]
-        self.update_table.setRowCount(len(rows))
-        for row, (_, _, values) in enumerate(rows):
-            for column, value in enumerate(values):
-                self.update_table.setItem(row, column, QTableWidgetItem(value))
-        header = self.update_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(
-            self.update_table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
+    def _NisSummary_Set(self) -> None:
+        groups = () if self._visualization is None else tuple(
+            group for group in self._visualization.measurement_groups
+            if group.measurement_group_id.startswith("gnss_")
         )
+        self.nis_summary.clearContents()
+        for row, group in enumerate(groups[:4]):
+            results = self._Series_Get(group.update_result_channel)
+            nis = self._Series_Get(group.nis_channel)
+            values = np.asarray([], dtype=np.float64)
+            if results is not None:
+                raw = np.asarray(results.values, dtype=np.float64)
+                if raw.ndim > 1:
+                    column = group.update_result_index
+                    raw = raw[:, column] if column < raw.shape[1] else raw[:, 0]
+                values = raw[results.valid]
+            counts = (int(np.count_nonzero(values == code)) for code in (0, 1, 2))
+            p95 = np.nan
+            if nis is not None:
+                raw = np.asarray(nis.values, dtype=np.float64)
+                if raw.ndim > 1:
+                    raw = raw[:, 0]
+                valid = raw[nis.valid & np.isfinite(raw)]
+                if valid.size:
+                    p95 = float(np.percentile(valid, 95))
+            latest = self._UpdateResult_Text(values[-1]) if values.size else "—"
+            cells = (self._translator.Text_Get(group.label_key),
+                     *(str(value) for value in counts),
+                     self._Number_Text(p95), latest)
+            for column, value in enumerate(cells):
+                self.nis_summary.setItem(row, column, QTableWidgetItem(value))
 
     @staticmethod
     def _SeriesValue_Get(series: TimeSeries, row: int, column: int) -> float:
@@ -979,24 +904,19 @@ class StateEstimationPage(QWidget):
             "tab.covariance",
             "tab.innovation",
             "tab.nis_full",
-            "tab.sequential_updates",
             "tab.measurements",
         )
         for index, code in enumerate(tab_codes):
             self.tabs.setTabText(index, translator.Text_Get(code))
         for plot in self._Plots_Get():
             plot.setLabel("bottom", translator.Text_Get("timeline.time"))
-        self.update_table.setHorizontalHeaderLabels(
-            [
-                translator.Text_Get("timeline.time"),
-                translator.Text_Get("state.measurement"),
-                translator.Text_Get("state.dimension"),
-                translator.Text_Get("state.result"),
-                "NIS",
-                translator.Text_Get("state.r_scale_short"),
-                translator.Text_Get("state.measurement_age"),
-            ]
-        )
+        self.nis_summary.setHorizontalHeaderLabels([
+            translator.Text_Get("state.measurement"),
+            translator.Text_Get("state.accepted_count"),
+            translator.Text_Get("state.soft_count"),
+            translator.Text_Get("state.rejected_count"),
+            "NIS P95", translator.Text_Get("state.latest"),
+        ])
         if self._visualization is not None:
             self._Selectors_Refresh()
             self._Refresh()

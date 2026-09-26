@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from silverstar_flp.analysis.gnss_integrity import WINDOW_SECONDS, GnssIntegrity_Build
+from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
 from silverstar_flp.analysis.overview import FlightSummary_Build
 from silverstar_flp.core.analysis_source import (
     AnalysisSource,
@@ -102,7 +102,6 @@ class ExportOptions:
     page_duration: float = 30.0
     gif_range_mode: str = "Current View"
     current_range: tuple[float, float] | None = None
-    gnss_integrity_window_s: int = 5
     source_mode: str = "follow_ui"
     source_id: str | None = None
 
@@ -124,8 +123,6 @@ class ExportOptions:
             raise ValueError('export_page_duration_invalid')
         if self.gif_range_mode not in ('Current View', 'Full'):
             raise ValueError('export_gif_range_invalid')
-        if self.gnss_integrity_window_s not in WINDOW_SECONDS:
-            raise ValueError("export_gnss_integrity_window_invalid")
         if self.current_range is not None:
             start, end = self.current_range
             if not np.isfinite([start, end]).all() or start < 0 or end < start:
@@ -554,14 +551,21 @@ class FlightExporter:
         )
         gif_metadata = GifMetadata_Get(*selected)
         gif_metadata["analysis_source"] = store.ActiveSource_Get().source_id
-        integrity_results = {}
+        integrity_result = None
         integrity_error = None
+        integrity_parameters = {}
         if requested.include_plots and dataset.Records_Get("GNSS_NATIVE"):
             try:
-                integrity_results = {
-                    window: GnssIntegrity_Build(dataset, window)
-                    for window in WINDOW_SECONDS
-                }
+                source = store.ActiveSource_Get()
+                entry = store.SourceEntry_Get(source.source_id)
+                integrity_parameters = dict(
+                    entry.parameters if entry is not None else
+                    self._registry.Algorithm_Get("silverstar.algorithm.kf6")
+                    .recorded_parameters(dataset)
+                )
+                integrity_parameters["gnss_integrity_enable"] = 1
+                integrity_result = GnssIntegrityStream_Build(
+                    dataset, integrity_parameters)
             except (ValueError, KeyError, TypeError) as error:
                 integrity_error = str(error)
 
@@ -625,7 +629,7 @@ class FlightExporter:
             + (len(channels) if requested.include_csv else 0)
             + int(full_covariance is not None)
             + standard_plot_units * len(pages)
-            + (3 * len(pages) + 3 if integrity_results else 0)
+            + (3 * len(pages) if integrity_result is not None else 0)
             + int(requested.include_trajectory_3d)
             + gif_frame_units
             + int(requested.include_attitude_gif)
@@ -808,42 +812,25 @@ class FlightExporter:
                 finally:
                     self._plot_page_range = None
 
-        if integrity_results:
+        if integrity_result is not None:
             integrity_dir = output / "GNSSIntegrity"
-            selected_integrity = integrity_results[requested.gnss_integrity_window_s]
             for page_start, page_end in pages:
-                for kind in ("Position_Velocity_Displacement", "Closure_Error", "Receiver_Quality"):
+                for kind in (
+                    "GNSS_Position_Vs_Integrated_Velocity",
+                    "GNSS_Horizontal_Closure_Error",
+                    "GNSS_Receiver_Quality",
+                ):
                     interval = f"{page_start:010.3f}-{page_end:010.3f}"
-                    stem = f"{kind}_Window_{selected_integrity.window_s}s_{interval}{suffix}.png"
-                    path = integrity_dir / kind / stem
+                    path = integrity_dir / kind / f"{kind}_{interval}{suffix}.png"
                     attempt(
                         f"gnss_integrity:{kind}:{interval}", path,
                         lambda p=path, k=kind, a=page_start, b=page_end:
                             self._GnssIntegrityPlot_Write(
-                                dataset, selected_integrity, k, p, language,
-                                resolved_theme, a, b,
+                                dataset, integrity_result, k, p, language,
+                                resolved_theme, a, b, integrity_parameters,
                             ),
                         kind,
                     )
-            summary_csv = integrity_dir / f"Summary{suffix}.csv"
-            attempt("gnss_integrity:summary_csv", summary_csv,
-                    lambda: self._GnssIntegritySummaryCsv_Write(integrity_results, summary_csv),
-                    "GNSS Integrity Summary CSV")
-            summary_txt = integrity_dir / f"Summary{suffix}.txt"
-            attempt("gnss_integrity:summary_txt", summary_txt,
-                    lambda: self._GnssIntegritySummaryText_Write(
-                        integrity_results, summary_txt, language
-                    ),
-                    "GNSS Integrity Summary")
-            samples_stem = (
-                f"Position_Velocity_Closure_Window_{selected_integrity.window_s}s"
-                f"{suffix}.csv"
-            )
-            samples_csv = integrity_dir / samples_stem
-            attempt("gnss_integrity:samples_csv", samples_csv,
-                    lambda: self._GnssIntegritySamplesCsv_Write(
-                        dataset, selected_integrity, samples_csv
-                    ), "GNSS Integrity Samples")
         elif requested.include_plots and dataset.Records_Get("GNSS_NATIVE"):
             skip("gnss_integrity", "GNSS Integrity", integrity_error or "unavailable")
 
@@ -2295,7 +2282,7 @@ class FlightExporter:
     def _GnssIntegrityPlot_Write(
         self, dataset, result, kind: str, path: Path,
         language: ExportLanguage, theme: ExportTheme,
-        page_start: float, page_end: float,
+        page_start: float, page_end: float, parameters: Mapping[str, object],
     ) -> None:
         self._Matplotlib_Configure()
         from matplotlib import pyplot as plt
@@ -2305,47 +2292,63 @@ class FlightExporter:
         figure, axis = plt.subplots(figsize=(11, 5), dpi=140)
         self._Axes_Style(figure, axis, theme)
         origin = dataset.start_timestamp_us or int(result.timestamp_us[0])
-        t = (result.timestamp_us.astype(np.float64) - origin) * 1e-6
-        keep = (t >= page_start) & (t <= page_end)
-        t = t[keep]
-        p = result.position_displacement_m[keep]
-        v = result.velocity_displacement_m[keep]
-        r = result.residual_m[keep]
-        q = result.quality[keep]
-        if kind == "Position_Velocity_Displacement":
-            traces = ((p[:, 0], label("integrity.pos_e")),
-                      (v[:, 0], label("integrity.vel_e")),
-                      (p[:, 1], label("integrity.pos_n")),
-                      (v[:, 1], label("integrity.vel_n")),
-                      (p[:, 2], label("integrity.pos_u")),
-                      (v[:, 2], label("integrity.vel_u")))
-            ylabel = label("integrity.displacement")
-        elif kind == "Closure_Error":
-            norm = np.linalg.norm(r[:, :2], axis=1)
-            norm[~result.valid_en[keep]] = np.nan
-            traces = ((r[:, 0], label("integrity.res_e")),
-                      (r[:, 1], label("integrity.res_n")),
-                      (norm, label("integrity.res_en")),
-                      (r[:, 2], label("integrity.res_u")))
-            ylabel = label("integrity.closure")
+        time = (result.timestamp_us.astype(np.float64) - origin) * 1e-6
+        keep = (time >= page_start) & (time <= page_end)
+        time = time[keep]
+        position = result.position_displacement_en[keep].copy()
+        velocity = result.integrated_velocity_en[keep].copy()
+        closure = result.closure_en[keep].copy()
+        quality = result.quality[keep]
+        resets = result.chain_reset[keep]
+        position[resets] = np.nan
+        velocity[resets] = np.nan
+        closure[resets] = np.nan
+        if kind == "GNSS_Position_Vs_Integrated_Velocity":
+            traces = (
+                (position[:, 0], "integrity.pos_e"),
+                (velocity[:, 0], "integrity.vel_e"),
+                (position[:, 1], "integrity.pos_n"),
+                (velocity[:, 1], "integrity.vel_n"),
+            )
+            title = label("integrity.displacement")
+            ylabel = "m"
+        elif kind == "GNSS_Horizontal_Closure_Error":
+            traces = (
+                (closure[:, 0], "integrity.res_e"),
+                (closure[:, 1], "integrity.res_n"),
+                (result.closure_norm_m[keep], "integrity.res_en"),
+            )
+            title = label("integrity.closure")
+            ylabel = "m"
+            for threshold, key, color in (
+                (parameters.get("gnss_integrity_error_threshold_m", 10.0),
+                 "integrity.error_threshold", "#d84a4a"),
+                (parameters.get("gnss_integrity_recovery_threshold_m", 4.0),
+                 "integrity.recovery_threshold", "#1a9d6c"),
+            ):
+                axis.axhline(float(threshold), color=color, linestyle="--",
+                             linewidth=1, label=label(key))
         else:
-            traces = ((q[:, 0], label("integrity.hacc")),
-                      (q[:, 1], label("integrity.vacc")),
-                      (q[:, 2], label("integrity.sacc")))
-            ylabel = label("integrity.quality")
+            traces = ((quality[:, 0], "integrity.hacc"),
+                      (quality[:, 1], "integrity.vacc"),
+                      (quality[:, 2], "integrity.sacc"))
+            title = label("integrity.quality")
+            ylabel = "m / m/s"
             satellite_axis = axis.twinx()
-            satellite_axis.plot(t, q[:, 3], color="#9467bd", linewidth=1.0,
+            satellite_axis.plot(time, quality[:, 3], color="#9467bd", linewidth=1.0,
                                 label=label("integrity.satellites_label"))
-            satellite_axis.set_ylabel(label("integrity.satellites_label"),
-                                       color=foreground)
+            satellite_axis.set_ylabel(label("integrity.satellites_label"), color=foreground)
             satellite_axis.tick_params(colors=foreground)
         for index, (values, trace_label) in enumerate(traces):
-            axis.plot(t, values, color=_PlotColor_Get(index),
-                      linewidth=1.1, label=trace_label)
+            axis.plot(time, values, color=_PlotColor_Get(index), linewidth=1.1,
+                      label=label(trace_label))
+        if kind != "GNSS_Receiver_Quality":
+            for reset_time in time[resets]:
+                axis.axvline(reset_time, color="#9299a5", linewidth=0.8)
         axis.set_xlim(page_start, max(page_end, page_start + .001))
         axis.set_xlabel(label("timeline.time"), color=foreground)
         axis.set_ylabel(ylabel, color=foreground)
-        axis.set_title(f"{ylabel} ({result.window_s} s)", color=foreground)
+        axis.set_title(title, color=foreground)
         axis.legend(facecolor=background, labelcolor=foreground)
         figure.tight_layout()
         figure.savefig(path, facecolor=background)

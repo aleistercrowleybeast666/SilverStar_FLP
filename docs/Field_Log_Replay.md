@@ -39,19 +39,25 @@ every firmware boundary or actual flight acceptance. Exact results and hashes be
 
 ## Diagnosis
 
-State Estimation contains GNSS, GNSS Integrity, Landing and Mechanization tabs. GNSS lists
-Pos EN/Pos U/Vel EN/Vel U validity, quality reason, update result, innovation/NIS/R, outage,
-consistency, inflation and re-anchor. Main NIS and update displays use those four groups; the
-old aggregate maxima remain compatibility channels. EN groups show only 2D NIS references and
-U groups only 1D references. Communication/liveness, receiver quality and estimator NIS
-rejection remain distinct. Display trajectories break at re-anchor boundaries and actual gaps.
+State Estimation has six tabs: State Uncertainty, Innovation, NIS,
+Measurements, GNSS Position Self-Check and Landing. The NIS tab keeps a four-row
+Pos EN/Pos U/Vel EN/Vel U summary of accepted, soft and rejected updates, P95
+NIS and latest result. Data Explorer retains per-epoch records. Measurements
+shows input/effective standard deviation and receive/fixed-lag timing in two
+linked plots. Basic innovation, NIS, R and timing come from GNSS_MEASUREMENT
+and BARO_MEASUREMENT; KF6_DIAGNOSTIC remains a legacy fallback. Communication,
+receiver quality and estimator NIS rejection remain distinct. Trajectories
+break at re-anchor boundaries and actual gaps.
 
-GNSS Integrity is an offline receiver-native position/velocity closure diagnostic. It converts
-GNSS position with the firmware WGS84 origin-local ENU convention and compares displacement to
-trapezoidal integration of the receiver velocity using actual sample timestamps. Independent
-EN/U validity, sequence/time gaps and at least 90% trailing-window coverage are checked for
-1/2/5/10 s windows (default 5 s). It reports count, coverage, median, P95 and maximum without
-introducing a GNSS firmware gate or calling the residual NIS.
+GNSS Position Self-Check replays revision-2 receiver-native horizontal closure:
+GNSS position displacement from a monitoring anchor minus trapezoidally
+integrated GNSS EN velocity from the same solution epochs. Its three plot pages
+show position versus integrated velocity, horizontal closure and thresholds
+with NORMAL/SUSPECT/REJECTED markers, and receiver hAcc/vAcc/sAcc/satellites.
+The velocity integral continues across short position-invalid intervals; only
+velocity, sequence, time, source or epoch discontinuity resets it. A new anchor
+after rejection cannot automatically restore trust. The display is an internal
+GNSS consistency comparison, not external position truth or estimator NIS.
 
 Landing displays recorded candidate/reset/complete transitions and time metrics. Flight plots,
 3D trajectory and GIF visually end at the final successful candidate start when the complete

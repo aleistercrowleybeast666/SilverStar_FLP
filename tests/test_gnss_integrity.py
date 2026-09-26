@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from silverstar_flp.analysis.gnss_integrity import GeoLocal_ToEnu, GnssIntegrity_Build
+from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
 from silverstar_flp.core.dataset import DecodedRecord, FlightDataset
 from silverstar_flp.core.diagnostics import ParserDiagnostics
 from silverstar_flp.export.service import ExportLanguage, ExportTheme, FlightExporter
@@ -170,23 +171,23 @@ def test_nonfinite_vertical_velocity_leaves_horizontal_closure():
 
 
 @pytest.mark.parametrize("language", (ExportLanguage.EN, ExportLanguage.ZH))
-def test_integrity_export_plots_and_summary_render_in_selected_language(tmp_path, language):
+def test_integrity_export_has_exactly_three_horizontal_pages(tmp_path, language):
     dataset = Dataset_Build()
-    result = GnssIntegrity_Build(dataset, 5)
+    result = GnssIntegrityStream_Build(dataset)
     exporter = FlightExporter()
-    for kind in ("Position_Velocity_Displacement", "Closure_Error", "Receiver_Quality"):
+    for kind in ("GNSS_Position_Vs_Integrated_Velocity",
+                 "GNSS_Horizontal_Closure_Error", "GNSS_Receiver_Quality"):
         path = tmp_path / f"{kind}.png"
         exporter._GnssIntegrityPlot_Write(
-            dataset, result, kind, path, language, ExportTheme.LIGHT, 0.0, 20.0
+            dataset, result, kind, path, language, ExportTheme.LIGHT,
+            0.0, 20.0, {},
         )
         assert path.is_file() and path.stat().st_size > 1000
-    summary = tmp_path / "summary.txt"
-    exporter._GnssIntegritySummaryText_Write({5: result}, summary, language)
-    content = summary.read_text(encoding="utf-8")
-    assert ("覆盖率" if language is ExportLanguage.ZH else "coverage") in content
 
 
-def test_integrity_gui_has_five_independent_tabs_and_shared_time_range():
+@pytest.mark.parametrize("theme", ("light", "dark"))
+@pytest.mark.parametrize("font_scale", (1, 2))
+def test_integrity_gui_has_three_horizontal_tabs_and_shared_time_range(theme, font_scale):
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -196,28 +197,25 @@ def test_integrity_gui_has_five_independent_tabs_and_shared_time_range():
 
     app = QApplication.instance() or QApplication([])
     page = GnssIntegrityPage(Translator("en_US"))
+    font = page.font()
+    font.setPointSize(max(8, font.pointSize() * font_scale))
+    page.setFont(font)
+    page.Theme_Apply(theme)
     page.Dataset_Set(Dataset_Build())
     page.resize(900, 600)
     page.show()
     app.processEvents()
-    assert page.plot_tabs.count() == 5
-    assert page.plot_tabs.widget(0) is page.plots[0]
-    assert page.plot_tabs.widget(4) is page.plots[4]
-    assert len(page.plots[0].listDataItems()) == 2
-    assert len(page.plots[1].listDataItems()) == 1
-    assert len(page.plots[2].listDataItems()) == 2
-    assert len(page.plots[3].listDataItems()) == 2
-    page.quality_combo.setCurrentIndex(page.quality_combo.findData("velocity"))
-    assert len(page.plots[3].listDataItems()) == 1
-    assert page.plots[3].getPlotItem().getAxis("left").labelText == "m/s"
+    assert page.plot_tabs.count() == 3
+    assert len(page.displacement_plot.listDataItems()) == 4
+    assert len(page.closure_plot.listDataItems()) == 3
+    assert len(page.quality_plot.listDataItems()) == 3
+    assert len(page.satellite_plot.listDataItems()) == 1
     page.TimeRange_Set(3.0, 8.0)
     for plot in page.plots:
         low, high = plot.getViewBox().viewRange()[0]
         assert abs(low - 3.0) < 1e-6 and abs(high - 8.0) < 1e-6
-    page.window_combo.setCurrentIndex(page.window_combo.findData(2))
-    assert page._result.window_s == 2
     page.Language_Apply(Translator("zh_CN"))
-    assert page.plot_tabs.tabText(1) == "水平位置与速度差值"
+    assert page.plot_tabs.tabText(1) == "GNSS水平闭合误差"
     page.close()
 
 

@@ -412,12 +412,9 @@ def test_fake_eskf_and_magnetometer_need_no_state_page_code_change(
     application.processEvents()
     assert len(page.innovation_plot.listDataItems()) == 3
     assert len(page.nis_plot.listDataItems()) == 1
-    assert len(page.measurement_r_scale_plot.listDataItems()) == 1
-    assert page.update_table.rowCount() == 16
-    assert any(
-        page.update_table.item(row, 1).text() == "Magnetometer"
-        for row in range(page.update_table.rowCount())
-    )
+    assert len(page.measurement_uncertainty_plot.listDataItems()) > 0
+    assert page.nis_summary.rowCount() == 4
+    assert page.tabs.count() == 6
 
     page.Language_Apply(Translator("zh_CN"))
     assert page.tabs.tabText(2) == "归一化新息平方（NIS）"

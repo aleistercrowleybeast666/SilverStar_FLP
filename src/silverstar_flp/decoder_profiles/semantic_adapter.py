@@ -63,6 +63,8 @@ _EVENT_NAMES = {
     0x2A: "LANDING",
     0x2B: "PARACHUTE_DEPLOY_DETAIL",
     0x2C: "LANDING_IMPACT",
+    0x2D: "SENSOR_SOURCE_CHANGE",
+    0x2E: "GNSS_POSITION_INTEGRITY_STATE_CHANGE",
 }
 
 # These are semantic field-role bindings only. Binary offsets and sizes remain

@@ -92,7 +92,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert not hasattr(window, "attitude_page")
     assert not hasattr(window, "navigation_page")
     assert window.flight_page.tabs.count() == 6
-    assert window.state_estimation_page.tabs.count() == 8
+    assert window.state_estimation_page.tabs.count() == 6
     for row, visible in enumerate((False, False, True, True, False)):
         window.navigation_list.setCurrentRow(row)
         application.processEvents()

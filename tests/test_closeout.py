@@ -124,12 +124,11 @@ def test_target_tables_keep_last_column_stretched_after_refresh(tmp_path):
         replay._Comparison_Set(result)
         explorer._Channel_Show(explorer.channel_list.currentItem())
         explorer._Records_Show()
-        state._Updates_Set()
         for table in (
             replay.comparison_table,
             explorer.channel_table,
             explorer.record_table,
-            state.update_table,
+            state.nis_summary,
         ):
             table.setParent(None)
             table.resize(2400, 200)
@@ -139,10 +138,11 @@ def test_target_tables_keep_last_column_stretched_after_refresh(tmp_path):
             last = table.columnCount() - 1
             assert last >= 0
             assert header.sectionResizeMode(last) == QHeaderView.ResizeMode.Stretch
-            assert all(
-                header.sectionResizeMode(i) == QHeaderView.ResizeMode.ResizeToContents
-                for i in range(last)
-            )
+            if table is not state.nis_summary:
+                assert all(
+                    header.sectionResizeMode(i) == QHeaderView.ResizeMode.ResizeToContents
+                    for i in range(last)
+                )
             if table.horizontalScrollBar().maximum() == 0:
                 assert (
                     abs(

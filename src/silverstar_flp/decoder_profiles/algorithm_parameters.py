@@ -99,10 +99,14 @@ def FirmwareParameters_CheckPlugins(value: Any, *, integrity_revision: int = 0) 
                         name for name in specs if name.startswith("gnss_integrity_")
                     }
                     present = identifiers & integrity_ids
-                    if (integrity_revision >= 1 or present) and present != integrity_ids:
+                    if integrity_revision == 1:
+                        raise ValueError("gnss_integrity_revision_1_legacy_candidate_unsupported")
+                    if integrity_revision == 2 and present != integrity_ids:
                         raise ValueError("gnss_integrity_parameters_incomplete")
                 for item in group["parameters"]:
                     name = item["id"]
+                    if integrity_revision == 0 and name.startswith("gnss_integrity_"):
+                        continue
                     if name not in specs:
                         raise ValueError(f"parameter_unknown:{name}")
                     spec = specs[name]
@@ -113,7 +117,9 @@ def FirmwareParameters_CheckPlugins(value: Any, *, integrity_revision: int = 0) 
                         raise ValueError(f"parameter_storage_type_mismatch:{name}")
                     spec.Value_Validate(item["value"])
                 plugin.metadata.Parameters_Validate(
-                    {p["id"]: p["value"] for p in group["parameters"]}, complete=False
+                    {p["id"]: p["value"] for p in group["parameters"]
+                     if integrity_revision != 0 or not p["id"].startswith("gnss_integrity_")},
+                    complete=False
                 )
             except ValueError as exc:
                 raise DecoderProfileError("firmware_parameter_contract_invalid", str(exc)) from exc

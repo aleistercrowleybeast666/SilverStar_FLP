@@ -75,7 +75,7 @@ def test_replay_uses_fixed_corrected_imu_and_translates_every_visible_field(
     assert page.parameters_group.title() == "假设参数"
     assert page.Fidelity_Text_Get(ReplayFidelity.EXACT) == "完整复现"
     assert page.Fidelity_Text_Get(ReplayFidelity.UNAVAILABLE) == "不可复算"
-    assert len(page._parameter_labels) == 46
+    assert len(page._parameter_labels) == 36
     assert page.parameter_group_combo.count() == 5
     assert page.parameter_group_combo.currentText() == "过程模型"
     assert page.parameters_form.rowCount() == 4

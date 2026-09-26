@@ -144,7 +144,9 @@ class FixedLagReplay:
             return ReplayResult.INVALID, None
         if timestamp < self.start:
             return ReplayResult.HISTORY_MISS, None
-        mask = int(payload['valid_group_mask'])
+        mask = int(payload.get('_integrity_native_valid_group_mask',
+                               payload['valid_group_mask']))
+        admitted = int(payload['valid_group_mask'])
         epoch = Kf6GnssEpoch(timestamp,
             np.asarray(payload['position_enu_m'], dtype=np.float32),
             np.asarray(payload['velocity_enu_mps'], dtype=np.float32),
@@ -152,7 +154,7 @@ class FixedLagReplay:
             np.sqrt(np.asarray(payload['velocity_variance_m2ps2'], dtype=np.float32)), mask)
         self.tracker.Kf6_GnssEpochTrack(epoch)
         event = ReplayEvent(0, timestamp, int(payload['sequence']), 0, self.epoch, dict(payload),
-            tuple(deepcopy(self.tracker._reacquire_groups)), mask,
+            tuple(deepcopy(self.tracker._reacquire_groups)), admitted,
             self.tracker._previous_epoch.valid_group_mask)
         return ReplayResult.OK, event
 

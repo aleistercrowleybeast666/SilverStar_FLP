@@ -141,7 +141,10 @@ def test_actual_default_replay_equals_frozen_legacy_multiplier_one(tmp_path, sou
     with np.load(FIXTURES / "legacy_default_outputs.npz") as baseline:
         for plugin in builtin_registry().algorithms:
             result = plugin.run(ds, ReplayRequest(input_source=source))
-            assert dict(result.parameters) == dict(plugin.recorded_parameters(ds))
+            for key, value in plugin.recorded_parameters(ds).items():
+                assert result.parameters[key] == value
+            if plugin.metadata.plugin_id.endswith("kf6"):
+                assert result.parameters["gnss_integrity_enable"] == 0
             prefix = plugin.metadata.plugin_id + "." + source + "."
             for key in baseline.files:
                 if not key.startswith(prefix):

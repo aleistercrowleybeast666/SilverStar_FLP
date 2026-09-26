@@ -555,22 +555,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 required=False,
             ),
             ParameterSpec(
-                "gnss_integrity_window_s",
-                "int",
-                5,
-                1,
-                10,
-                "s",
-                representation="value",
-                precision=0,
-                order=28,
-                step=1,
-                label_key="parameter.gnss_integrity_window_s",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_window_s",
-                required=False,
-            ),
-            ParameterSpec(
                 "gnss_integrity_max_gap_ms",
                 "int",
                 120,
@@ -579,7 +563,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "ms",
                 representation="value",
                 precision=0,
-                order=29,
+                order=28,
                 step=1,
                 label_key="parameter.gnss_integrity_max_gap_ms",
                 group_key="parameter_group.gnss_integrity",
@@ -587,35 +571,35 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 required=False,
             ),
             ParameterSpec(
-                "gnss_integrity_max_evidence_age_ms",
-                "int",
-                550,
-                0,
-                550,
-                "ms",
+                "gnss_integrity_error_threshold_m",
+                "float",
+                10.0,
+                0.1,
+                200.0,
+                "m",
                 representation="value",
-                precision=0,
-                order=30,
-                step=1,
-                label_key="parameter.gnss_integrity_max_evidence_age_ms",
+                precision=3,
+                order=29,
+                step=0.01,
+                label_key="parameter.gnss_integrity_error_threshold_m",
                 group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_max_evidence_age_ms",
+                tooltip_key="parameter.tooltip.gnss_integrity_error_threshold_m",
                 required=False,
             ),
             ParameterSpec(
-                "gnss_integrity_reference_max_age_s",
-                "int",
-                30,
-                11,
-                300,
-                "s",
+                "gnss_integrity_recovery_threshold_m",
+                "float",
+                4.0,
+                0.1,
+                100.0,
+                "m",
                 representation="value",
-                precision=0,
-                order=31,
-                step=1,
-                label_key="parameter.gnss_integrity_reference_max_age_s",
+                precision=3,
+                order=30,
+                step=0.01,
+                label_key="parameter.gnss_integrity_recovery_threshold_m",
                 group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_reference_max_age_s",
+                tooltip_key="parameter.tooltip.gnss_integrity_recovery_threshold_m",
                 required=False,
             ),
             ParameterSpec(
@@ -627,7 +611,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "ms",
                 representation="value",
                 precision=0,
-                order=32,
+                order=31,
                 step=1,
                 label_key="parameter.gnss_integrity_suspect_duration_ms",
                 group_key="parameter_group.gnss_integrity",
@@ -635,7 +619,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 required=False,
             ),
             ParameterSpec(
-                "gnss_integrity_untrusted_duration_ms",
+                "gnss_integrity_reject_duration_ms",
                 "int",
                 5000,
                 100,
@@ -643,11 +627,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "ms",
                 representation="value",
                 precision=0,
-                order=33,
+                order=32,
                 step=1,
-                label_key="parameter.gnss_integrity_untrusted_duration_ms",
+                label_key="parameter.gnss_integrity_reject_duration_ms",
                 group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_untrusted_duration_ms",
+                tooltip_key="parameter.tooltip.gnss_integrity_reject_duration_ms",
                 required=False,
             ),
             ParameterSpec(
@@ -659,7 +643,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "ms",
                 representation="value",
                 precision=0,
-                order=34,
+                order=33,
                 step=1,
                 label_key="parameter.gnss_integrity_recovery_duration_ms",
                 group_key="parameter_group.gnss_integrity",
@@ -667,83 +651,19 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 required=False,
             ),
             ParameterSpec(
-                "gnss_integrity_recovery_min_samples",
-                "int",
-                25,
-                1,
-                1000,
-                "samples",
-                representation="value",
-                precision=0,
-                order=35,
-                step=1,
-                label_key="parameter.gnss_integrity_recovery_min_samples",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_recovery_min_samples",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_rolling_threshold_m",
+                "gnss_integrity_position_r_scale",
                 "float",
-                7.0,
-                0.1,
+                4.0,
+                1.0,
                 100.0,
-                "m",
+                "1",
                 representation="value",
                 precision=3,
-                order=36,
+                order=34,
                 step=0.01,
-                label_key="parameter.gnss_integrity_rolling_threshold_m",
+                label_key="parameter.gnss_integrity_position_r_scale",
                 group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_rolling_threshold_m",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_anchored_threshold_m",
-                "float",
-                15.0,
-                0.1,
-                200.0,
-                "m",
-                representation="value",
-                precision=3,
-                order=37,
-                step=0.01,
-                label_key="parameter.gnss_integrity_anchored_threshold_m",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_anchored_threshold_m",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_recovery_rolling_m",
-                "float",
-                2.0,
-                0.1,
-                50.0,
-                "m",
-                representation="value",
-                precision=3,
-                order=38,
-                step=0.01,
-                label_key="parameter.gnss_integrity_recovery_rolling_m",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_recovery_rolling_m",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_recovery_anchored_m",
-                "float",
-                8.0,
-                0.1,
-                100.0,
-                "m",
-                representation="value",
-                precision=3,
-                order=39,
-                step=0.01,
-                label_key="parameter.gnss_integrity_recovery_anchored_m",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_recovery_anchored_m",
+                tooltip_key="parameter.tooltip.gnss_integrity_position_r_scale",
                 required=False,
             ),
             ParameterSpec(
@@ -755,7 +675,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "m",
                 representation="value",
                 precision=3,
-                order=40,
+                order=35,
                 step=0.01,
                 label_key="parameter.gnss_integrity_hacc_max_m",
                 group_key="parameter_group.gnss_integrity",
@@ -771,91 +691,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 "m/s",
                 representation="value",
                 precision=3,
-                order=41,
+                order=36,
                 step=0.01,
                 label_key="parameter.gnss_integrity_sacc_max_mps",
                 group_key="parameter_group.gnss_integrity",
                 tooltip_key="parameter.tooltip.gnss_integrity_sacc_max_mps",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_velocity_bias_bound_mps",
-                "float",
-                0.15,
-                0.0,
-                5.0,
-                "m/s",
-                representation="value",
-                precision=3,
-                order=42,
-                step=0.01,
-                label_key="parameter.gnss_integrity_velocity_bias_bound_mps",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_velocity_bias_bound_mps",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_reference_renewal_max_m",
-                "float",
-                2.0,
-                0.1,
-                50.0,
-                "m",
-                representation="value",
-                precision=3,
-                order=43,
-                step=0.01,
-                label_key="parameter.gnss_integrity_reference_renewal_max_m",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_reference_renewal_max_m",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_position_r_scale",
-                "float",
-                4.0,
-                1.0,
-                100.0,
-                "1",
-                representation="value",
-                precision=3,
-                order=44,
-                step=0.01,
-                label_key="parameter.gnss_integrity_position_r_scale",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_position_r_scale",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_reanchor_min_distance_m",
-                "float",
-                8.0,
-                0.1,
-                100.0,
-                "m",
-                representation="value",
-                precision=3,
-                order=45,
-                step=0.01,
-                label_key="parameter.gnss_integrity_reanchor_min_distance_m",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_reanchor_min_distance_m",
-                required=False,
-            ),
-            ParameterSpec(
-                "gnss_integrity_reanchor_covariance_floor_m2",
-                "float",
-                25.0,
-                0.01,
-                10000.0,
-                "m^2",
-                representation="value",
-                precision=3,
-                order=46,
-                step=0.01,
-                label_key="parameter.gnss_integrity_reanchor_covariance_floor_m2",
-                group_key="parameter_group.gnss_integrity",
-                tooltip_key="parameter.tooltip.gnss_integrity_reanchor_covariance_floor_m2",
                 required=False,
             ),
         ),
@@ -1173,8 +1013,6 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 source_end_timestamp_us=increments[-1].interval_end_timestamp_us,
             )
         parameters = self._Parameters_Resolve(dataset, request)
-        if parameters.get("gnss_integrity_enable", 0):
-            raise ValueError("kf6_integrity_replay_not_implemented")
         filter_instance = Kf6Filter.Kf6_Create(
             gnss_reacquire_outage_ms=parameters.get("gnss_reacquire_outage_ms", 300),
             process_accel_std_mps2=np.asarray(
@@ -1213,6 +1051,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         schedule = self._MeasurementParameters_Apply(
             dataset, schedule, parameters, frozen_initial=analysis_frozen_initial
         )
+        if parameters.get("gnss_integrity_enable", 0):
+            schedule, integrity_diagnostics = self._IntegritySchedule_Apply(
+                dataset, schedule, parameters
+            )
+            source_diagnostics["gnss_integrity"] = integrity_diagnostics
         firmware_schedule = schedule
         schedule = DiagnosticSchedule_Apply(schedule, analysis_options)
         filter_instance.analysis_position_vertical_disabled = bool(
@@ -1383,6 +1226,32 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             ),
         )
 
+    def recorded_parameters(self, dataset: FlightDataset) -> Mapping[str, Any]:
+        metadata = dataset.semantic_context.raw_metadata if dataset.semantic_context else {}
+        revision = metadata.get("metadata_declarations", {}).get(
+            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        if revision != 0:
+            return super().recorded_parameters(dataset)
+        if dataset.semantic_context is None or not self.FirmwareMember_Is(dataset):
+            return {}
+        records = dataset.semantic_context.FirmwareParameters_Get(
+            self.metadata.firmware_component_ids[0])
+        if records is None:
+            return {}
+        specs = {spec.parameter_id: spec for spec in self.metadata.parameter_schema}
+        values = {}
+        for name, item in records.items():
+            if name.startswith("gnss_integrity_"):
+                continue
+            if name not in specs:
+                raise ValueError(f"parameter_unknown:{name}")
+            spec = specs[name]
+            if item["unit"] != spec.unit or item["representation"] != spec.representation:
+                raise ValueError(f"parameter_contract_mismatch:{name}")
+            spec.Value_Validate(item["value"])
+            values[name] = item["value"]
+        return values
+
     def _Parameters_Resolve(
         self, dataset: FlightDataset, request: ReplayRequest
     ) -> dict[str, float]:
@@ -1391,8 +1260,19 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     if dataset.semantic_context is not None else {})
         revision = metadata.get("metadata_declarations", {}).get(
             "navigation_replay", {}).get("gnss_integrity_revision", 0)
-        if revision == 0 and "gnss_integrity_enable" not in request.parameters:
-            parameters["gnss_integrity_enable"] = 0
+        if revision == 1:
+            raise ValueError("gnss_integrity_revision_1_legacy_candidate_unsupported")
+        if revision not in (0, 2):
+            raise ValueError("gnss_integrity_revision_unsupported")
+        if revision == 0:
+            for name, default in self.OfflineParameters_Get().items():
+                if name.startswith("gnss_integrity_"):
+                    parameters.setdefault(name, default)
+            if "gnss_integrity_enable" not in request.parameters:
+                parameters["gnss_integrity_enable"] = 0
+        if (parameters["gnss_integrity_recovery_threshold_m"] >=
+                parameters["gnss_integrity_error_threshold_m"]):
+            raise ValueError("gnss_integrity_threshold_order_invalid")
         for dimension in ("1d", "2d", "3d"):
             if parameters[f"nis_{dimension}_hard"] <= parameters[f"nis_{dimension}_soft"]:
                 raise ValueError("nis_threshold_order_invalid")
@@ -1418,6 +1298,80 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     raise ValueError(f"parameter_dynamic_uncertainty_missing:{name}")
                 result[index] = max(initial[index], after)
         return result
+
+    def _IntegritySchedule_Apply(
+        self, dataset: FlightDataset, schedule: tuple[_ScheduledMeasurement, ...],
+        parameters: Mapping[str, float],
+    ) -> tuple[tuple[_ScheduledMeasurement, ...], dict[str, object]]:
+        from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
+
+        selected = GnssIntegrityStream_Build(dataset, parameters, consumed_only=True)
+        metadata = dataset.semantic_context.raw_metadata if dataset.semantic_context else {}
+        revision = metadata.get("metadata_declarations", {}).get(
+            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        recorded_parameters = self.recorded_parameters(dataset)
+        baseline = recorded_parameters or self.OfflineParameters_Get()
+        old = (GnssIntegrityStream_Build(dataset, baseline, consumed_only=True)
+               if revision == 2 else None)
+        noise_recomputed = any(
+            np.float32(parameters[name]) != np.float32(baseline.get(name, parameters[name]))
+            for name in ("gnss_position_std_horizontal", "gnss_position_std_vertical")
+        )
+        changed = []
+        native_by_key = {
+            (int(r.payload["sequence"]), int(r.payload["receive_timestamp_us"])): r
+            for r in dataset.Records_Get("GNSS_NATIVE")
+        }
+        mask_mismatches = 0
+        r_mismatches = 0
+        position_disabled_count = 0
+        for item in schedule:
+            if item.kind != "gnss":
+                changed.append(item)
+                continue
+            payload = dict(item.record.payload)
+            key = (int(payload["sequence"]), int(payload["receive_timestamp_us"]))
+            decision = selected.by_measurement.get(key)
+            if decision is None:
+                raise ValueError("gnss_integrity_native_evidence_missing")
+            logged_mask = int(payload["valid_group_mask"])
+            baseline_decision = old.by_measurement.get(key) if old else None
+            native_mask = (baseline_decision.admitted_mask if baseline_decision else logged_mask)
+            # The receiver's raw four-group mask is restored from GNSS_NATIVE below.
+            native_record = native_by_key.get(key)
+            if native_record is None:
+                raise ValueError("gnss_integrity_native_evidence_missing")
+            native_mask = int(native_record.payload.get("valid_group_mask", native_mask))
+            base = np.asarray(payload["position_variance_m2"], dtype=np.float32).copy()
+            if baseline_decision and not noise_recomputed:
+                base[:2] /= np.float32(baseline_decision.position_r_scale)
+            if revision == 2 and baseline_decision:
+                if logged_mask != baseline_decision.admitted_mask:
+                    mask_mismatches += 1
+                expected = base[:2] * np.float32(baseline_decision.position_r_scale)
+                recorded = np.asarray(payload["position_variance_m2"][:2], dtype=np.float32)
+                if not np.allclose(expected, recorded, rtol=1e-5, atol=1e-5):
+                    r_mismatches += 1
+            base[:2] *= np.float32(decision.position_r_scale)
+            payload["position_variance_m2"] = tuple(float(x) for x in base)
+            payload["_integrity_native_valid_group_mask"] = native_mask
+            payload["valid_group_mask"] = decision.admitted_mask & native_mask
+            if (native_mask & 1) and not (decision.admitted_mask & 1):
+                position_disabled_count += 1
+            payload["_integrity_state"] = decision.state
+            changed.append(replace(item, record=replace(item.record, payload=payload)))
+        diagnostics = {
+            "revision": 2,
+            "state_counts": tuple(sum(d.state == state for d in selected.decisions)
+                                  for state in range(3)),
+            "transitions": tuple((d.timestamp_us, d.previous_state, d.state,
+                                  d.reason, d.sequence)
+                for d in selected.decisions if d.state != d.previous_state),
+            "position_disabled_count": position_disabled_count,
+            "recorded_mask_mismatches": mask_mismatches,
+            "recorded_r_mismatches": r_mismatches,
+        }
+        return tuple(changed), diagnostics
 
     def _MeasurementParameters_Apply(
         self,
@@ -1765,6 +1719,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         record: DecodedRecord,
     ) -> tuple[int, int, int, np.ndarray]:
         payload = record.payload
+        if "_integrity_native_valid_group_mask" in payload:
+            return Kf6AlgorithmPlugin._GnssIntegrity_Apply(filter_instance, record)
         mask = int(record.valid_flags) & 0x03
         if not bool(payload.get("fusion_allowed", 0)):
             return 3, 3, 0, np.ones(2, dtype=np.float32)
@@ -1850,6 +1806,62 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             mask,
             np.asarray((position_scale_applied, velocity_scale_applied), dtype=np.float32),
         )
+
+    @staticmethod
+    def _GnssIntegrity_Apply(
+        filter_instance: Kf6Filter, record: DecodedRecord,
+    ) -> tuple[int, int, int, np.ndarray]:
+        payload = record.payload
+        if not bool(payload.get("fusion_allowed", 0)):
+            return 3, 3, 0, np.ones(2, dtype=np.float32)
+        position = np.asarray(payload["position_enu_m"], dtype=np.float32)
+        velocity = np.asarray(payload["velocity_enu_mps"], dtype=np.float32)
+        position_variance = np.asarray(payload["position_variance_m2"], dtype=np.float32)
+        velocity_variance = np.asarray(payload["velocity_variance_m2ps2"], dtype=np.float32)
+        native_mask = int(payload["_integrity_native_valid_group_mask"])
+        admitted = int(payload["valid_group_mask"])
+        if filter_instance.analysis_position_vertical_disabled:
+            admitted &= ~2
+        filter_instance.Kf6_GnssEpochTrack(Kf6GnssEpoch(
+            timestamp_us=int(payload["sample_timestamp_us"]),
+            position_enu_m=position,
+            velocity_enu_mps=velocity,
+            position_std_m=np.sqrt(np.maximum(position_variance, 0.0)),
+            velocity_std_mps=np.sqrt(np.maximum(velocity_variance, 0.0)),
+            valid_group_mask=native_mask,
+        ))
+        results = [Kf6UpdateResult.REJECTED_INVALID] * 4
+        for group in range(4):
+            if not admitted & (1 << group):
+                continue
+            selected = Kf6GnssGroup(group)
+            value = position if group < 2 else velocity
+            variance = position_variance if group < 2 else velocity_variance
+            result = filter_instance.Kf6_GroupUpdate(selected, value, variance)
+            result = filter_instance.Kf6_GroupRecover(selected, result, value, variance,
+                int(payload["receive_timestamp_us"]))
+            results[group] = result
+        filter_instance.last_position_nis = np.max(filter_instance.last_group_nis[:2])
+        filter_instance.last_velocity_nis = np.max(filter_instance.last_group_nis[2:])
+        if admitted & 3:
+            filter_instance._Counter_Update("position", Kf6UpdateResult(
+                _Result_Aggregate(results[0], results[1]) if admitted & 3 == 3
+                else int(results[0] if admitted & 1 else results[1])))
+        if admitted & 12:
+            filter_instance._Counter_Update("velocity", Kf6UpdateResult(
+                _Result_Aggregate(results[2], results[3]) if admitted & 12 == 12
+                else int(results[2] if admitted & 4 else results[3])))
+        position_result = (_Result_Aggregate(results[0], results[1]) if admitted & 3 == 3
+            else int(results[0] if admitted & 1 else results[1]))
+        velocity_result = (_Result_Aggregate(results[2], results[3]) if admitted & 12 == 12
+            else int(results[2] if admitted & 4 else results[3]))
+        ratios = np.ones(2, dtype=np.float32)
+        if admitted & 1 and position_variance[0] > 0:
+            ratios[0] = filter_instance.last_position_effective_variance[0] / position_variance[0]
+        if admitted & 4 and velocity_variance[0] > 0:
+            ratios[1] = filter_instance.last_velocity_effective_variance[0] / velocity_variance[0]
+        attempt_mask = int(bool(admitted & 3)) | (int(bool(admitted & 12)) << 1)
+        return int(position_result), int(velocity_result), attempt_mask, ratios
 
     @staticmethod
     def _Baro_Apply(filter_instance: Kf6Filter, record: DecodedRecord) -> tuple[int, float, int]:

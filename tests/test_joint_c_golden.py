@@ -12,7 +12,7 @@ import pytest
 
 from silverstar_flp.decoder_profiles.discovery import DecoderProfileCache
 from silverstar_flp.log_open import LogOpenCoordinator, LogOpenRequest
-from silverstar_flp.plugins.api.algorithm import ReplayFidelity, ReplayRequest
+from silverstar_flp.plugins.api.algorithm import ReplayFidelity, ReplayMode, ReplayRequest
 from silverstar_flp.plugins.registry import builtin_registry
 
 
@@ -22,10 +22,10 @@ def test_generated_c_log_exact_decoder_replay_and_mechanization(tmp_path):
     if not project or not log:
         pytest.skip('explicit FCCG generated project and C golden required')
     registry = builtin_registry()
+    packages = tuple(Path(project).glob("*.ssdecoder"))
+    assert len(packages) == 1
     opened = LogOpenCoordinator(registry, cache=DecoderProfileCache(tmp_path / "cache")).Open(
-        LogOpenRequest(
-            log_path=Path(log), decoder_package_path=Path(project) / "JointContract.ssdecoder"
-        )
+        LogOpenRequest(log_path=Path(log), decoder_package_path=packages[0])
     )
     dataset = opened.dataset
     assert dataset.diagnostics.header_crc_valid
@@ -40,6 +40,52 @@ def test_generated_c_log_exact_decoder_replay_and_mechanization(tmp_path):
     plugin = registry.Algorithm_Get('silverstar.algorithm.kf6')
     assert plugin.availability(dataset).available
     result = plugin.run(dataset, ReplayRequest())
+    integrity = result.diagnostics.get("gnss_integrity")
+    assert integrity and integrity["revision"] == 2
+    assert integrity["recorded_mask_mismatches"] == 0
+    assert integrity["recorded_r_mismatches"] == 0
+    what_if = plugin.run(dataset, ReplayRequest(
+        mode=ReplayMode.WHAT_IF,
+        parameters={"gnss_integrity_error_threshold_m": 20.0},
+    ))
+    assert what_if.diagnostics["gnss_integrity"]["position_disabled_count"] < (
+        integrity["position_disabled_count"]
+    )
+    from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
+    decisions = GnssIntegrityStream_Build(dataset, result.parameters, consumed_only=True)
+    for record in dataset.Records_Get("GNSS_MEASUREMENT"):
+        key = (int(record.payload["sequence"]), int(record.payload["receive_timestamp_us"]))
+        decision = decisions.by_measurement[key]
+        assert record.payload["valid_group_mask"] == decision.admitted_mask
+        if record.payload["valid_group_mask"] & 1:
+            np.testing.assert_allclose(
+                record.payload["position_variance_m2"][:2],
+                np.full(2, 6.25 * decision.position_r_scale), rtol=1e-6,
+            )
+    measurements = dataset.Records_Get("GNSS_MEASUREMENT")
+    pos_en_updates = [
+        row for row in result.diagnostics["gnss_group_updates"]
+        if row["group"] == "Pos EN"
+    ]
+    assert len(pos_en_updates) == len(measurements)
+    for record, update in zip(measurements, pos_en_updates, strict=True):
+        assert record.timestamp_us == update["timestamp_us"]
+        assert int(record.payload["group_update_result"][0]) == int(update["result"])
+        np.testing.assert_allclose(
+            record.payload["group_nis"][0], update["nis"],
+            rtol=1e-6, atol=1e-6, equal_nan=True,
+        )
+    events = [row for row in dataset.Records_Get("EVENT")
+              if int(row.payload["event_id"]) == 0x2E]
+    assert len(events) == len(integrity["transitions"])
+    for event, (timestamp, before, after, reason, sequence) in zip(
+        events, integrity["transitions"], strict=True
+    ):
+        arg0 = int(event.payload["arg0"])
+        assert event.timestamp_us == timestamp
+        assert event.payload["arg1"] == sequence
+        assert (arg0 & 0xFF, (arg0 >> 8) & 0xFF,
+                (arg0 >> 16) & 0xFF) == (before, after, reason)
     assert (
         result.fidelity == ReplayFidelity.APPROXIMATE
     )  # Bounded tested scope, no universal EXACT.
