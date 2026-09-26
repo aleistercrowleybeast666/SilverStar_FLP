@@ -91,3 +91,52 @@ def test_gnss_diagnostics_route_recorded_pure_ins_and_kf6() -> None:
     assert "no GNSS update diagnostics" in page.note.text()
     page.close()
     app.processEvents()
+
+
+def test_landing_uses_full_task_recorded_transaction_and_clear_empty_state() -> None:
+    app = QApplication.instance() or QApplication([])
+    page = NavigationDiagnostics("landing", Translator("en_US"))
+    page.show()
+    record = SimpleNamespace(
+        timestamp_us=381_000_000,
+        record_sequence=10,
+        payload={
+            "evaluation_timestamp_us": 381_000_000,
+            "candidate_start_timestamp_us": 378_000_000,
+            "transition": 3, "reset_reason": 0,
+            "candidate_elapsed_us": 3_000_000, "valid_coverage": 1.0,
+            "still_ratio": 1.0, "maximum_bad_duration_us": 0,
+            "baro_slope_mps": 0.0, "baro_span_m": 0.0,
+            "baro_coverage": 1.0,
+        },
+    )
+    event = SimpleNamespace(timestamp_us=381_000_000, payload={"event_id": 0x2A})
+    config = SimpleNamespace(payload={"landing_enable": True, "landing_mode": 2})
+    records = {
+        "LANDING_DIAGNOSTIC": (record,), "EVENT": (event,),
+        "MISSION_CONFIG": (config,),
+    }
+    dataset = SimpleNamespace(
+        start_timestamp_us=1_000_000,
+        Records_Get=lambda name: records.get(name, ()),
+    )
+    page.Dataset_Set(dataset, _Resolver_Build(None))
+    page.TimeRange_Set(0.0, 30.0)
+    assert page.model.rowCount() == 1
+    assert not page.table.isHidden()
+    assert "377.000" in page.summary_label.text()
+    assert "380.000" in page.summary_label.text()
+    assert "3.000" in page.summary_label.text()
+
+    records["LANDING_DIAGNOSTIC"] = ()
+    page.Dataset_Set(dataset, _Resolver_Build(None))
+    assert page.model.rowCount() == 0
+    assert page.table.isHidden()
+    assert "no recorded landing diagnostics" in page.note.text().lower()
+    records["MISSION_CONFIG"] = (SimpleNamespace(payload={
+        "landing_enable": False, "landing_mode": 0,
+    }),)
+    page.Dataset_Set(dataset, _Resolver_Build(None))
+    assert "did not enable" in page.note.text().lower()
+    page.close()
+    app.processEvents()

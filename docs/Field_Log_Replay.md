@@ -50,22 +50,22 @@ receiver quality and estimator NIS rejection remain distinct. Trajectories
 break at re-anchor boundaries and actual gaps.
 
 GNSS Position Self-Check replays revision-2 receiver-native horizontal closure:
-GNSS position displacement from a monitoring anchor minus trapezoidally
-integrated GNSS EN velocity from the same solution epochs. Its three plot pages
-show position versus integrated velocity, horizontal closure and thresholds
-with NORMAL/SUSPECT/REJECTED markers, and receiver hAcc/vAcc/sAcc/satellites.
-The velocity integral continues across short position-invalid intervals; only
-velocity, sequence, time, source or epoch discontinuity resets it. A new anchor
-after rejection cannot automatically restore trust. The display is an internal
-GNSS consistency comparison, not external position truth or estimator NIS.
+GNSS EN position displacement from a monitoring anchor minus trapezoidally integrated
+GNSS EN velocity from matching solution epochs. The horizontal view displays the closure
+norm, error/recovery thresholds, state transitions and reference resets. Recorded revision-2
+EVENT states are labeled onboard; older logs show explicitly labeled offline replay states.
+The signed vertical ΔU minus velocity-U integral is separate offline analysis with a zero
+reference line. A short invalid Position U interval preserves the velocity integral; a broken
+velocity chain starts a new reference. Vertical consistency never gates onboard integrity,
+KF6 or NIS. Receiver information presents hAcc/vAcc/sAcc and satellite count with units.
+The display compares GNSS internal kinematics; it is not external position truth.
 
-Landing displays recorded candidate/reset/complete transitions and time metrics. Flight plots,
-3D trajectory and GIF visually end at the final successful candidate start when the complete
-diagnostic records it; they fall back to Landing Confirmed otherwise. State Estimation retains
-the confirmation interval, and Data Explorer retains the entire raw log. Explicit
-recompute runs in the existing worker from corrected IMU, barometer observations, recorded
-mission thresholds and deploy. It is APPROXIMATE: FlightTask evaluation ticks are not logged.
-Missing configuration, inputs or ambiguous physical source is reported, never filled with defaults.
+Landing shows complete-mission recorded LANDING_DIAGNOSTIC transactions and the confirmed
+LANDING event, independent of the global TimeRange. Its summary uses the final successful
+candidate start and recorded confirmation time. If the stream is absent or the strategy was
+disabled, the page gives an explicit message. Flight plots, 3D trajectory and GIF visually
+end at the final successful candidate start when the diagnostic records it, and otherwise
+fall back to Landing Confirmed. Data Explorer retains the complete raw log.
 
 ## Analysis Source and time range
 
@@ -83,14 +83,14 @@ source identity; a saved normal replay/What-if source is recomputed from its sav
 on reopen, retaining its run identity. Raw data and CSV remain complete.
 
 Time plots use a display-only min/max envelope, preserving spikes and gaps. The shared range
-filters Flight and State Estimation plots without changing replay or statistics. Data Explorer
-always shows the complete log.
+filters Flight and State Estimation plots and the NIS four-group statistics without changing
+replay. Landing diagnostics remain complete-mission. Data Explorer always shows the complete log.
 
 ## Exports
 
 Time PNGs default to consecutive 30 s pages, including a shorter final page. GNSSIntegrity/
-contains categorized displacement, closure and receiver-quality plots plus per-window summary
-and selected-window sample CSV. Requested export theme is Follow UI by default, with explicit
+contains the horizontal consistency error, signed vertical consistency error and receiver
+information plots. Requested export theme is Follow UI by default, with explicit
 Light/Dark overrides; the manifest records both requested and resolved theme. Presets are
 5/10/30/60/120/Custom/Current View/Full. Category directories collect related plots, with
 millisecond start/end in filenames. Whole-mission 3D and summary outputs are not forcibly paged.

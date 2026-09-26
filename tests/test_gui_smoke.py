@@ -82,7 +82,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     assert window.pages.count() == 5
     assert window.windowTitle() == PRODUCT_NAME
     assert window.title_label.text() == "SilverStar 飞行日志解析器"
-    assert window.version_label.text() == f"v{__version__}" == "v0.0.2"
+    assert window.version_label.text() == f"v{__version__}" == "v0.0.4"
     assert window.credit_label.text() == "辰星引力开发"
     assert window.project_name_label.text() == "未保存工程"
     assert window.project_name_label.toolTip() == ""
@@ -185,7 +185,7 @@ def test_five_page_gui_and_top_bar_accept_a_parsed_dataset(
     application.processEvents()
     assert window.about_dialog.isVisible()
     assert window.about_dialog.product_label.text() == "SilverStar 飞行日志解析器"
-    assert window.about_dialog.version_label.text() == "版本 0.0.2"
+    assert window.about_dialog.version_label.text() == "版本 0.0.4"
     assert "离线算法复算" in window.about_dialog.description_label.text()
     assert window.about_dialog.windowTitle() == "SilverStar_FLP"
     window.about_dialog.reject()

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from silverstar_flp.analysis.gnss_integrity import GeoLocal_ToEnu
+from silverstar_flp.analysis.geodesy import GeoLocal_ToEnu
 from silverstar_flp.core.dataset import FlightDataset
 
 DEFAULT_PARAMETERS = {

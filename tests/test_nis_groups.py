@@ -51,6 +51,25 @@ def test_recorded_group_nis_and_results_are_distinct_in_state_view(tmp_path):
     assert dataset.Series_Get("kf6.recorded.nis.velocity_u").values.tolist() == [11., 12.]
     page = StateEstimationPage(Translator("en_US"))
     page.Dataset_Set(dataset)
+    assert page.nis_display_combo.count() == 2
+    assert [page.nis_display_combo.itemText(index) for index in range(2)] == [
+        "NIS Curve", "Four-group Statistics",
+    ]
+    assert page.nis_pages.count() == 2
+    page.resize(1000, 700)
+    page.tabs.setCurrentWidget(page.nis_pages.parentWidget())
+    page.show()
+    app.processEvents()
+    assert page.nis_plot.height() > 300
+    page.nis_display_combo.setCurrentIndex(1)
+    app.processEvents()
+    assert page.nis_summary.height() > 300
+    assert "current time window" in page.nis_scope_label.text().lower()
+    page.setStyleSheet("font-size: 24px;")  # Approximate 200% text scale at 1000×700.
+    app.processEvents()
+    assert page.nis_summary.viewport().height() > sum(
+        page.nis_summary.rowHeight(row) for row in range(4)
+    )
     for group_id, expected in (
         ("gnss_position_en", [2., 3.]), ("gnss_position_u", [7., 8.]),
         ("gnss_velocity_en", [3., 4.]), ("gnss_velocity_u", [11., 12.]),
@@ -82,4 +101,7 @@ def test_recorded_group_nis_and_results_are_distinct_in_state_view(tmp_path):
     assert page.nis_summary.item(0, 3).text() == "2"
     assert page.nis_summary.item(1, 1).text() == "2"
     assert page.nis_summary.item(2, 2).text() == "2"
+    page.TimeRange_Set(0.0, 0.15)
+    assert page.nis_summary.item(0, 3).text() == "1"
+    assert page.nis_summary.item(1, 1).text() == "1"
     page.close()

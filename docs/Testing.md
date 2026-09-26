@@ -10,7 +10,7 @@ read-only project/export behavior, and GUI construction. The analysis-rich synth
 contains the exact current CALIBRATION_RESULT, ALIGNMENT_RESULT, INITIAL_STATE, KF6_STATE, and
 KF6_DIAGNOSTIC wire layouts, plus distinct enabled/actual deploy masks.
 
-The 0.0.2 suite additionally verifies the fixed title/version authority, deep-blue/light-blue GUI
+The 0.0.4 suite additionally verifies the fixed title/version authority, deep-blue/light-blue GUI
 states, conventional ten-row combo popups, modal import/export workflow, fixed corrected-IMU GUI
 request, complete Replay fidelity/warning/parameter translations, strict source eligibility,
 return to Recorded, Replay-only source authority, and read-only Flight/State source displays.

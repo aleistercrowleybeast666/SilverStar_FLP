@@ -352,7 +352,7 @@ def test_state_estimation_shows_recorded_kf6_diagnostics_and_i18n(
     assert len(page.measurement_age_plot.listDataItems()) == 0
     assert "Unavailable" in page.measurement_unavailable_label.text()
     assert page.nis_summary.rowCount() == 4
-    assert page.gnss_integrity.plot_tabs.count() == 3
+    assert page.gnss_integrity.display_combo.count() == 3
     assert page.reset_charts_button.text() == "Reset Charts"
     page.nis_plot.setXRange(200.0, 201.0, padding=0)
     page.nis_plot.setYRange(200.0, 201.0, padding=0)

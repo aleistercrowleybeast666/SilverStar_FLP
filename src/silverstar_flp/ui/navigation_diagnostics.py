@@ -1,7 +1,7 @@
 """Read-only four-group and landing inspection. Missing evidence stays unknown."""
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from silverstar_flp.core.mission import MissionLandingTimestamp_Get
 from silverstar_flp.ui.touch_scroll import TouchScroll_Enable
 
 
@@ -77,7 +78,6 @@ class DiagnosticTableModel(QAbstractTableModel):
 
 
 class NavigationDiagnostics(QWidget):
-    recomputeRequested = Signal()
     def __init__(self, kind, translator, parent=None):
         super().__init__(parent)
         self.kind, self.translator = kind, translator
@@ -99,7 +99,6 @@ class NavigationDiagnostics(QWidget):
             ),
             "landing": (
                 "time",
-                "source",
                 "transition",
                 "reason",
                 "elapsed",
@@ -141,9 +140,9 @@ class NavigationDiagnostics(QWidget):
             button_row.addStretch(1)
             layout.addLayout(button_row)
         if kind == "landing":
-            self.recompute_button = QPushButton(translator.Text_Get("diagnostic.recompute_landing"))
-            self.recompute_button.clicked.connect(self.recomputeRequested)
-            layout.addWidget(self.recompute_button)
+            self.summary_label = QLabel()
+            self.summary_label.setWordWrap(True)
+            layout.addWidget(self.summary_label)
         self.table = QTableView()
         self.model = DiagnosticTableModel(columns, translator, self.table)
         self.model.kind = kind
@@ -260,27 +259,53 @@ class NavigationDiagnostics(QWidget):
             self.note.setText(self.translator.Text_Get('diagnostic.gnss_note') +
                               '\n' + self._source_note)
         elif self.kind == 'landing':
-            records = [(r.payload, 'Recorded') for r in dataset.Records_Get('LANDING_DIAGNOSTIC')]
-            recomputed = getattr(self, '_recomputed', None)
-            if recomputed and self._recomputed_dataset is dataset:
-                records.extend((row, 'Recomputed · APPROXIMATE') for row in recomputed)
-            for p, source in records:
-                self._rows.append(
-                    dict(
-                        timestamp_us=p["evaluation_timestamp_us"],
-                        source=source,
-                        transition=p["transition"],
-                        reason=p["reset_reason"],
-                        elapsed=p["candidate_elapsed_us"] * 1e-6,
-                        coverage=p["valid_coverage"],
-                        still=p["still_ratio"],
-                        bad=p["maximum_bad_duration_us"] * 1e-3,
-                        slope=p["baro_slope_mps"],
-                        span=p["baro_span_m"],
-                        baro_coverage=p["baro_coverage"],
-                    )
-                )
-            self.note.setText(self.translator.Text_Get('diagnostic.landing_note'))
+            records = tuple(dataset.Records_Get('LANDING_DIAGNOSTIC'))
+            for record in records:
+                p = record.payload
+                self._rows.append(dict(
+                    timestamp_us=int(p["evaluation_timestamp_us"]),
+                    transition=p["transition"],
+                    reason=p["reset_reason"],
+                    elapsed=p["candidate_elapsed_us"] * 1e-6,
+                    coverage=p["valid_coverage"],
+                    still=p["still_ratio"],
+                    bad=p["maximum_bad_duration_us"] * 1e-3,
+                    slope=p["baro_slope_mps"],
+                    span=p["baro_span_m"],
+                    baro_coverage=p["baro_coverage"],
+                ))
+            if records:
+                self.note.setText(self.translator.Text_Get('diagnostic.landing_note'))
+            else:
+                configs = dataset.Records_Get('MISSION_CONFIG')
+                enabled = bool(configs and configs[0].payload.get('landing_enable')
+                               and int(configs[0].payload.get('landing_mode', -1)) == 2)
+                key = ('diagnostic.landing_no_records' if enabled or not configs else
+                       'diagnostic.landing_strategy_disabled')
+                self.note.setText(self.translator.Text_Get(key))
+            confirmed = MissionLandingTimestamp_Get(dataset)
+            completed = [record for record in records
+                         if int(record.payload.get('transition', -1)) == 3
+                         and int(record.payload.get('candidate_start_timestamp_us', 0)) > 0
+                         and confirmed is not None
+                         and int(record.payload['candidate_start_timestamp_us']) <= confirmed]
+            if completed:
+                final = max(completed, key=lambda record: (
+                    int(record.payload.get('evaluation_timestamp_us', record.timestamp_us)),
+                    record.record_sequence,
+                ))
+                candidate = int(final.payload['candidate_start_timestamp_us'])
+                self.summary_label.setText(self.translator.Text_Get(
+                    'diagnostic.landing_summary',
+                ).format(
+                    candidate=(candidate - self._origin) * 1e-6,
+                    confirmed=(confirmed - self._origin) * 1e-6,
+                    duration=(confirmed - candidate) * 1e-6,
+                ))
+                self.summary_label.show()
+            else:
+                self.summary_label.clear()
+                self.summary_label.hide()
         elif entry:
             report = entry.diagnostics.get('mechanization_verification', {})
             self.note.setText(self.translator.Text_Get('diagnostic.mechanization_note') + '\n' +
@@ -303,16 +328,15 @@ class NavigationDiagnostics(QWidget):
             self.note.setText(self.translator.Text_Get('diagnostic.mechanization_note'))
         self.TimeRange_Set(*self._interval)
 
-    def Recomputed_Set(self, dataset, transitions):
-        self._recomputed_dataset = dataset
-        self._recomputed = transitions
-
     def TimeRange_Set(self, start, end):
         self._interval = start, end
         visible = [dict(row, time=(row['timestamp_us']-self._origin)*1e-6)
                    for row in self._rows
-                   if start <= (row['timestamp_us']-self._origin)*1e-6 <= end]
+                   if self.kind == 'landing' or
+                   start <= (row['timestamp_us']-self._origin)*1e-6 <= end]
         self.model.Rows_Set(visible)
+        if self.kind == 'landing':
+            self.table.setVisible(bool(visible))
         if self.kind == 'gnss':
             counts = self.translator.Text_Get('diagnostic.gnss_counts').format(
                 total=len(self._rows), visible=len(visible),

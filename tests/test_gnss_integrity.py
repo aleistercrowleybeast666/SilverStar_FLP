@@ -6,8 +6,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from silverstar_flp.analysis.gnss_integrity import GeoLocal_ToEnu, GnssIntegrity_Build
+from silverstar_flp.analysis.geodesy import GeoLocal_ToEnu
 from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
+from silverstar_flp.analysis.gnss_vertical_consistency import GnssVerticalConsistency_Build
 from silverstar_flp.core.dataset import DecodedRecord, FlightDataset
 from silverstar_flp.core.diagnostics import ParserDiagnostics
 from silverstar_flp.export.service import ExportLanguage, ExportTheme, FlightExporter
@@ -55,139 +56,117 @@ def Dataset_Build(
     )
 
 
-@pytest.mark.parametrize("window", (1, 2, 5, 10))
-def test_constant_velocity_closes_with_firmware_geodesy(window):
-    result = GnssIntegrity_Build(Dataset_Build(), window)
-    assert result.summary["horizontal"]["valid_window_count"] > 0
-    assert result.summary["horizontal"]["p95_m"] < .03
-    assert result.summary["vertical"]["max_m"] == 0
 
-
-def test_position_drift_grows_with_window_and_is_not_nis():
-    dataset = Dataset_Build(velocity_e=0, position_e_rate=1)
-    medians = [GnssIntegrity_Build(dataset, window).summary["horizontal"]["median_m"]
-               for window in (1, 2, 5, 10)]
-    assert medians[0] < medians[1] < medians[2] < medians[3]
-    np.testing.assert_allclose(medians, (1, 2, 5, 10), atol=.05)
-
-
-def test_short_position_noise_has_finite_robust_statistics():
-    result = GnssIntegrity_Build(Dataset_Build(noise=True), 5)
-    stats = result.summary["horizontal"]
-    assert stats["median_m"] < .03
-    assert stats["max_m"] > 3.9
-    assert stats["p95_m"] >= stats["median_m"]
-
-
-def test_velocity_gap_invalidates_only_crossing_windows():
-    result = GnssIntegrity_Build(Dataset_Build(gap=True), 5)
-    assert not result.valid_en[230]
-    assert result.summary["horizontal"]["coverage"] < 1
-    assert result.valid_en[-1]
-
-
-def test_position_u_invalid_leaves_horizontal_closure():
-    result = GnssIntegrity_Build(Dataset_Build(invalid_pos_u=True), 5)
-    assert result.valid_en.any()
-    assert not result.valid_u.any()
-
-
-def test_position_en_valid_with_aggregate_unusable_keeps_en_closure():
-    result = GnssIntegrity_Build(
-        Dataset_Build(invalid_pos_u=True, position_usable=0), 5
-    )
-    assert result.valid_en.any()
-    assert result.anchored_valid_en.any()
-    assert not result.valid_u.any()
-    assert not result.anchored_valid_u.any()
-
-
-def test_anchored_closure_detects_drift_and_resets_after_gap():
-    clean = GnssIntegrity_Build(Dataset_Build(), 5)
-    drift = GnssIntegrity_Build(Dataset_Build(velocity_e=0), 5)
-    assert clean.summary["anchored_horizontal"]["p95_m"] < .03
-    assert drift.anchored_residual_m[-1, 0] == pytest.approx(20.0, abs=.03)
-    assert np.count_nonzero(drift.anchor_reset_en) == 1
-    gapped = GnssIntegrity_Build(Dataset_Build(gap=True), 5)
-    resets = np.flatnonzero(gapped.anchor_reset_en)
-    assert len(resets) == 2
-    assert np.isnan(gapped.anchored_residual_m[resets[1], 0])
-    assert gapped.anchored_valid_en[-1]
-
-
-def test_short_position_loss_keeps_velocity_chain_and_trailing_window():
-    result = GnssIntegrity_Build(
-        Dataset_Build(invalid_pos_en_range=(275, 281)), 5,
-    )
-    # The position gap must not erase a continuous velocity integral or the
-    # original anchor. A trailing window needs valid endpoints, not every
-    # intermediate position epoch.
-    assert not result.valid_en[278]
-    assert np.isfinite(result.anchored_velocity_displacement_m[278, 0])
-    assert np.isnan(result.anchored_position_displacement_m[278, 0])
-    assert result.anchored_reason_en[278] == "position_invalid"
-    assert result.valid_en[282]
-    assert result.anchor_reset_en.sum() == 1
-    assert result.segment_en[282] == result.segment_en[274]
-    assert result.rolling_reason_en[282] == "valid"
-
-
-def test_legacy_aggregate_validity_is_only_fallback():
+def test_horizontal_and_vertical_native_consistency_have_independent_evidence():
     dataset = Dataset_Build()
-    native = tuple(
-        replace(record, payload={key: value for key, value in record.payload.items()
-                                 if key != "valid_group_mask"})
-        for record in dataset.Records_Get("GNSS_NATIVE")
-    )
-    legacy = replace(dataset, records={**dataset.records, "GNSS_NATIVE": native})
-    assert GnssIntegrity_Build(legacy, 5).valid_en.any()
+    horizontal = GnssIntegrityStream_Build(dataset)
+    vertical = GnssVerticalConsistency_Build(dataset)
+    assert np.nanmax(horizontal.closure_norm_m) < .03
+    assert np.nanmax(np.abs(vertical.error_m)) < 1e-6
+    assert vertical.chain_reset.sum() == 1
 
 
-def test_velocity_en_invalid_leaves_vertical_closure():
-    result = GnssIntegrity_Build(Dataset_Build(invalid_vel_en=True), 5)
-    assert not result.valid_en.any()
-    assert result.valid_u.any()
-
-
-def test_invalid_origin_is_not_used_as_local_frame():
+def test_vertical_signed_error_and_short_position_loss_preserve_reference():
     dataset = Dataset_Build()
-    initial = dataset.initial_state
-    invalid = replace(initial, payload={**initial.payload, "origin_valid_flags": 0})
+    native = []
+    for record in dataset.Records_Get("GNSS_NATIVE"):
+        index = int(record.payload["sequence"])
+        payload = dict(record.payload)
+        payload["ellipsoid_height_mm"] = round(index * 40 + (1000 if index >= 300 else 0))
+        payload["velocity_enu_mps"] = (1.0, 0.0, 1.0)
+        if 275 <= index <= 281:
+            payload["valid_group_mask"] &= ~2
+        native.append(replace(record, payload=payload))
+    dataset = replace(dataset, records={**dataset.records, "GNSS_NATIVE": tuple(native)})
+    result = GnssVerticalConsistency_Build(dataset)
+    assert np.isnan(result.error_m[277])
+    assert result.chain_reset.sum() == 1
+    assert result.error_m[282] == pytest.approx(0, abs=.002)
+    assert result.error_m[350] == pytest.approx(1.0, abs=.002)
+
+
+def test_vertical_velocity_chain_gap_resets_reference_without_changing_horizontal():
+    dataset = Dataset_Build(gap=True)
+    vertical = GnssVerticalConsistency_Build(dataset)
+    horizontal = GnssIntegrityStream_Build(dataset)
+    assert vertical.chain_reset.sum() == 2
+    assert np.isfinite(vertical.error_m[-1])
+    assert horizontal.chain_reset.sum() == 1
+    assert np.nanmax(np.abs(vertical.error_m)) < 1e-6
+
+
+def test_invalid_origin_is_rejected_by_both_diagnostics():
+    dataset = Dataset_Build()
+    invalid = replace(dataset.initial_state, payload={
+        **dataset.initial_state.payload, "origin_valid_flags": 0,
+    })
     dataset = replace(dataset, records={**dataset.records, "INITIAL_STATE": (invalid,)})
     with pytest.raises(ValueError, match="gnss_origin_unavailable"):
-        GnssIntegrity_Build(dataset)
-
-
-def test_nonfinite_vertical_velocity_leaves_horizontal_closure():
-    dataset = Dataset_Build()
-    native = tuple(
-        replace(record, payload={**record.payload, "velocity_enu_mps": (1.0, 0.0, np.nan)})
-        for record in dataset.Records_Get("GNSS_NATIVE")
-    )
-    dataset = replace(dataset, records={**dataset.records, "GNSS_NATIVE": native})
-    result = GnssIntegrity_Build(dataset, 5)
-    assert result.valid_en.any()
-    assert not result.valid_u.any()
+        GnssIntegrityStream_Build(dataset)
+    with pytest.raises(ValueError, match="gnss_origin_unavailable"):
+        GnssVerticalConsistency_Build(dataset)
 
 
 @pytest.mark.parametrize("language", (ExportLanguage.EN, ExportLanguage.ZH))
-def test_integrity_export_has_exactly_three_horizontal_pages(tmp_path, language):
+def test_integrity_export_has_exactly_three_current_pages(tmp_path, language):
     dataset = Dataset_Build()
-    result = GnssIntegrityStream_Build(dataset)
+    horizontal = GnssIntegrityStream_Build(dataset)
+    vertical = GnssVerticalConsistency_Build(dataset)
     exporter = FlightExporter()
-    for kind in ("GNSS_Position_Vs_Integrated_Velocity",
-                 "GNSS_Horizontal_Closure_Error", "GNSS_Receiver_Quality"):
+    for kind in ("GNSS_Horizontal_Consistency_Error",
+                 "GNSS_Vertical_Consistency_Error", "GNSS_Receiver_Information"):
         path = tmp_path / f"{kind}.png"
         exporter._GnssIntegrityPlot_Write(
-            dataset, result, kind, path, language, ExportTheme.LIGHT,
-            0.0, 20.0, {},
+            dataset, horizontal, kind, path, language, ExportTheme.LIGHT,
+            0.0, 20.0, {}, vertical,
         )
         assert path.is_file() and path.stat().st_size > 1000
 
 
 @pytest.mark.parametrize("theme", ("light", "dark"))
+@pytest.mark.parametrize("language", ("en_US", "zh_CN"))
 @pytest.mark.parametrize("font_scale", (1, 2))
-def test_integrity_gui_has_three_horizontal_tabs_and_shared_time_range(theme, font_scale):
+def test_integrity_gui_three_combo_views_and_shared_time_range(theme, language, font_scale):
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QTabWidget
+
+    from silverstar_flp.core.i18n import Translator
+    from silverstar_flp.ui.gnss_integrity import GnssIntegrityPage
+
+    app = QApplication.instance() or QApplication([])
+    page = GnssIntegrityPage(Translator(language))
+    font = page.font()
+    font.setPointSize(max(8, font.pointSize() * font_scale))
+    page.setFont(font)
+    page.Theme_Apply(theme)
+    page.Dataset_Set(Dataset_Build())
+    page.resize(1000, 700)
+    page.show()
+    app.processEvents()
+    assert page.display_combo.count() == page.pages.count() == 3
+    assert [page.display_combo.itemData(index) for index in range(3)] == [
+        "horizontal", "vertical", "receiver",
+    ]
+    assert not page.findChildren(QTabWidget)
+    assert len(page.closure_plot.listDataItems()) == 1
+    assert len(page.vertical_plot.listDataItems()) == 1
+    assert len(page.quality_plot.listDataItems()) == 2
+    assert len(page.satellite_plot.listDataItems()) == 1
+    assert "Offline" in page.status_label.text() or "离线" in page.status_label.text()
+    page.TimeRange_Set(3.0, 8.0)
+    for plot in page.plots:
+        low, high = plot.getViewBox().viewRange()[0]
+        assert abs(low - 3.0) < 1e-6 and abs(high - 8.0) < 1e-6
+    page.display_combo.setCurrentIndex(1)
+    assert page.pages.currentIndex() == 1
+    assert "KF6" in page.vertical_note.text()
+    page.Language_Apply(Translator("zh_CN"))
+    assert page.display_combo.currentText() == "垂直一致性"
+    page.close()
+
+
+def test_integrity_status_labels_recorded_event_separately_from_offline_replay():
     import os
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -196,70 +175,17 @@ def test_integrity_gui_has_three_horizontal_tabs_and_shared_time_range(theme, fo
     from silverstar_flp.ui.gnss_integrity import GnssIntegrityPage
 
     app = QApplication.instance() or QApplication([])
+    dataset = Dataset_Build()
     page = GnssIntegrityPage(Translator("en_US"))
-    font = page.font()
-    font.setPointSize(max(8, font.pointSize() * font_scale))
-    page.setFont(font)
-    page.Theme_Apply(theme)
-    page.Dataset_Set(Dataset_Build())
-    page.resize(900, 600)
-    page.show()
-    app.processEvents()
-    assert page.plot_tabs.count() == 3
-    assert len(page.displacement_plot.listDataItems()) == 4
-    assert len(page.closure_plot.listDataItems()) == 3
-    assert len(page.quality_plot.listDataItems()) == 3
-    assert len(page.satellite_plot.listDataItems()) == 1
-    page.TimeRange_Set(3.0, 8.0)
-    for plot in page.plots:
-        low, high = plot.getViewBox().viewRange()[0]
-        assert abs(low - 3.0) < 1e-6 and abs(high - 8.0) < 1e-6
-    page.Language_Apply(Translator("zh_CN"))
-    assert page.plot_tabs.tabText(1) == "GNSS水平闭合误差"
+    page.Dataset_Set(dataset)
+    page.TimeRange_Set(0.0, 2.0)
+    assert "Offline diagnostic state" in page.status_label.text()
+    event = DecodedRecord(0, "EVENT", 1, 0, 1, 1_000_000, 0, {
+        "event_id": 0x2E, "arg0": 1 << 8,
+    }, 0)
+    dataset = replace(dataset, records={**dataset.records, "EVENT": (event,)})
+    page.Dataset_Set(dataset)
+    page.TimeRange_Set(0.0, 2.0)
+    assert page.status_label.text() == "Recorded current state: SUSPECT"
     page.close()
-
-
-def test_different_resolved_times_close_during_high_acceleration():
-    origin = dict(gnss_origin_latitude_e7=0, gnss_origin_longitude_e7=0,
-                  gnss_origin_height_mm=0, origin_valid_flags=1)
-    initial = DecodedRecord(0, 'INITIAL_STATE', 1, 0, 0, 0, 0, origin, 0)
-    east_per_e7 = GeoLocal_ToEnu(
-        np.array([0]), np.array([1]), np.array([0]), (0, 0, 0),
-    )[0, 0]
-    native = []
-    measurements = []
-    for index in range(501):
-        receive_us = 1_000_000 + index * 40_000
-        position_s = (receive_us - 1_000_000) * 1e-6
-        velocity_s = position_s - .270
-        payload = dict(
-            source_descriptor_id=1, instance_id=0, sequence=index,
-            sample_timestamp_us=receive_us, receive_timestamp_us=receive_us,
-            latitude_e7=0,
-            longitude_e7=round((3.0 * position_s * position_s) / east_per_e7),
-            ellipsoid_height_mm=0,
-            velocity_enu_mps=(6.0 * velocity_s, 0.0, 0.0),
-            valid_group_mask=15, horizontal_accuracy_m=1.0,
-            vertical_accuracy_m=1.0, speed_accuracy_mps=.1, satellite_count=15,
-        )
-        native.append(DecodedRecord(0, 'GNSS_NATIVE', 1, 0, index + 1,
-                                    receive_us, 0, payload, 0))
-        measurement = dict(
-            sequence=index, receive_timestamp_us=receive_us, replay_epoch=1,
-            position_measurement_timestamp_us=receive_us,
-            velocity_measurement_timestamp_us=receive_us - 270_000,
-        )
-        measurements.append(DecodedRecord(
-            0, 'GNSS_MEASUREMENT', 1, 0, index + 1, receive_us,
-            0, measurement, 0,
-        ))
-    dataset = FlightDataset(
-        Path('accelerating.bin'), 0, {}, ParserDiagnostics(),
-        {'INITIAL_STATE': (initial,), 'GNSS_NATIVE': tuple(native),
-         'GNSS_MEASUREMENT': tuple(measurements)}, {},
-    )
-    result = GnssIntegrity_Build(dataset, 5)
-    assert result.valid_en[-1]
-    assert result.evidence_age_us[-1] == 270_000
-    assert result.summary['horizontal']['p95_m'] < .05
-    assert result.rolling_reason_en[-1] == 'valid'
+    app.processEvents()

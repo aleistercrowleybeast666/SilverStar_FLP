@@ -10,7 +10,7 @@ SilverStar_FLP is a Windows desktop application and command-line toolkit for Sil
 and KF6 navigation chains from `START`, compares recorded and recomputed results, visualizes the
 flight, and exports timestamp-faithful data products.
 
-Version: **v0.0.2**
+Version: **v0.0.4**
 
 > Raw `.BIN`/`.sslog` logs and `.ssdecoder` packages are opened read-only. A `.ssflp` v3 project
 > stores one log reference, exact decoder/cache identity, replay settings, notes, and UI state; it
@@ -52,7 +52,7 @@ startup accepts the explicit pair:
 python main.py D:\logs\flight.BIN --decoder D:\logs\flight.ssdecoder
 ```
 
-The dark-blue brand header shows the localized application name, `v0.0.2`, developer credit,
+The dark-blue brand header shows the localized application name, `v0.0.4`, developer credit,
 compact current-project name (with the absolute `.ssflp` path in its tooltip), then flexible
 space, language, and theme. The File menu provides New Project (`Ctrl+N`), Open Project (`Ctrl+O`), Save Project
 (`Ctrl+S`), Save Project As (`Ctrl+Shift+S`), Import Log / Decoder, Export (`Ctrl+E`), and Exit.

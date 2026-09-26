@@ -5,11 +5,11 @@ The normative cross-project GUI specification is
 changing layout, navigation, controls, plots, Replay, 3D views, themes, or i18n. This file is the
 short project entry point and does not duplicate the full CXYL guide.
 
-SilverStar_FLP 0.0.2 fixes these project invariants:
+SilverStar_FLP 0.0.4 fixes these project invariants:
 
 - OS title is always `SilverStar_FLP`; the loaded filename appears only in status/details. On
   supported Windows versions, the native caption uses the current theme's brand blue.
-- The header shows a localized descriptive name, `v0.0.2`, localized developer credit, and a
+- The header shows a localized descriptive name, `v0.0.4`, localized developer credit, and a
   compact current-project name whose tooltip contains the full absolute `.ssflp` path.
   Language/theme fields and popups are deep blue with white text and accent-blue hover rows.
 - The File menu is New Project, Open Project, Save Project, Save Project As, Import Log / Decoder,
@@ -126,26 +126,19 @@ Save As keeps the current .ssflp filename (or flight.ssflp before first save) un
 ordinary Save keeps the current project path. Dialog display does not create directories.
 Log import and Result_<log-stem> export retain their current project-relative rules.
 
-## KF6 advanced diagnostics
-
-Replay hosts an Advanced Offline Diagnostics child tab for KF6 only. Preserve the existing five
-main pages. Firmware-faithful is the default; transient Analysis-only overrides have a persistent
-banner and a separately labeled completed-result summary. Keep diagnostic controls in an internally
-scrollable form, the score plot outside that form, and Reset Charts directly available. All five
-measurement groups use a read-only table with min/median/max and rule tooltips. Background scan
-reuses the main worker/progress/cancel infrastructure. The normal parameter draft must survive
-refreshing the same dataset after a replay. See [diagnostic behavior](KF6_FIELD_ANALYSIS.md).
-
 ## Shared TimeRange and diagnostics
 
 The shared range bar appears only on Flight and State Estimation. It has start/end handles, a
 center handle that shifts the whole interval, one-window left/right buttons, and
-presets/Start/End/Duration. Data Explorer always shows the complete log. State Estimation has six child tabs: State Uncertainty, Innovation, NIS,
-Measurements, GNSS Position Self-Check and Landing. NIS keeps a four-row GNSS
-group summary; Measurements uses two linked plots. GNSS Position Self-Check has
-three plot pages for horizontal displacement, horizontal closure and receiver
-quality. It compares receiver-native position and velocity within the same
-solution epoch and shows evidence gaps and state transitions. Flight visuals end at the final successful
-landing candidate start when evidenced, while State Estimation retains Landing Confirmed.
-Landing recompute uses the existing worker. Persist source/range in .ssflp; do not change
-raw/replay/CSV data for display.
+presets/Start/End/Duration. Data Explorer always shows the complete log. State Estimation has six
+child tabs: State Uncertainty, Innovation, NIS,
+Measurements, GNSS Position Self-Check and Landing. NIS has a two-choice display selector:
+a full-size NIS plot or a four-row GNSS statistics table for the current TimeRange.
+Measurements uses two linked plots. GNSS Position Self-Check has a three-choice display
+selector: horizontal consistency error with revision-2 state transitions, signed offline-only
+vertical consistency error, and receiver information (hAcc/vAcc/sAcc/satellites). It compares
+receiver-native position and velocity within the same solution epoch. Flight visuals end at
+the final successful landing candidate start when evidenced. Landing shows complete-mission
+recorded LANDING_DIAGNOSTIC transactions, the recorded confirmation summary, or an explicit
+absence/disabled message. Persist source/range in .ssflp; display selection does not change
+raw/replay/CSV data.

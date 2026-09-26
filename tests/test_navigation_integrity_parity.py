@@ -24,7 +24,7 @@ def test_c_receiver_native_stream_matches_python_at_every_epoch(tmp_path: Path) 
         / "plugins/builtin/silverstar_algorithm_estimator_kf6"
         / "payload/Algorithm/Estimator/KF6"
     )
-    common = root / "plugins/builtin/silverstar_core_0_0_10/payload/Common"
+    common = root / "plugins/builtin/silverstar_core_0_0_12/payload/Common"
     executable = tmp_path / "integrity-trace.exe"
     command = [
         gcc, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",

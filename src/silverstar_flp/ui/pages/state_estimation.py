@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -113,6 +114,7 @@ class StateEstimationPage(QWidget):
         self._estimator_source: AnalysisSource | None = None
         self._visualization: EstimatorVisualizationSpec | None = None
         self._source_parameters: Mapping[str, object] = {}
+        self._interval = (0.0, float("inf"))
 
         layout = QVBoxLayout(self)
         source_row = QHBoxLayout()
@@ -188,6 +190,19 @@ class StateEstimationPage(QWidget):
     def _NisTab_Build(self) -> None:
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        selector = QHBoxLayout()
+        self.nis_display_label = QLabel()
+        self.nis_display_combo = StandardComboBox()
+        self.nis_display_combo.currentIndexChanged.connect(self._NisDisplay_Changed)
+        selector.addWidget(self.nis_display_label)
+        selector.addWidget(self.nis_display_combo)
+        selector.addStretch(1)
+        layout.addLayout(selector)
+        self.nis_pages = QStackedWidget()
+        layout.addWidget(self.nis_pages, 1)
+
+        plot_page = QWidget()
+        plot_layout = QVBoxLayout(plot_page)
         controls = QHBoxLayout()
         self.nis_measurement_label = QLabel()
         self.nis_measurement_combo = StandardComboBox()
@@ -195,18 +210,32 @@ class StateEstimationPage(QWidget):
         controls.addWidget(self.nis_measurement_label)
         controls.addWidget(self.nis_measurement_combo)
         controls.addStretch(1)
-        layout.addLayout(controls)
+        plot_layout.addLayout(controls)
         self.nis_plot = self._Plot_Create()
-        layout.addWidget(self.nis_plot)
+        plot_layout.addWidget(self.nis_plot, 1)
+        self.nis_pages.addWidget(plot_page)
+
+        summary_page = QWidget()
+        summary_layout = QVBoxLayout(summary_page)
+        self.nis_scope_label = QLabel()
+        summary_layout.addWidget(self.nis_scope_label)
         self.nis_summary = QTableWidget(4, 6)
         TouchScroll_Enable(self.nis_summary)
-        self.nis_summary.setMaximumHeight(182)
         self.nis_summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.nis_summary.verticalHeader().setVisible(False)
         self.nis_summary.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.nis_summary)
+        summary_layout.addWidget(self.nis_summary, 1)
+        self.nis_pages.addWidget(summary_page)
         self.tabs.addTab(widget, "")
+
+    def _NisDisplay_Changed(self, index: int) -> None:
+        if 0 <= index < self.nis_pages.count():
+            self.nis_pages.setCurrentIndex(index)
+
+    def TimeRange_Set(self, start: float, end: float) -> None:
+        self._interval = (start, end)
+        self._NisSummary_Set()
 
     def _MeasurementsTab_Build(self) -> None:
         widget = QWidget()
@@ -806,14 +835,26 @@ class StateEstimationPage(QWidget):
                 if raw.ndim > 1:
                     column = group.update_result_index
                     raw = raw[:, column] if column < raw.shape[1] else raw[:, 0]
-                values = raw[results.valid]
+                times = (
+                    results.timestamp_us.astype(np.float64) - self._StartTimestamp_Get()
+                ) * 1e-6
+                visible = (
+                    results.valid & (times >= self._interval[0])
+                    & (times <= self._interval[1])
+                )
+                values = raw[visible]
             counts = (int(np.count_nonzero(values == code)) for code in (0, 1, 2))
             p95 = np.nan
             if nis is not None:
                 raw = np.asarray(nis.values, dtype=np.float64)
                 if raw.ndim > 1:
                     raw = raw[:, 0]
-                valid = raw[nis.valid & np.isfinite(raw)]
+                times = (nis.timestamp_us.astype(np.float64) - self._StartTimestamp_Get()) * 1e-6
+                visible = (
+                    nis.valid & np.isfinite(raw) & (times >= self._interval[0])
+                    & (times <= self._interval[1])
+                )
+                valid = raw[visible]
                 if valid.size:
                     p95 = float(np.percentile(valid, 95))
             latest = self._UpdateResult_Text(values[-1]) if values.size else "—"
@@ -884,14 +925,24 @@ class StateEstimationPage(QWidget):
             self.tabs.setTabText(
                 self.tabs.indexOf(panel), translator.Text_Get("diagnostic." + kind)
             )
-            if kind == "landing":
-                panel.recompute_button.setText(translator.Text_Get("diagnostic.recompute_landing"))
         self._translator = translator
         self.source_label.setText(translator.Text_Get("label.estimator_source"))
         self.reset_charts_button.setText(translator.Text_Get("action.reset_charts"))
         self.reset_charts_button.setToolTip(
             translator.Text_Get("action.reset_charts_tooltip")
         )
+        selected_nis = self.nis_display_combo.currentData()
+        self.nis_display_combo.blockSignals(True)
+        self.nis_display_combo.clear()
+        for key, value in (("state.nis_curve", "curve"),
+                           ("state.nis_groups", "groups")):
+            self.nis_display_combo.addItem(translator.Text_Get(key), value)
+        nis_index = self.nis_display_combo.findData(selected_nis)
+        self.nis_display_combo.setCurrentIndex(max(nis_index, 0))
+        self.nis_display_combo.blockSignals(False)
+        self.nis_pages.setCurrentIndex(max(nis_index, 0))
+        self.nis_display_label.setText(translator.Text_Get("state.display_content"))
+        self.nis_scope_label.setText(translator.Text_Get("state.nis_scope_current_range"))
         self.state_group_label.setText(translator.Text_Get("state.state_group"))
         self.covariance_display_label.setText(translator.Text_Get("state.display"))
         for label in (

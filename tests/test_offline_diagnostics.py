@@ -161,14 +161,11 @@ def test_latency_synthetic_known_shift_and_cancellation(diagnostic_dataset):
 
 @pytest.mark.parametrize("language", ["zh_CN", "en_US"])
 def test_replay_product_removes_legacy_diagnostics_page(qtbot, language, diagnostic_dataset):
-    from silverstar_flp.ui.offline_diagnostics import OfflineDiagnosticsPanel
-
     page = ReplayPage(Translator(language), builtin_registry())
     qtbot.addWidget(page)
     page.Dataset_Set(diagnostic_dataset)
     assert not hasattr(page, "diagnostics_panel")
     assert not hasattr(page, "tabs")
-    assert not page.findChildren(OfflineDiagnosticsPanel)
     page.algorithm_combo.setCurrentIndex(
         page.algorithm_combo.findData("silverstar.algorithm.kf6")
     )

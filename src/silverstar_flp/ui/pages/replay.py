@@ -695,24 +695,6 @@ class ReplayPage(QWidget):
                 ),
             ]
             lines = (*lines, *verification_lines)
-        integrity = entry.diagnostics.get("integrity_assistance")
-        if isinstance(integrity, Mapping):
-            transitions = integrity.get("transitions", ())
-            lines = (*lines, self._translator.Text_Get(
-                "replay.integrity_summary",
-                transitions=len(transitions),
-                disabled=float(integrity.get("disabled_duration_s", 0.0)),
-                reanchors=int(integrity.get("reanchor_count", 0)),
-            ))
-            config = integrity.get("parameters", {})
-            if isinstance(config, Mapping):
-                lines = (*lines, self._translator.Text_Get(
-                    "replay.integrity_parameters",
-                    window=config.get("window_s", "—"),
-                    rolling=config.get("rolling_threshold_m", "—"),
-                    anchored=config.get("anchored_threshold_m", "—"),
-                    scale=config.get("integrity_scale", "—"),
-                ))
         if entry.analysis_only:
             lines = (self._translator.Text_Get("diagnostic.analysis_notice"), *lines)
         self.result_information_label.setText("\n".join(lines))

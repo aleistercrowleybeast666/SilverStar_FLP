@@ -238,7 +238,6 @@ class MainWindow(QMainWindow):
             self._translator,
             self._registry,
         )
-        self.state_estimation_page.navigation_diagnostics["landing"].recomputeRequested.connect(self._LandingReplay_Start)
         self.explorer_page = DataExplorerPage(self._translator)
         self._page_widgets = (
             self.overview_page,
@@ -769,24 +768,12 @@ class MainWindow(QMainWindow):
             origin = self._channel_resolver.MissionReplayBounds_Get().start_timestamp_us
             self.flight_page.TimeRange_Set(origin + round(model.start * 1e6),
                                            origin + round(model.end * 1e6))
-        for panel in self.state_estimation_page.navigation_diagnostics.values():
-            panel.TimeRange_Set(model.start, model.end)
+        self.state_estimation_page.TimeRange_Set(model.start, model.end)
+        for kind, panel in self.state_estimation_page.navigation_diagnostics.items():
+            if kind != "landing":
+                panel.TimeRange_Set(model.start, model.end)
         self.state_estimation_page.gnss_integrity.TimeRange_Set(model.start, model.end)
         self._Project_MarkDirty()
-
-    def _LandingReplay_Start(self):
-        if self._dataset is None:
-            return
-        from silverstar_flp.analysis.landing_window import LandingReplay_Run
-        dataset = self._dataset
-        def complete(result):
-            panel = self.state_estimation_page.navigation_diagnostics["landing"]
-            panel.Recomputed_Set(dataset, result["transitions"])
-            panel.Dataset_Set(dataset, self._channel_resolver)
-            panel.note.setText(self._translator.Text_Get("diagnostic.landing_note") + "\n" +
-                               self._translator.Text_Get("diagnostic." + result["reason"]))
-        self._Task_Start(FunctionWorker(lambda context: LandingReplay_Run(dataset, context)),
-                         complete, self._Error_Show)
 
     def _Replay_Start(self, algorithm_id: str, request: ReplayRequest) -> None:
         if self._dataset is None:

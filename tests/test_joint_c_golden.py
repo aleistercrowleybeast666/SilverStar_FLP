@@ -7,10 +7,13 @@ never writes to that repository or claims validation of an actual flight log.
 import os
 from pathlib import Path
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import numpy as np
 import pytest
 
 from silverstar_flp.decoder_profiles.discovery import DecoderProfileCache
+from silverstar_flp.export.service import ExportLanguage, ExportOptions, FlightExporter
 from silverstar_flp.log_open import LogOpenCoordinator, LogOpenRequest
 from silverstar_flp.plugins.api.algorithm import ReplayFidelity, ReplayMode, ReplayRequest
 from silverstar_flp.plugins.registry import builtin_registry
@@ -103,3 +106,45 @@ def test_generated_c_log_exact_decoder_replay_and_mechanization(tmp_path):
         expected = {r.timestamp_us:r.payload[field] for r in dataset.Records_Get(name)}
         np.testing.assert_allclose(actual.values, [expected[int(t)] for t in actual.timestamp_us],
                                    rtol=1e-6, atol=5e-7)
+
+    exported = FlightExporter().export(
+        dataset, tmp_path / "export",
+        options=ExportOptions(
+            language=ExportLanguage.EN, include_overview=False,
+            include_diagnostics=False, include_events=False, include_csv=False,
+            include_full_covariance_keyframes=False, include_plots=True,
+            include_trajectory_3d=False, include_attitude_gif=False,
+            page_mode="Full",
+        ),
+    )
+    names = {path.name for path in exported.files}
+    for kind in (
+        "GNSS_Horizontal_Consistency_Error",
+        "GNSS_Vertical_Consistency_Error",
+        "GNSS_Receiver_Information",
+    ):
+        assert any(kind in name for name in names)
+    assert not any("GNSS_Position_Vs_Integrated_Velocity" in name for name in names)
+    labels = {item.localized_name for item in exported.generated
+              if item.item_id.startswith("gnss_integrity:")}
+    assert labels == {
+        "GNSS Horizontal Consistency Error",
+        "GNSS Vertical Consistency Error",
+        "GNSS Receiver Information",
+    }
+
+    from PySide6.QtWidgets import QApplication
+
+    from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultStore
+    from silverstar_flp.core.i18n import Translator
+    from silverstar_flp.ui.navigation_diagnostics import NavigationDiagnostics
+
+    application = QApplication.instance() or QApplication([])
+    landing = NavigationDiagnostics("landing", Translator("en_US"))
+    landing.Dataset_Set(dataset, ChannelResolver(dataset, ReplayResultStore()))
+    landing.TimeRange_Set(0.0, 30.0)
+    assert landing.model.rowCount() == len(dataset.Records_Get("LANDING_DIAGNOSTIC")) == 0
+    assert landing.table.isHidden()
+    assert "no recorded landing diagnostics" in landing.note.text().lower()
+    landing.close()
+    application.processEvents()

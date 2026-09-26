@@ -1,6 +1,6 @@
 # KF6 field analysis and project paths
 
-FLP remains 0.0.2; `.ssflp` remains v3 with one log per project. Decoder/project semantics stay
+FLP remains 0.0.4; `.ssflp` remains v3 with one log per project. Decoder/project semantics stay
 1.2, parameter schema stays 1.0 and wire formats are unchanged. Exact validation snapshots live
 only in [VALIDATION.md](../VALIDATION.md).
 
@@ -63,44 +63,14 @@ is absent unless a verified interval is explicitly supplied with `--stationary-u
 The programmatic summary accepts a reference velocity series; absent reference data yields null,
 not a claimed accuracy. Without multiple qualified real logs, retain conservative flight defaults.
 
-## Advanced Offline Diagnostics in Replay
+## Replay diagnostics
 
-Select KF6 in Replay, then open its Advanced Offline Diagnostics child tab. This does not add a
-main navigation page. Firmware-faithful is the default; Analysis-only is an explicit transient
-mode with a persistent banner and a separate last-result summary. Base parameters retain their
-existing Recorded Configuration / What-if meaning.
-
-- Inspect Measurement Weights runs through the existing worker and reports five groups:
-  position EN/U, velocity EN/U, and Baro U. It shows configured/native sigma, receiver/U scales,
-  recorded origin variance, firmware effective sigma, analysis effective sigma/R, and the actual
-  rule. Dynamic values are min/median/max, not an invented fixed R. R is the input before NIS soft
-  weighting; native statistics cover available canonical-source records, while effective R covers
-  the replay schedule. Position uses m/m²; velocity uses m/s and m²/s². Missing native values stay N/A.
-- Manual shift uses -500…+500 ms, step 5 ms. Negative moves GNSS velocity earlier; positive delays
-  it. It changes actual replay input and receiver variance, not just a plot. Manual zero preserves
-  the original schedule including edges. Scan zero intentionally uses the common interior window,
-  so scan scores and a full unshifted run are not identical evaluation windows.
-- Auto Scan uses the existing background worker, progress and cancel controls. It reports best
-  shift, zero/best scores, improvement, a sampled 5%-of-minimum envelope and the score curve.
-  This width is neither a confidence interval nor necessarily one contiguous minimum. Apply Best
-  is the only operation that applies the estimate to the current analysis and runs it. Scanning
-  alone does not change the controls. No fixed firmware compensation is authorized by a minimum.
-- Baro effective sigma override directly uses R=sigma², bypassing both the native floor and origin
-  addition. The input range is 1.5…100 m. The inspector retains the firmware-side R for comparison;
-  source native variances and the production resolver are never overwritten.
-- Disable GNSS pU actually skips only the vertical position update. It does not use a huge sigma;
-  E/N position continues through its normal update. Gravity, P0, Q, NIS and policy defaults are
-  unchanged. Analysis uses the recorded initial state; it is not a simulated pre-START solve.
-- Restore Firmware-faithful resets every transient switch/value and the scan. Existing completed
-  Analysis-only results retain their original labels; restoring controls does not relabel curves.
-
-Diagnostic options live outside ReplayRequest's parameter schema and outside `.ssflp`/decoder.
-A project save omits analysis-only stored configurations and only persists the normal parameter
-draft/results. Recorded Configuration remains immutable. Export Diagnostic Result creates a new
-JSON containing log/decoder identity, base parameters, transient overrides, R audit and optional
-scan. Existing filenames are not overwritten. Normal replay exports also include diagnostic
-metadata and explicit Analysis-only source labels. This adds no automatic tuning, firmware write,
-OOSM, adaptive R, P0/Q tuning, or multi-log project format.
+Replay retains Recorded Configuration, Offline defaults and normal What-if. The selected source
+supplies the shared State Estimation measurements, group NIS and navigation diagnostics.
+GNSS Position Self-Check compares receiver-native horizontal position change with the matching
+velocity integral; its vertical trace is an offline-only diagnostic and does not alter firmware
+GNSS integrity, KF6 gating or NIS. The former Advanced Offline Diagnostics prototype is no
+longer a product GUI path. Recorded Configuration remains immutable.
 
 ## Default Project Root and result directories
 
