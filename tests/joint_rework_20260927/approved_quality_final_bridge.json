@@ -1,0 +1,364 @@
+{
+  "hashes": {
+    "actual_backend_logger.BIN": "253dd88e57bb7f672ad2ed174979f19f632cee58e71a36eb6d7452455bc20e07",
+    "ActualBackendLoggerBridgeTest.ssdecoder": "2c58fa36a1e40a27801e775b02640f6a460df00d12b58a0640bc3331b4102c46"
+  },
+  "record_count": 491,
+  "accel_bias_unit": "m/s²",
+  "fidelity": "EXACT",
+  "claim": "FAITHFUL",
+  "recorded_parity": {
+    "passed": true,
+    "scope": "recorded revision 1 float32/float64 parity; absolute 2e-4, relative 3e-4; results exact",
+    "missing_evidence": [],
+    "stream_intact": true,
+    "first_difference": null,
+    "maximum_absolute_error": {
+      "navigation.position_enu": 9.511709919696187e-09,
+      "navigation.velocity_enu": 1.2760996054815565e-07,
+      "attitude.q_nb": 8.662383577107136e-08,
+      "eskf15.gyro_bias": 9.098813596417369e-11,
+      "eskf15.accel_bias": 1.4827100975819962e-08,
+      "eskf15.covariance.diagonal": 4.490187803796175e-07,
+      "eskf15.covariance.upper_triangle": 7.301758455371347e-07,
+      "eskf15.innovation.position_en": 5.5583555962123235e-09,
+      "eskf15.nis.position_en": 3.6348926661594353e-12,
+      "eskf15.update_result.position_en": 0.0,
+      "eskf15.physically_valid.position_en": 0.0,
+      "eskf15.admitted.position_en": 0.0,
+      "eskf15.effective_variance.position_en": 0.0,
+      "eskf15.innovation.position_u": 8.541249041371657e-09,
+      "eskf15.nis.position_u": 1.531160403003308e-10,
+      "eskf15.update_result.position_u": 0.0,
+      "eskf15.physically_valid.position_u": 0.0,
+      "eskf15.admitted.position_u": 0.0,
+      "eskf15.effective_variance.position_u": 0.0,
+      "eskf15.innovation.velocity_en": 1.0629561211696753e-07,
+      "eskf15.nis.velocity_en": 1.9860869148618544e-08,
+      "eskf15.update_result.velocity_en": 0.0,
+      "eskf15.physically_valid.velocity_en": 0.0,
+      "eskf15.admitted.velocity_en": 0.0,
+      "eskf15.effective_variance.velocity_en": 0.0,
+      "eskf15.innovation.velocity_u": 6.677746034302115e-08,
+      "eskf15.nis.velocity_u": 3.1105674068183237e-08,
+      "eskf15.update_result.velocity_u": 0.0,
+      "eskf15.physically_valid.velocity_u": 0.0,
+      "eskf15.admitted.velocity_u": 0.0,
+      "eskf15.effective_variance.velocity_u": 0.0,
+      "eskf15.innovation.baro": 7.2263090442059585e-09,
+      "eskf15.nis.baro": 1.596405530554859e-10,
+      "eskf15.update_result.baro": 0.0,
+      "eskf15.physically_valid.baro": 0.0,
+      "eskf15.admitted.baro": 0.0,
+      "eskf15.effective_variance.baro": 0.0
+    },
+    "unattempted_diagnostic_rows_unavailable": {
+      "eskf15.innovation.position_en": 2,
+      "eskf15.nis.position_en": 2,
+      "eskf15.effective_variance.position_en": 2,
+      "eskf15.innovation.position_u": 2,
+      "eskf15.nis.position_u": 2,
+      "eskf15.effective_variance.position_u": 2,
+      "eskf15.innovation.velocity_en": 2,
+      "eskf15.nis.velocity_en": 2,
+      "eskf15.effective_variance.velocity_en": 2,
+      "eskf15.innovation.velocity_u": 2,
+      "eskf15.nis.velocity_u": 2,
+      "eskf15.effective_variance.velocity_u": 2,
+      "eskf15.innovation.baro": 1,
+      "eskf15.nis.baro": 1,
+      "eskf15.effective_variance.baro": 1
+    },
+    "cross_covariance_comparison": "compared"
+  },
+  "health_comparisons": [
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10004000,
+      "recorded": 0,
+      "replay": 0
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10044000,
+      "recorded": 0,
+      "replay": 0
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10084000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10124000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10164000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10204000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10244000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10284000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10324000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10364000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10404000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10444000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10484000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10524000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10564000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10604000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10644000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10684000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10724000,
+      "recorded": 2,
+      "replay": 2
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10764000,
+      "recorded": 2,
+      "replay": 2
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10080000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10120000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10160000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10200000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10240000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10280000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10320000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10360000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10400000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10440000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10480000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10520000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10560000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10600000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10640000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10680000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10720000,
+      "recorded": 2,
+      "replay": 2
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10760000,
+      "recorded": 2,
+      "replay": 2
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10780000,
+      "recorded": 1,
+      "replay": 1
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10800000,
+      "recorded": 1,
+      "replay": 1
+    }
+  ],
+  "health_equal": 40,
+  "numerical_diagnostics_identical_to_before_quality_integration": true,
+  "data_quality": {
+    "status": "clean",
+    "valid_record_count": 491,
+    "crc_failure_count": 0,
+    "length_failure_count": 0,
+    "resync_count": 0,
+    "sequence_gap_count": 0,
+    "sequence_missing_count": 0,
+    "unknown_record_count": 0,
+    "decoder_failure_count": 0,
+    "damaged_span_count": 0,
+    "logger_overflow_count": null,
+    "logger_queue_overflow_count": null,
+    "imu_queue_overflow_count": null,
+    "logger_overflow_event_count": 0,
+    "gap_segments": 0,
+    "missing_ids": 0,
+    "missing_sequence_ids": 0,
+    "queue_overflow": {
+      "logger": null,
+      "imu": null
+    },
+    "sequence_gaps": [],
+    "mission_record_continuity": "unknown",
+    "structural_integrity": "normal",
+    "truncated_tail": false,
+    "record_counts": {
+      "DECODER_PROFILE_DESCRIPTOR": 1,
+      "SYSTEM_CONFIG": 1,
+      "DEVICE_DESCRIPTOR": 12,
+      "ALGORITHM_DESCRIPTOR": 4,
+      "LOG_STREAM_DESCRIPTOR": 35,
+      "CALIBRATION_RESULT": 1,
+      "EVENT": 12,
+      "MISSION_CONFIG": 1,
+      "ESKF15_INITIAL_STATE": 1,
+      "ESKF15_INITIAL_P_PART": 4,
+      "ESKF15_STATE": 20,
+      "ESKF15_FULL_P_PART": 80,
+      "ESKF15_BODY_INPUT": 200,
+      "ESKF15_MEASUREMENT": 99,
+      "NAV_QUALITY": 20
+    }
+  },
+  "inputs_unchanged": true,
+  "export_scope": "Prior 361-file export retained; export implementation unchanged; no repeated full export."
+}

@@ -1,0 +1,329 @@
+{
+  "scope": "Separate health audit; existing recorded_parity covers nominal/P/measurements, not health.",
+  "consumer_status": "Four pending integration files not modified; quality variance scale is not yet supplied to supervisor.",
+  "rows": [
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10004000,
+      "recorded": 0,
+      "replay": 0,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10044000,
+      "recorded": 0,
+      "replay": 0,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10084000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10124000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10164000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10204000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10244000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10284000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10324000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10364000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10404000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10444000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10484000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10524000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10564000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10604000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10644000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10684000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10724000,
+      "recorded": 2,
+      "replay": 2,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "ESKF15_STATE",
+      "timestamp_us": 10764000,
+      "recorded": 2,
+      "replay": 2,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10080000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10120000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10160000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10200000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10240000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10280000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10320000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10360000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10400000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10440000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10480000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10520000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10560000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10600000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10640000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10680000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10720000,
+      "recorded": 2,
+      "replay": 2,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10760000,
+      "recorded": 2,
+      "replay": 2,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10780000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    },
+    {
+      "record": "NAV_QUALITY",
+      "timestamp_us": 10800000,
+      "recorded": 1,
+      "replay": 1,
+      "exact_timestamp_match": true,
+      "equal": true
+    }
+  ],
+  "compared": 40,
+  "mismatches": [],
+  "missing": []
+}

@@ -1,0 +1,107 @@
+{
+  "source": "SS0003",
+  "source_sha256": "1cc5c363610245b1eefcab0f2beab6a5cf128ee4049fa6dc9e2deb1a703a588a",
+  "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+  "source_bytes": 13536311,
+  "inputs_unchanged": true,
+  "legacy_kf6_status": "completed",
+  "legacy_kf6_error": null,
+  "eskf15_status": "completed",
+  "eskf15_fidelity": "APPROXIMATE",
+  "warnings": [
+    "eskf15_host_parity_scope_limited",
+    "eskf15_legacy_log_what_if",
+    "eskf15_native_epoch_unavailable"
+  ],
+  "interpretation": "旧固件真实日志上的新 ESKF What-if；无外部真值，不以末位置差或内部一致性声称绝对精度。",
+  "epoch_count": 20203,
+  "duration_s": 201.805001,
+  "quaternion_norm_max_error": 2.220446049250313e-16,
+  "full_covariance_min_eigenvalue": 3.063915446115352e-07,
+  "full_covariance_all_finite": true,
+  "nominal_output_all_finite": true,
+  "final_navigation_health": 1,
+  "health_epoch_counts": {
+    "0": 29,
+    "1": 20174
+  },
+  "maximum_gyro_bias_norm_radps": 0.04942085075933549,
+  "maximum_accel_bias_norm_mps2": 0.29120281775878276,
+  "recorded_kf6_endpoint_enu_m": [
+    1607.6805419921875,
+    -2416.830078125,
+    1.993447184562683
+  ],
+  "eskf15_what_if_endpoint_enu_m": [
+    -6.777286607485233,
+    209.23245034593262,
+    3.1372017305833118
+  ],
+  "first_failure": null,
+  "first_health_state_us": {
+    "0": 207325556,
+    "1": 207615556,
+    "2": null,
+    "3": null,
+    "4": null
+  },
+  "maximum_position_step_m": 0.20036789536363264,
+  "last_velocity_enu_mps": [
+    -0.8364474833405664,
+    0.3012486973893865,
+    0.5792325363819958
+  ],
+  "runtime_seconds_host_python": 554.4293853999989,
+  "replay_step_count": 628599,
+  "maximum_single_replay_steps": 63,
+  "reset_count": 0,
+  "imu_clip_evidence": "unavailable: old log lacks declared effective range/readback/clip flags; no inferred success",
+  "fusion_groups": {
+    "position_en": {
+      "outcome_counts": {
+        "0": 5033
+      },
+      "maximum_effective_fusion_gap_s": 0.052002,
+      "last_effective_fusion_us": 409121559
+    },
+    "position_u": {
+      "outcome_counts": {
+        "0": 4958,
+        "1": 58,
+        "2": 17
+      },
+      "maximum_effective_fusion_gap_s": 0.72,
+      "last_effective_fusion_us": 409121559
+    },
+    "velocity_en": {
+      "outcome_counts": {
+        "0": 4923,
+        "1": 58,
+        "2": 45,
+        "18": 7
+      },
+      "maximum_effective_fusion_gap_s": 0.799001,
+      "last_effective_fusion_us": 409121559
+    },
+    "velocity_u": {
+      "outcome_counts": {
+        "0": 4901,
+        "1": 101,
+        "2": 24,
+        "18": 7
+      },
+      "maximum_effective_fusion_gap_s": 0.29,
+      "last_effective_fusion_us": 409121559
+    },
+    "baro": {
+      "outcome_counts": {
+        "0": 10351
+      },
+      "maximum_effective_fusion_gap_s": 0.032,
+      "last_effective_fusion_us": 409121559
+    }
+  },
+  "window_count": 39,
+  "window_valid_count": 39,
+  "window_evidence_scope": "旧 GNSS_NATIVE 缺可信 iTOW，接收/样本时刻的窗口为近似证据"
+}

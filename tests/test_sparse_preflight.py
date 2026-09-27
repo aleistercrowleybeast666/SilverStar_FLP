@@ -9,7 +9,7 @@ from silverstar_flp.core.analysis_source import ChannelResolver, ReplayResultSto
 from silverstar_flp.core.diagnostics import DataQualityStatus
 from silverstar_flp.core.i18n import Translator
 from silverstar_flp.export.service import ExportOptions, FlightExporter
-from silverstar_flp.plugins.api.algorithm import ReplayFidelity, ReplayRequest
+from silverstar_flp.plugins.api.algorithm import ReplayFidelity, ReplayMode, ReplayRequest
 from silverstar_flp.plugins.registry import builtin_registry
 from silverstar_flp.ui.pages.data_explorer import DataExplorerPage
 from silverstar_flp.ui.pages.overview import OverviewPage
@@ -19,8 +19,9 @@ from tests.synthetic_parameter_navigation import NavigationPair_Open
 
 
 def test_sparse_120_seconds_import_replay_pages_and_export(tmp_path):
-    dataset = NavigationPair_Open(tmp_path / "sparse", preflight_us=120_000_000,
-                                  flight_samples=2001).dataset
+    dataset = NavigationPair_Open(
+        tmp_path / "sparse", preflight_us=120_000_000, flight_samples=2001
+    ).dataset
     assert dataset.diagnostics.header_valid
     assert dataset.diagnostics.record_crc_failures == 0
     assert dataset.diagnostics.sequence_gap_count == 0
@@ -34,7 +35,12 @@ def test_sparse_120_seconds_import_replay_pages_and_export(tmp_path):
     store = ReplayResultStore()
     registry = builtin_registry()
     for plugin in registry.algorithms:
-        result = plugin.run(dataset, ReplayRequest())
+        mode = (
+            ReplayMode.RECORDED_CONFIGURATION
+            if plugin.FirmwareMember_Is(dataset)
+            else ReplayMode.WHAT_IF
+        )
+        result = plugin.run(dataset, ReplayRequest(mode=mode))
         assert result.fidelity != ReplayFidelity.UNAVAILABLE
         assert not result.missing_inputs
         assert result.channels
@@ -45,8 +51,12 @@ def test_sparse_120_seconds_import_replay_pages_and_export(tmp_path):
     app = QApplication.instance() or QApplication([])
     translator = Translator("en_US")
     resolver = ChannelResolver(dataset, store)
-    pages = [OverviewPage(translator), DataExplorerPage(translator),
-             StateEstimationPage(translator, registry), ReplayPage(translator, registry)]
+    pages = [
+        OverviewPage(translator),
+        DataExplorerPage(translator),
+        StateEstimationPage(translator, registry),
+        ReplayPage(translator, registry),
+    ]
     for page in pages:
         if isinstance(page, StateEstimationPage):
             page.Dataset_Set(dataset, resolver)
@@ -59,17 +69,29 @@ def test_sparse_120_seconds_import_replay_pages_and_export(tmp_path):
         app.processEvents()
         assert page.grab().save(str(tmp_path / (type(page).__name__ + ".png")))
         page.close()
-    manifest = FlightExporter().export(dataset, tmp_path / "export", algorithm_results=results,
-        options=ExportOptions(include_overview=True, include_diagnostics=True, include_events=True,
-            include_csv=True, include_plots=True, include_full_covariance_keyframes=False,
-            include_trajectory_3d=False, include_attitude_gif=False))
+    manifest = FlightExporter().export(
+        dataset,
+        tmp_path / "export",
+        algorithm_results=results,
+        options=ExportOptions(
+            include_overview=True,
+            include_diagnostics=True,
+            include_events=True,
+            include_csv=True,
+            include_plots=True,
+            include_full_covariance_keyframes=False,
+            include_trajectory_3d=False,
+            include_attitude_gif=False,
+        ),
+    )
     assert not manifest.failures
     assert list((tmp_path / "export").rglob("*.png"))
 
 
 def test_sparse_preflight_does_not_hide_missing_mission_imu(tmp_path):
-    dataset = NavigationPair_Open(tmp_path / "missing", preflight_us=120_000_000,
-                                  flight_samples=2001, omit_imu=True).dataset
+    dataset = NavigationPair_Open(
+        tmp_path / "missing", preflight_us=120_000_000, flight_samples=2001, omit_imu=True
+    ).dataset
     assert dataset.diagnostics.sequence_gap_count == 0
     for plugin in builtin_registry().algorithms:
         try:

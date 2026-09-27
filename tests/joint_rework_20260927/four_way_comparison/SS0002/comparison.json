@@ -1,0 +1,228 @@
+{
+  "source": "SS0002",
+  "source_sha256": "b9e8e6a56a18497acb5e6405881fe5128464e478edb1a793822951a55b6989cc",
+  "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+  "data_quality": {
+    "status": "clean",
+    "valid_record_count": 211965,
+    "crc_failure_count": 0,
+    "length_failure_count": 0,
+    "resync_count": 0,
+    "sequence_gap_count": 0,
+    "sequence_missing_count": 0,
+    "unknown_record_count": 0,
+    "decoder_failure_count": 0,
+    "damaged_span_count": 0,
+    "logger_overflow_count": 0,
+    "logger_queue_overflow_count": 0,
+    "imu_queue_overflow_count": 0,
+    "logger_overflow_event_count": 0,
+    "gap_segments": 0,
+    "missing_ids": 0,
+    "missing_sequence_ids": 0,
+    "queue_overflow": {
+      "logger": 0,
+      "imu": 0
+    },
+    "sequence_gaps": [],
+    "mission_record_continuity": "continuous",
+    "structural_integrity": "normal",
+    "truncated_tail": false,
+    "record_counts": {
+      "EVENT": 85,
+      "CALIBRATION_RESULT": 1,
+      "DECODER_PROFILE_DESCRIPTOR": 1,
+      "SYSTEM_CONFIG": 2,
+      "DEVICE_DESCRIPTOR": 24,
+      "ALGORITHM_DESCRIPTOR": 8,
+      "LOG_STREAM_DESCRIPTOR": 56,
+      "ALIGNMENT_RESULT": 3,
+      "ESTIMATOR": 6721,
+      "GNSS_NATIVE": 7396,
+      "GNSS_RECOVERY": 1,
+      "BARO_NATIVE": 59368,
+      "POWER": 2785,
+      "HEALTH": 297,
+      "STATS": 297,
+      "MISSION_CONFIG": 1,
+      "INITIAL_STATE": 1,
+      "IMU_CORRECTED": 59367,
+      "TELEMETRY_DIAG": 297,
+      "ESTIMATOR_STEP": 29683,
+      "INERTIAL_INCREMENT": 29683,
+      "BARO_MEASUREMENT": 15554,
+      "LANDING_DIAGNOSTIC": 334
+    }
+  },
+  "initial_state": {
+    "alignment_algorithm": 3,
+    "hardware_mode": 0,
+    "mode_verified": 0,
+    "origin_valid_flags": 2,
+    "alignment_sample_count": 102,
+    "gnss_sample_count": 0,
+    "barometer_sample_count": 100,
+    "reserved": 0,
+    "q_nb": [
+      0.9993860721588135,
+      -0.031253665685653687,
+      0.01582689955830574,
+      0.0004949524882249534
+    ],
+    "acceleration_mean_b_mps2": [
+      -0.30923011898994446,
+      -0.6098926663398743,
+      9.74161148071289
+    ],
+    "gyro_mean_b_radps": [
+      -6.266261334531009e-05,
+      -4.1775077988859266e-05,
+      -0.0012010331265628338
+    ],
+    "magnetic_field_mean_b_uT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "gnss_origin_latitude_e7": 0,
+    "gnss_origin_longitude_e7": 0,
+    "gnss_origin_height_mm": 0,
+    "gnss_origin_position_std_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "initial_velocity_enu_mps": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "initial_velocity_std_mps": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "barometer_origin_altitude_m": 62.459999084472656,
+    "barometer_origin_std_m": 0.0,
+    "p0_diagonal": [
+      4.0,
+      4.0,
+      9.0,
+      0.25,
+      0.25,
+      0.25
+    ]
+  },
+  "A_recorded_endpoint_enu_m": [
+    -15654.7998046875,
+    -21690.171875,
+    -1.6807225942611694
+  ],
+  "B_legacy_kf6": {
+    "status": "failed",
+    "error": "ValueError:gnss_origin_unavailable",
+    "fidelity": null,
+    "endpoint_enu_m": null,
+    "final_velocity_enu_mps": null
+  },
+  "C_revision3_kf6": {
+    "status": "failed",
+    "error": "ValueError:gnss_origin_unavailable",
+    "fidelity": null,
+    "endpoint_enu_m": null,
+    "final_velocity_enu_mps": null,
+    "elapsed_s": 5.556585499987705
+  },
+  "D_eskf15": {
+    "source": "SS0002",
+    "source_sha256": "b9e8e6a56a18497acb5e6405881fe5128464e478edb1a793822951a55b6989cc",
+    "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+    "source_bytes": 18486023,
+    "inputs_unchanged": true,
+    "legacy_kf6_status": "failed",
+    "legacy_kf6_error": "ValueError:gnss_origin_unavailable",
+    "eskf15_status": "completed",
+    "eskf15_fidelity": "APPROXIMATE",
+    "warnings": [
+      "eskf15_host_parity_scope_limited",
+      "eskf15_legacy_log_what_if"
+    ],
+    "interpretation": "旧固件真实日志上的新 ESKF What-if；无外部真值，不以末位置差或内部一致性声称绝对精度。",
+    "epoch_count": 29683,
+    "duration_s": 296.384996,
+    "quaternion_norm_max_error": 2.220446049250313e-16,
+    "full_covariance_min_eigenvalue": 3.1512104655607423e-07,
+    "full_covariance_all_finite": true,
+    "nominal_output_all_finite": true,
+    "final_navigation_health": 4,
+    "health_epoch_counts": {
+      "0": 199,
+      "3": 800,
+      "4": 28684
+    },
+    "maximum_gyro_bias_norm_radps": 0.009306705178679427,
+    "maximum_accel_bias_norm_mps2": 0.08967086073023463,
+    "recorded_kf6_endpoint_enu_m": [
+      -15654.7998046875,
+      -21690.171875,
+      -1.6807225942611694
+    ],
+    "eskf15_what_if_endpoint_enu_m": [
+      -10197.497335757844,
+      8262.156109532496,
+      -1.510974625509653
+    ],
+    "first_failure": null,
+    "first_health_state_us": {
+      "0": 122146561,
+      "1": null,
+      "2": null,
+      "3": 124136562,
+      "4": 132136562
+    },
+    "maximum_position_step_m": 19.170997117308467,
+    "last_velocity_enu_mps": [
+      -75.41110893973519,
+      10.88263284404946,
+      -0.1167941847726106
+    ],
+    "runtime_seconds_host_python": 35.92886109999381,
+    "replay_step_count": 31108,
+    "maximum_single_replay_steps": 2,
+    "reset_count": 0,
+    "imu_clip_evidence": "unavailable: old log lacks declared effective range/readback/clip flags; no inferred success",
+    "fusion_groups": {
+      "position_en": {
+        "status": "no_operations",
+        "maximum_effective_fusion_gap_s": 296.384996
+      },
+      "position_u": {
+        "status": "no_operations",
+        "maximum_effective_fusion_gap_s": 296.384996
+      },
+      "velocity_en": {
+        "status": "no_operations",
+        "maximum_effective_fusion_gap_s": 296.384996
+      },
+      "velocity_u": {
+        "status": "no_operations",
+        "maximum_effective_fusion_gap_s": 296.384996
+      },
+      "baro": {
+        "outcome_counts": {
+          "0": 15554
+        },
+        "maximum_effective_fusion_gap_s": 0.022008,
+        "last_effective_fusion_us": 418521556
+      }
+    },
+    "window_count": 0,
+    "window_valid_count": 0,
+    "window_evidence_scope": "旧 GNSS_NATIVE 缺可信 iTOW，接收/样本时刻的窗口为近似证据"
+  },
+  "interpretation": "No external truth; endpoints are outputs, not accuracy. All new algorithms on these old logs are approximate What-if.",
+  "C_scope": "New physical/quality/window variance and outer fusion health; retained recorded operation/resolved-time schedule. Missing old operations are not fabricated.",
+  "new_quality_parameters": "Four active window parameters; six revision-2 values retained as inactive legacy snapshot. Saved runs use unchanged 120ms/10m/cap4 defaults.",
+  "imu_evidence": "Legacy logs lack actual range/readback/clipping flags; no saturation or hardware qualification inferred.",
+  "source_and_decoder_unchanged": true
+}

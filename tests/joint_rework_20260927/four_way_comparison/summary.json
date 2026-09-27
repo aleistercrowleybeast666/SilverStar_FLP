@@ -1,0 +1,171 @@
+[
+  {
+    "source": "SS0000",
+    "source_sha256": "f774a990536b3b39c38f09639a7f1d9a5100ea15f3d219ee1667d351d3fac381",
+    "B": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        73.9207534790039,
+        -183.5604248046875,
+        -239.74212646484375
+      ],
+      "final_velocity_enu_mps": [
+        23.4055118560791,
+        -57.54561233520508,
+        -78.1540298461914
+      ]
+    },
+    "C": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        282.1622619628906,
+        -667.0371704101562,
+        -1116.981689453125
+      ],
+      "final_velocity_enu_mps": [
+        23.853227615356445,
+        -58.93483352661133,
+        -82.75920867919922
+      ],
+      "elapsed_s": 9.854468400008045
+    },
+    "D_final_health": 4,
+    "inputs_unchanged": true
+  },
+  {
+    "source": "SS0001",
+    "source_sha256": "65e19a1aeec9d24836a9831549156fbf9579a49b6cd822d1de06ca8f61b71e95",
+    "B": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        -8.284005165100098,
+        0.21430961787700653,
+        -0.7298469543457031
+      ],
+      "final_velocity_enu_mps": [
+        -7.796100616455078,
+        -0.8077153563499451,
+        -0.18118909001350403
+      ]
+    },
+    "C": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        -8.284005165100098,
+        0.21430975198745728,
+        -0.7298470139503479
+      ],
+      "final_velocity_enu_mps": [
+        -7.79610013961792,
+        -0.8077152371406555,
+        -0.18118911981582642
+      ],
+      "elapsed_s": 14.96501480002189
+    },
+    "D_final_health": 1,
+    "inputs_unchanged": true
+  },
+  {
+    "source": "SS0002",
+    "source_sha256": "b9e8e6a56a18497acb5e6405881fe5128464e478edb1a793822951a55b6989cc",
+    "B": {
+      "status": "failed",
+      "error": "ValueError:gnss_origin_unavailable",
+      "fidelity": null,
+      "endpoint_enu_m": null,
+      "final_velocity_enu_mps": null
+    },
+    "C": {
+      "status": "failed",
+      "error": "ValueError:gnss_origin_unavailable",
+      "fidelity": null,
+      "endpoint_enu_m": null,
+      "final_velocity_enu_mps": null,
+      "elapsed_s": 5.556585499987705
+    },
+    "D_final_health": 4,
+    "inputs_unchanged": true
+  },
+  {
+    "source": "SS0003",
+    "source_sha256": "1cc5c363610245b1eefcab0f2beab6a5cf128ee4049fa6dc9e2deb1a703a588a",
+    "B": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        1608.1695556640625,
+        -2417.606689453125,
+        1.9932584762573242
+      ],
+      "final_velocity_enu_mps": [
+        54.34125518798828,
+        -86.32849884033203,
+        -0.02191891521215439
+      ]
+    },
+    "C": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        -0.02637288346886635,
+        202.70118713378906,
+        1.9932587146759033
+      ],
+      "final_velocity_enu_mps": [
+        3.9943687915802,
+        -4.571873664855957,
+        -0.021918850019574165
+      ],
+      "elapsed_s": 69.6105208999943
+    },
+    "D_final_health": 1,
+    "inputs_unchanged": true
+  },
+  {
+    "source": "SS0004",
+    "source_sha256": "f19bc4350816b2b3fabd298a788f78e7abf30556a563800ef6da178772b1938c",
+    "B": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        10589.0546875,
+        4925.75,
+        -6833.87939453125
+      ],
+      "final_velocity_enu_mps": [
+        410.11669921875,
+        181.77444458007812,
+        -268.5899963378906
+      ]
+    },
+    "C": {
+      "status": "completed",
+      "error": null,
+      "fidelity": "APPROXIMATE",
+      "endpoint_enu_m": [
+        10589.0546875,
+        4925.75,
+        -6833.87939453125
+      ],
+      "final_velocity_enu_mps": [
+        410.11669921875,
+        181.77444458007812,
+        -268.5899963378906
+      ],
+      "elapsed_s": 93.97488480000175
+    },
+    "D_final_health": 4,
+    "inputs_unchanged": true
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "files": [
+    {
+      "path": "tests/joint_rework_20260927/review_final_bridge.py",
+      "bytes": 4688,
+      "sha256": "ebe4561ae7e7fe33539f9cd3dd7417bc61dde2036dec491bf803403dd828c0fb"
+    },
+    {
+      "path": "tests/joint_rework_20260927/bridge-final-review.log",
+      "bytes": 2639,
+      "sha256": "31e749b5c3ccb047c8e72201b34dadf33ea37d1cae3a11e3b72776e367c2659f"
+    },
+    {
+      "path": "tests/joint_rework_20260927/APPROVAL_VALIDATION_PLAN.md",
+      "bytes": 6120,
+      "sha256": "d29267a32a673a8ec24cf82bb4d29578ff6d7b90e5325315152652e7eac66672"
+    },
+    {
+      "path": "tests/joint_rework_20260927/bridge_final_review/final_review.json",
+      "bytes": 12622,
+      "sha256": "f8942cf80932a912ab7c3b0c29717b7e0337dff0b474c5e3f48b299ff2dd9db8"
+    },
+    {
+      "path": "tests/joint_rework_20260927/bridge_final_review/health_comparison.json",
+      "bytes": 7573,
+      "sha256": "e9f22bb6042279b7bda5e56988327c0364808b4687dc6203904737687b91e12d"
+    },
+    {
+      "path": "tests/joint_rework_20260927/bridge_final_review/protection_summary.json",
+      "bytes": 945,
+      "sha256": "9e818d60d04cbe06e2afc2b8b129741e81b924c78607ddd674c146eb7e78e9ee"
+    }
+  ],
+  "total_bytes": 34587
+}

@@ -104,6 +104,8 @@ class Kf6Filter:
     )
     analysis_position_vertical_disabled: bool = False
     outage_required: bool = True
+    # Old revisions retain their original arithmetic/admission semantics.
+    require_effective_gain: bool = False
     inflation_counts: list[int] = field(default_factory=lambda: [0] * 4)
     gnss_nis_samples: list[list[float]] = field(default_factory=lambda: [[] for _ in range(4)])
     gnss_result_counts: list[list[int]] = field(default_factory=lambda: [[0] * 5 for _ in range(4)])
@@ -305,6 +307,10 @@ class Kf6Filter:
         covariance_previous = self.covariance.copy()
         innovation_variance = np.float32(covariance_previous[2, 2] + effective_variance)
         gain = np.asarray(covariance_previous[:, 2] / innovation_variance, dtype=np.float32)
+        if not self._Gain_IsEffective(gain):
+            result = Kf6UpdateResult.NUMERIC_ERROR
+            self._Counter_Update("baro", result)
+            return result
         self.state = np.asarray(self.state + gain * innovation, dtype=np.float32)
         identity_minus_kh = np.eye(6, dtype=np.float32)
         identity_minus_kh[:, 2] -= gain
@@ -577,6 +583,8 @@ class Kf6Filter:
             result = Kf6UpdateResult.SOFT_WEIGHTED
         cross_covariance = covariance_previous[:, state_offset : state_offset + dimension]
         gain = np.asarray(cross_covariance @ inverse, dtype=np.float32)
+        if not self._Gain_IsEffective(gain):
+            return Kf6UpdateResult.NUMERIC_ERROR
         self.state = np.asarray(self.state + gain @ innovation, dtype=np.float32)
         identity_minus_kh = np.eye(6, dtype=np.float32)
         identity_minus_kh[:, state_offset : state_offset + dimension] -= gain
@@ -589,6 +597,16 @@ class Kf6Filter:
             self.health_flags |= 4 | 8
             return Kf6UpdateResult.NUMERIC_ERROR
         return result
+
+    def _Gain_IsEffective(self, gain: NDArray[np.float32]) -> bool:
+        # Do not square K: a nonzero float32 gain can have K squared == 0.
+        if self.require_effective_gain and (
+            not np.isfinite(gain).all() or not np.any(gain != np.float32(0.0))
+        ):
+            self.health_flags |= 4 | 8
+            self.counters["numeric_error_count"] = self.counters.get("numeric_error_count", 0) + 1
+            return False
+        return True
 
     @staticmethod
     def _Cholesky_Inverse(matrix: NDArray[np.float32]) -> NDArray[np.float32] | None:

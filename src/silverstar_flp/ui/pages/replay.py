@@ -84,11 +84,17 @@ class ReplayPage(QWidget):
             self.algorithm_combo.addItem(plugin.metadata.display_name, plugin.metadata.plugin_id)
         self.mode_label = QLabel()
         self.mode_combo = StandardComboBox()
+        self.quality_policy_label = QLabel()
+        self.quality_policy_combo = StandardComboBox()
+        self.quality_policy_combo.currentIndexChanged.connect(
+            lambda _index: self._RuntimeParameters_Refresh()
+        )
         self.fidelity_label = QLabel()
         self.availability_label = QLabel("—")
         self.availability_label.setWordWrap(True)
         self.controls_form.addRow(self.algorithm_label, self.algorithm_combo)
         self.controls_form.addRow(self.mode_label, self.mode_combo)
+        self.controls_form.addRow(self.quality_policy_label, self.quality_policy_combo)
         self.controls_form.addRow(self.fidelity_label, self.availability_label)
         content_layout.addWidget(self.controls_group)
 
@@ -235,6 +241,16 @@ class ReplayPage(QWidget):
         self._parameter_labels = {}
         self._parameter_specs = {}
         plugin = self._CurrentPlugin_Get()
+        self.quality_policy_combo.blockSignals(True)
+        self.quality_policy_combo.clear()
+        self.quality_policy_combo.addItem(
+            self._translator.Text_Get("replay.quality_recorded"), None
+        )
+        for revision in plugin.metadata.what_if_quality_revisions:
+            self.quality_policy_combo.addItem(
+                self._translator.Text_Get("replay.quality_revision", revision=revision), revision
+            )
+        self.quality_policy_combo.blockSignals(False)
         self._ComboLabels_Refresh()
         self._recorded_parameter_values = self._RecordedParameters_Get(plugin)
         self._offline_parameter_values = {
@@ -401,6 +417,11 @@ class ReplayPage(QWidget):
     def _Mode_Refresh(self) -> None:
         mode = self.mode_combo.currentData()
         what_if = mode == ReplayMode.WHAT_IF
+        quality_visible = what_if and bool(
+            self._CurrentPlugin_Get().metadata.what_if_quality_revisions
+        )
+        self.quality_policy_label.setVisible(quality_visible)
+        self.quality_policy_combo.setVisible(quality_visible)
         if mode == ReplayMode.RECORDED_CONFIGURATION:
             self._parameter_baseline_values = dict(self._recorded_parameter_values)
         elif mode == ReplayMode.WHAT_IF:
@@ -412,11 +433,16 @@ class ReplayPage(QWidget):
             )
         else:
             self._parameter_baseline_values = dict(self._offline_parameter_values)
-        metadata = (self._dataset.semantic_context.raw_metadata
-                    if self._dataset is not None and
-                    self._dataset.semantic_context is not None else {})
-        revision = metadata.get("metadata_declarations", {}).get(
-            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        metadata = (
+            self._dataset.semantic_context.raw_metadata
+            if self._dataset is not None and self._dataset.semantic_context is not None
+            else {}
+        )
+        revision = (
+            metadata.get("metadata_declarations", {})
+            .get("navigation_replay", {})
+            .get("gnss_integrity_revision", 0)
+        )
         if revision == 0 and "gnss_integrity_enable" in self._parameter_specs:
             self._parameter_baseline_values["gnss_integrity_enable"] = 0
         for parameter_id, editor in self._parameter_widgets.items():
@@ -430,8 +456,7 @@ class ReplayPage(QWidget):
             editor.setProperty("actualValue", self._parameter_baseline_values.get(parameter_id))
             editor.blockSignals(False)
         self.parameters_group.setEnabled(True)
-        for editor in self._parameter_widgets.values():
-            editor.setReadOnly(not what_if)
+        self._RuntimeParameters_Refresh()
         firmware = self._dataset is not None and self._CurrentPlugin_Get().FirmwareMember_Is(
             self._dataset
         )
@@ -446,6 +471,31 @@ class ReplayPage(QWidget):
         self.parameter_reset_button.setEnabled(what_if and self._dataset is not None)
         self._ParametersDirty_Refresh()
         self._Availability_Refresh()
+        self.configurationChanged.emit()
+
+    def _RuntimeParameters_Refresh(self) -> None:
+        if not hasattr(self, "_parameter_widgets"):
+            return
+        mode = self.mode_combo.currentData()
+        revision = self.quality_policy_combo.currentData() if mode == ReplayMode.WHAT_IF else None
+        runtime = {
+            p.parameter_id: p
+            for p in self._CurrentPlugin_Get().RuntimeParameterSchema_Get(self._dataset, revision)
+        }
+        for name, editor in self._parameter_widgets.items():
+            editor.setReadOnly(mode != ReplayMode.WHAT_IF or name not in runtime)
+            self._ParameterTooltip_Apply(runtime.get(name, self._parameter_specs[name]))
+            if name not in runtime:
+                note = self._translator.Text_Get("replay.parameter_retired")
+                editor.setToolTip(note)
+                self._parameter_labels[name].setToolTip(note)
+                self._parameter_labels[name].setText(
+                    self._Parameter_Label(self._parameter_specs[name]) + " · " + note
+                )
+            else:
+                self._parameter_labels[name].setText(
+                    self._Parameter_Label(self._parameter_specs[name])
+                )
         self.configurationChanged.emit()
 
     def _ActualValues_Get(self) -> dict[str, float]:
@@ -471,7 +521,7 @@ class ReplayPage(QWidget):
         )
         request = ReplayRequest(mode=mode, parameters=values)
         plugin.metadata.Parameters_Validate(values)
-        return {
+        configuration = {
             "algorithm_id": plugin.metadata.plugin_id,
             "algorithm_version": plugin.metadata.version,
             "mode": mode.value,
@@ -480,6 +530,9 @@ class ReplayPage(QWidget):
             "parameter_schema_identity": plugin.metadata.ParameterSchemaIdentity_Get(),
             "provenance": plugin.ParameterAudit_Get(self._dataset, request)["config_source"],
         }
+        if mode == ReplayMode.WHAT_IF and self.quality_policy_combo.currentData() is not None:
+            configuration["quality_policy_revision"] = self.quality_policy_combo.currentData()
+        return configuration
 
     def Configuration_Set(self, configuration: dict) -> None:
         from silverstar_flp.core.project import ReplayConfiguration_Validate
@@ -490,12 +543,16 @@ class ReplayPage(QWidget):
             mode=ReplayMode(configuration["mode"]),
             input_source=configuration["input_source"],
             parameters=configuration["actual_values"],
+            quality_policy_revision=configuration.get("quality_policy_revision"),
         )
         plugin.Parameters_Resolve(self._dataset, request)
         self.algorithm_combo.setCurrentIndex(
             self.algorithm_combo.findData(configuration["algorithm_id"])
         )
         self.mode_combo.setCurrentIndex(self.mode_combo.findData(request.mode))
+        self.quality_policy_combo.setCurrentIndex(
+            max(0, self.quality_policy_combo.findData(request.quality_policy_revision))
+        )
         for name, value in request.parameters.items():
             self._parameter_widgets[name].setValue(value)
             self._parameter_widgets[name].setProperty("actualValue", value)
@@ -579,6 +636,9 @@ class ReplayPage(QWidget):
             mode=mode,
             input_source=ReplayRequest().input_source,
             parameters=parameters,
+            quality_policy_revision=self.quality_policy_combo.currentData()
+            if mode == ReplayMode.WHAT_IF
+            else None,
         )
         return request
 
@@ -630,10 +690,7 @@ class ReplayPage(QWidget):
             coverage_text = (
                 f"{(coverage[1] - coverage[0]) * 1.0e-6:.3f} s ({coverage[0]}–{coverage[1]} µs)"
             )
-        mode_code = (
-            "status.what_if" if entry.mode == ReplayMode.WHAT_IF
-            else "status.recomputed"
-        )
+        mode_code = "status.what_if" if entry.mode == ReplayMode.WHAT_IF else "status.recomputed"
         input_text = self._InputSource_Text_Get(entry.input_source)
         plugin = self._registry.Algorithm_Get(entry.algorithm_id)
         specs = {
@@ -683,7 +740,8 @@ class ReplayPage(QWidget):
                     matched=matched,
                 ),
                 self._translator.Text_Get("replay.mechanization_first_none")
-                if first is None else self._translator.Text_Get(
+                if first is None
+                else self._translator.Text_Get(
                     "replay.mechanization_first",
                     timestamp=first.get("timestamp_us", "—"),
                     sequence=first.get("source_sequence", "—"),
@@ -775,7 +833,7 @@ class ReplayPage(QWidget):
                 if self._dataset.Series_Get("kf6.recorded.navigation.position_enu") is not None
                 else "Pure INS"
             )
-            label += ' · ' + solution
+            label += " · " + solution
         return label
 
     def _AnalysisSources_Refresh(self) -> None:
@@ -866,17 +924,26 @@ class ReplayPage(QWidget):
         if self._dataset is None:
             return
         recorded_prefix = (
-            "kf6.recorded"
+            "eskf15.recorded"
+            if self._dataset.Series_Get("eskf15.recorded.navigation.position_enu") is not None
+            else "kf6.recorded"
             if self._dataset.Series_Get("kf6.recorded.navigation.position_enu") is not None
             else "pure_ins.recorded"
         )
         mappings = (
-            ("comparison.attitude", f"{recorded_prefix}.attitude.q_nb",
-             "attitude.q_nb", True),
-            ("comparison.velocity", f"{recorded_prefix}.navigation.velocity_enu",
-             "navigation.velocity_enu", False),
-            ("comparison.position", f"{recorded_prefix}.navigation.position_enu",
-             "navigation.position_enu", False),
+            ("comparison.attitude", f"{recorded_prefix}.attitude.q_nb", "attitude.q_nb", True),
+            (
+                "comparison.velocity",
+                f"{recorded_prefix}.navigation.velocity_enu",
+                "navigation.velocity_enu",
+                False,
+            ),
+            (
+                "comparison.position",
+                f"{recorded_prefix}.navigation.position_enu",
+                "navigation.position_enu",
+                False,
+            ),
         )
         rows: list[tuple[str, object]] = []
         for name_code, recorded_id, recomputed_id, quaternion in mappings:
@@ -933,6 +1000,16 @@ class ReplayPage(QWidget):
         self.controls_group.setTitle(translator.Text_Get("replay.configuration"))
         self.algorithm_label.setText(translator.Text_Get("label.algorithm"))
         self.mode_label.setText(translator.Text_Get("label.mode"))
+        self.quality_policy_label.setText(translator.Text_Get("replay.quality_policy"))
+        for index in range(self.quality_policy_combo.count()):
+            revision = self.quality_policy_combo.itemData(index)
+            self.quality_policy_combo.setItemText(
+                index,
+                translator.Text_Get(
+                    "replay.quality_recorded" if revision is None else "replay.quality_revision",
+                    revision=revision,
+                ),
+            )
         self.fidelity_label.setText(translator.Text_Get("label.fidelity"))
         self.analysis_source_group.setTitle(translator.Text_Get("replay.analysis_data_source"))
         self.parameters_group.setTitle(translator.Text_Get("replay.what_if_parameters"))

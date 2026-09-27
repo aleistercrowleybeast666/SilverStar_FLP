@@ -1,0 +1,785 @@
+{
+  "runs": [
+    {
+      "log": "SS0000",
+      "algorithm": "kf6_revision3_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "f774a990536b3b39c38f09639a7f1d9a5100ea15f3d219ee1667d351d3fac381",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 165,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "kf6.navigation_health__time_us",
+        "kf6.navigation_health__valid",
+        "kf6.navigation_health__values"
+      ],
+      "old_first_health_us": {
+        "0": 116607565,
+        "1": 116897568,
+        "2": 123991560,
+        "3": 124992562,
+        "4": 131984559
+      },
+      "new_first_health_us": {
+        "0": 116607565,
+        "1": 116897568,
+        "2": 118855571,
+        "3": 124992562,
+        "4": 131984559
+      },
+      "old_longest_no_fusion_us": [
+        16842004,
+        17723008,
+        10142006,
+        10781000,
+        18031005
+      ],
+      "new_longest_no_fusion_us": [
+        16842004,
+        17723008,
+        10142006,
+        10781000,
+        18031005
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 29,
+        "1": 710,
+        "2": 100,
+        "3": 700,
+        "4": 786
+      },
+      "new_health_counts": {
+        "0": 29,
+        "1": 593,
+        "2": 217,
+        "3": 700,
+        "4": 786
+      },
+      "health_changed_epochs": 117,
+      "first_health_change_us": 118855571,
+      "endpoint_enu_m": [
+        282.1622619628906,
+        -667.0371704101562,
+        -1116.981689453125
+      ],
+      "final_velocity_enu_mps": [
+        23.853227615356445,
+        -58.93483352661133,
+        -82.75920867919922
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0000",
+      "algorithm": "eskf15_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "f774a990536b3b39c38f09639a7f1d9a5100ea15f3d219ee1667d351d3fac381",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 141,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "eskf15.admitted.baro__time_us",
+        "eskf15.admitted.baro__valid",
+        "eskf15.admitted.baro__values",
+        "eskf15.admitted.position_en__time_us",
+        "eskf15.admitted.position_en__valid",
+        "eskf15.admitted.position_en__values",
+        "eskf15.admitted.position_u__time_us",
+        "eskf15.admitted.position_u__valid",
+        "eskf15.admitted.position_u__values",
+        "eskf15.admitted.velocity_en__time_us",
+        "eskf15.admitted.velocity_en__valid",
+        "eskf15.admitted.velocity_en__values",
+        "eskf15.admitted.velocity_u__time_us",
+        "eskf15.admitted.velocity_u__valid",
+        "eskf15.admitted.velocity_u__values",
+        "eskf15.physically_valid.baro__time_us",
+        "eskf15.physically_valid.baro__valid",
+        "eskf15.physically_valid.baro__values",
+        "eskf15.physically_valid.position_en__time_us",
+        "eskf15.physically_valid.position_en__valid",
+        "eskf15.physically_valid.position_en__values",
+        "eskf15.physically_valid.position_u__time_us",
+        "eskf15.physically_valid.position_u__valid",
+        "eskf15.physically_valid.position_u__values",
+        "eskf15.physically_valid.velocity_en__time_us",
+        "eskf15.physically_valid.velocity_en__valid",
+        "eskf15.physically_valid.velocity_en__values",
+        "eskf15.physically_valid.velocity_u__time_us",
+        "eskf15.physically_valid.velocity_u__valid",
+        "eskf15.physically_valid.velocity_u__values"
+      ],
+      "old_first_health_us": {
+        "0": 116607565,
+        "1": 116897568,
+        "2": 122782563,
+        "3": 124782569,
+        "4": 130776563
+      },
+      "new_first_health_us": {
+        "0": 116607565,
+        "1": 116897568,
+        "2": 118975562,
+        "3": 124782569,
+        "4": 130776563
+      },
+      "old_longest_no_fusion_us": [
+        17042004,
+        18042009,
+        17481005,
+        19050005,
+        18241005
+      ],
+      "new_longest_no_fusion_us": [
+        17042004,
+        18042009,
+        17481005,
+        19050005,
+        18241005
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 29,
+        "1": 589,
+        "2": 200,
+        "3": 600,
+        "4": 907
+      },
+      "new_health_counts": {
+        "0": 29,
+        "1": 459,
+        "2": 330,
+        "3": 600,
+        "4": 907
+      },
+      "health_changed_epochs": 130,
+      "first_health_change_us": 118975562,
+      "endpoint_enu_m": [
+        603.3093232813397,
+        -1443.3146225138328,
+        -2496.8669650223223
+      ],
+      "final_velocity_enu_mps": [
+        66.73103694886268,
+        -156.8265104296798,
+        -258.58756779363796
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0001",
+      "algorithm": "kf6_revision3_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "65e19a1aeec9d24836a9831549156fbf9579a49b6cd822d1de06ca8f61b71e95",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 165,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "kf6.navigation_health__time_us",
+        "kf6.navigation_health__valid",
+        "kf6.navigation_health__values"
+      ],
+      "old_first_health_us": {
+        "0": 20163578,
+        "1": 20443578,
+        "2": 46874575,
+        "3": null,
+        "4": null
+      },
+      "new_first_health_us": {
+        "0": 20163578,
+        "1": 20443578,
+        "2": 26660579,
+        "3": null,
+        "4": null
+      },
+      "old_longest_no_fusion_us": [
+        51004,
+        51004,
+        2527000,
+        280000,
+        31994
+      ],
+      "new_longest_no_fusion_us": [
+        51004,
+        51004,
+        2527000,
+        290321,
+        31994
+      ],
+      "longest_no_fusion_unchanged": false,
+      "old_final_health": 2,
+      "new_final_health": 2,
+      "old_health_counts": {
+        "0": 28,
+        "1": 2645,
+        "2": 54
+      },
+      "new_health_counts": {
+        "0": 28,
+        "1": 2453,
+        "2": 246
+      },
+      "health_changed_epochs": 192,
+      "first_health_change_us": 26660579,
+      "endpoint_enu_m": [
+        -8.284005165100098,
+        0.21430975198745728,
+        -0.7298470139503479
+      ],
+      "final_velocity_enu_mps": [
+        -7.79610013961792,
+        -0.8077152371406555,
+        -0.18118911981582642
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0001",
+      "algorithm": "eskf15_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "65e19a1aeec9d24836a9831549156fbf9579a49b6cd822d1de06ca8f61b71e95",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 141,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "eskf15.admitted.baro__time_us",
+        "eskf15.admitted.baro__valid",
+        "eskf15.admitted.baro__values",
+        "eskf15.admitted.position_en__time_us",
+        "eskf15.admitted.position_en__valid",
+        "eskf15.admitted.position_en__values",
+        "eskf15.admitted.position_u__time_us",
+        "eskf15.admitted.position_u__valid",
+        "eskf15.admitted.position_u__values",
+        "eskf15.admitted.velocity_en__time_us",
+        "eskf15.admitted.velocity_en__valid",
+        "eskf15.admitted.velocity_en__values",
+        "eskf15.admitted.velocity_u__time_us",
+        "eskf15.admitted.velocity_u__valid",
+        "eskf15.admitted.velocity_u__values",
+        "eskf15.physically_valid.baro__time_us",
+        "eskf15.physically_valid.baro__valid",
+        "eskf15.physically_valid.baro__values",
+        "eskf15.physically_valid.position_en__time_us",
+        "eskf15.physically_valid.position_en__valid",
+        "eskf15.physically_valid.position_en__values",
+        "eskf15.physically_valid.position_u__time_us",
+        "eskf15.physically_valid.position_u__valid",
+        "eskf15.physically_valid.position_u__values",
+        "eskf15.physically_valid.velocity_en__time_us",
+        "eskf15.physically_valid.velocity_en__valid",
+        "eskf15.physically_valid.velocity_en__values",
+        "eskf15.physically_valid.velocity_u__time_us",
+        "eskf15.physically_valid.velocity_u__valid",
+        "eskf15.physically_valid.velocity_u__values"
+      ],
+      "old_first_health_us": {
+        "0": 20163578,
+        "1": 20443578,
+        "2": null,
+        "3": null,
+        "4": null
+      },
+      "new_first_health_us": {
+        "0": 20163578,
+        "1": 20443578,
+        "2": 23172579,
+        "3": null,
+        "4": null
+      },
+      "old_longest_no_fusion_us": [
+        51004,
+        51004,
+        560003,
+        290000,
+        31994
+      ],
+      "new_longest_no_fusion_us": [
+        51004,
+        51004,
+        560003,
+        290000,
+        31994
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 1,
+      "new_final_health": 1,
+      "old_health_counts": {
+        "0": 28,
+        "1": 2699
+      },
+      "new_health_counts": {
+        "0": 28,
+        "1": 2518,
+        "2": 181
+      },
+      "health_changed_epochs": 181,
+      "first_health_change_us": 23172579,
+      "endpoint_enu_m": [
+        3.5523833197981376,
+        1.2714878990518312,
+        -0.12169654536660388
+      ],
+      "final_velocity_enu_mps": [
+        0.9003214700324242,
+        -0.3402288232409176,
+        0.5866204394551097
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0002",
+      "algorithm": "kf6_revision3_what_if",
+      "old_status": "failed",
+      "new_status": "failed",
+      "raw_sha256": "b9e8e6a56a18497acb5e6405881fe5128464e478edb1a793822951a55b6989cc",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "old_error": "ValueError:gnss_origin_unavailable",
+      "new_error": "ValueError:gnss_origin_unavailable"
+    },
+    {
+      "log": "SS0002",
+      "algorithm": "eskf15_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "b9e8e6a56a18497acb5e6405881fe5128464e478edb1a793822951a55b6989cc",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 45,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "eskf15.admitted.baro__time_us",
+        "eskf15.admitted.baro__valid",
+        "eskf15.admitted.baro__values",
+        "eskf15.physically_valid.baro__time_us",
+        "eskf15.physically_valid.baro__valid",
+        "eskf15.physically_valid.baro__values"
+      ],
+      "old_first_health_us": {
+        "0": 122146561,
+        "1": null,
+        "2": null,
+        "3": 124136562,
+        "4": 132136562
+      },
+      "new_first_health_us": {
+        "0": 122146561,
+        "1": null,
+        "2": null,
+        "3": 124136562,
+        "4": 132136562
+      },
+      "old_longest_no_fusion_us": [
+        0,
+        0,
+        0,
+        0,
+        22008
+      ],
+      "new_longest_no_fusion_us": [
+        0,
+        0,
+        0,
+        0,
+        22008
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 199,
+        "3": 800,
+        "4": 28684
+      },
+      "new_health_counts": {
+        "0": 199,
+        "3": 800,
+        "4": 28684
+      },
+      "health_changed_epochs": 0,
+      "first_health_change_us": null,
+      "endpoint_enu_m": [
+        -10197.497335757844,
+        8262.156109532496,
+        -1.510974625509653
+      ],
+      "final_velocity_enu_mps": [
+        -75.41110893973519,
+        10.88263284404946,
+        -0.1167941847726106
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0003",
+      "algorithm": "kf6_revision3_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "1cc5c363610245b1eefcab0f2beab6a5cf128ee4049fa6dc9e2deb1a703a588a",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 165,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "kf6.navigation_health__time_us",
+        "kf6.navigation_health__valid",
+        "kf6.navigation_health__values"
+      ],
+      "old_first_health_us": {
+        "0": 207325556,
+        "1": 207615556,
+        "2": 348967559,
+        "3": null,
+        "4": 407212558
+      },
+      "new_first_health_us": {
+        "0": 207325556,
+        "1": 207615556,
+        "2": 210425559,
+        "3": null,
+        "4": 407212558
+      },
+      "old_longest_no_fusion_us": [
+        52002,
+        52002,
+        11910005,
+        290000,
+        32000
+      ],
+      "new_longest_no_fusion_us": [
+        52002,
+        52002,
+        11910005,
+        304296,
+        32000
+      ],
+      "longest_no_fusion_unchanged": false,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 29,
+        "1": 17903,
+        "2": 2078,
+        "4": 193
+      },
+      "new_health_counts": {
+        "0": 29,
+        "1": 17142,
+        "2": 2839,
+        "4": 193
+      },
+      "health_changed_epochs": 761,
+      "first_health_change_us": 210425559,
+      "endpoint_enu_m": [
+        -0.02637288346886635,
+        202.70118713378906,
+        1.9932587146759033
+      ],
+      "final_velocity_enu_mps": [
+        3.9943687915802,
+        -4.571873664855957,
+        -0.021918850019574165
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0003",
+      "algorithm": "eskf15_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "1cc5c363610245b1eefcab0f2beab6a5cf128ee4049fa6dc9e2deb1a703a588a",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 141,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "eskf15.admitted.baro__time_us",
+        "eskf15.admitted.baro__valid",
+        "eskf15.admitted.baro__values",
+        "eskf15.admitted.position_en__time_us",
+        "eskf15.admitted.position_en__valid",
+        "eskf15.admitted.position_en__values",
+        "eskf15.admitted.position_u__time_us",
+        "eskf15.admitted.position_u__valid",
+        "eskf15.admitted.position_u__values",
+        "eskf15.admitted.velocity_en__time_us",
+        "eskf15.admitted.velocity_en__valid",
+        "eskf15.admitted.velocity_en__values",
+        "eskf15.admitted.velocity_u__time_us",
+        "eskf15.admitted.velocity_u__valid",
+        "eskf15.admitted.velocity_u__values",
+        "eskf15.physically_valid.baro__time_us",
+        "eskf15.physically_valid.baro__valid",
+        "eskf15.physically_valid.baro__values",
+        "eskf15.physically_valid.position_en__time_us",
+        "eskf15.physically_valid.position_en__valid",
+        "eskf15.physically_valid.position_en__values",
+        "eskf15.physically_valid.position_u__time_us",
+        "eskf15.physically_valid.position_u__valid",
+        "eskf15.physically_valid.position_u__values",
+        "eskf15.physically_valid.velocity_en__time_us",
+        "eskf15.physically_valid.velocity_en__valid",
+        "eskf15.physically_valid.velocity_en__values",
+        "eskf15.physically_valid.velocity_u__time_us",
+        "eskf15.physically_valid.velocity_u__valid",
+        "eskf15.physically_valid.velocity_u__values"
+      ],
+      "old_first_health_us": {
+        "0": 207325556,
+        "1": 207615556,
+        "2": null,
+        "3": null,
+        "4": null
+      },
+      "new_first_health_us": {
+        "0": 207325556,
+        "1": 207615556,
+        "2": 210055559,
+        "3": null,
+        "4": null
+      },
+      "old_longest_no_fusion_us": [
+        52002,
+        720000,
+        799001,
+        298996,
+        32000
+      ],
+      "new_longest_no_fusion_us": [
+        52002,
+        720000,
+        799001,
+        298996,
+        32000
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 1,
+      "new_final_health": 2,
+      "old_health_counts": {
+        "0": 29,
+        "1": 20174
+      },
+      "new_health_counts": {
+        "0": 29,
+        "1": 19309,
+        "2": 865
+      },
+      "health_changed_epochs": 865,
+      "first_health_change_us": 210055559,
+      "endpoint_enu_m": [
+        -6.777286607485233,
+        209.23245034593262,
+        3.1372017305833118
+      ],
+      "final_velocity_enu_mps": [
+        -0.8364474833405664,
+        0.3012486973893865,
+        0.5792325363819958
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0004",
+      "algorithm": "kf6_revision3_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "f19bc4350816b2b3fabd298a788f78e7abf30556a563800ef6da178772b1938c",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 165,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "kf6.navigation_health__time_us",
+        "kf6.navigation_health__valid",
+        "kf6.navigation_health__values"
+      ],
+      "old_first_health_us": {
+        "0": 276955525,
+        "1": 277253514,
+        "2": 396508512,
+        "3": 497388512,
+        "4": 503790517
+      },
+      "new_first_health_us": {
+        "0": 276955525,
+        "1": 277253514,
+        "2": 280054513,
+        "3": 497388512,
+        "4": 503790517
+      },
+      "old_longest_no_fusion_us": [
+        50529006,
+        49289002,
+        50887003,
+        49889006,
+        49189006
+      ],
+      "new_longest_no_fusion_us": [
+        50529006,
+        49289002,
+        50887003,
+        49889006,
+        49189006
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 30,
+        "1": 21777,
+        "2": 260,
+        "3": 641,
+        "4": 4095
+      },
+      "new_health_counts": {
+        "0": 30,
+        "1": 20594,
+        "2": 1443,
+        "3": 641,
+        "4": 4095
+      },
+      "health_changed_epochs": 1183,
+      "first_health_change_us": 280054513,
+      "endpoint_enu_m": [
+        10589.0546875,
+        4925.75,
+        -6833.87939453125
+      ],
+      "final_velocity_enu_mps": [
+        410.11669921875,
+        181.77444458007812,
+        -268.5899963378906
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    },
+    {
+      "log": "SS0004",
+      "algorithm": "eskf15_what_if",
+      "old_status": "completed",
+      "new_status": "completed",
+      "raw_sha256": "f19bc4350816b2b3fabd298a788f78e7abf30556a563800ef6da178772b1938c",
+      "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+      "common_nonnavigationhealth_arrays": 141,
+      "differing_numeric_arrays": [],
+      "additional_keys": [
+        "eskf15.admitted.baro__time_us",
+        "eskf15.admitted.baro__valid",
+        "eskf15.admitted.baro__values",
+        "eskf15.admitted.position_en__time_us",
+        "eskf15.admitted.position_en__valid",
+        "eskf15.admitted.position_en__values",
+        "eskf15.admitted.position_u__time_us",
+        "eskf15.admitted.position_u__valid",
+        "eskf15.admitted.position_u__values",
+        "eskf15.admitted.velocity_en__time_us",
+        "eskf15.admitted.velocity_en__valid",
+        "eskf15.admitted.velocity_en__values",
+        "eskf15.admitted.velocity_u__time_us",
+        "eskf15.admitted.velocity_u__valid",
+        "eskf15.admitted.velocity_u__values",
+        "eskf15.physically_valid.baro__time_us",
+        "eskf15.physically_valid.baro__valid",
+        "eskf15.physically_valid.baro__values",
+        "eskf15.physically_valid.position_en__time_us",
+        "eskf15.physically_valid.position_en__valid",
+        "eskf15.physically_valid.position_en__values",
+        "eskf15.physically_valid.position_u__time_us",
+        "eskf15.physically_valid.position_u__valid",
+        "eskf15.physically_valid.position_u__values",
+        "eskf15.physically_valid.velocity_en__time_us",
+        "eskf15.physically_valid.velocity_en__valid",
+        "eskf15.physically_valid.velocity_en__values",
+        "eskf15.physically_valid.velocity_u__time_us",
+        "eskf15.physically_valid.velocity_u__valid",
+        "eskf15.physically_valid.velocity_u__values"
+      ],
+      "old_first_health_us": {
+        "0": 276955525,
+        "1": 277253514,
+        "2": 495510519,
+        "3": 496559512,
+        "4": 503509511
+      },
+      "new_first_health_us": {
+        "0": 276955525,
+        "1": 277253514,
+        "2": 279774512,
+        "3": 496559512,
+        "4": 503509511
+      },
+      "old_longest_no_fusion_us": [
+        50688007,
+        50118003,
+        51168006,
+        50447003,
+        49758006
+      ],
+      "new_longest_no_fusion_us": [
+        50688007,
+        50118003,
+        51168006,
+        50447003,
+        49758006
+      ],
+      "longest_no_fusion_unchanged": true,
+      "old_final_health": 4,
+      "new_final_health": 4,
+      "old_health_counts": {
+        "0": 30,
+        "1": 21849,
+        "2": 105,
+        "3": 696,
+        "4": 4123
+      },
+      "new_health_counts": {
+        "0": 30,
+        "1": 21080,
+        "2": 874,
+        "3": 696,
+        "4": 4123
+      },
+      "health_changed_epochs": 769,
+      "first_health_change_us": 279774512,
+      "endpoint_enu_m": [
+        3263.387477276899,
+        -9960.830230795851,
+        -5503.463727490595
+      ],
+      "final_velocity_enu_mps": [
+        129.1476465389011,
+        -386.4551691986706,
+        -207.22624739322362
+      ],
+      "output_all_finite": true,
+      "invalid_or_failure_retained": null,
+      "interpretation": "Internal health is not external accuracy truth; old logs use approximate What-if."
+    }
+  ],
+  "complete": true,
+  "old_evidence_unchanged": true,
+  "source_logs_and_decoder_unchanged": true,
+  "numerical_common_arrays_identical": true,
+  "scope": "Revision-3 What-if health fix; no hardware or flight accuracy claim."
+}

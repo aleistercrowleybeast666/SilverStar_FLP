@@ -65,11 +65,19 @@ _EVENT_NAMES = {
     0x2C: "LANDING_IMPACT",
     0x2D: "SENSOR_SOURCE_CHANGE",
     0x2E: "GNSS_POSITION_INTEGRITY_STATE_CHANGE",
+    0x2F: "NAV_FUSION_STATE_CHANGE",
 }
 
 # These are semantic field-role bindings only. Binary offsets and sizes remain
 # exclusively owned by the package record catalog.
 _STABLE_ALIAS_SPECS = (
+    ("eskf15.recorded.navigation.position_enu", "ESKF15_STATE", "position_enu_m", None),
+    ("eskf15.recorded.navigation.velocity_enu", "ESKF15_STATE", "velocity_enu_mps", None),
+    ("eskf15.recorded.attitude.q_nb", "ESKF15_STATE", "q_nb", None),
+    ("eskf15.recorded.gyro_bias", "ESKF15_STATE", "gyro_bias_radps", None),
+    ("eskf15.recorded.accel_bias", "ESKF15_STATE", "accel_bias_mps2", None),
+    ("eskf15.recorded.covariance.diagonal", "ESKF15_STATE", "p_diagonal", None),
+    ("eskf15.recorded.navigation_health", "ESKF15_STATE", "health", None),
     ("kf6.recorded.attitude.q_nb", "ESTIMATOR", "q_nb", None),
     ("kf6.recorded.navigation.linear_accel_enu", "ESTIMATOR", "acceleration_enu_mps2", None),
     ("pure_ins.recorded.attitude.q_nb", "PURE_INS", "q_nb", None),
@@ -763,6 +771,9 @@ def _CalibrationBoundary_Get(dataset: FlightDataset) -> tuple[int, str]:
     initial_states = dataset.Records_Get("INITIAL_STATE")
     if initial_states:
         return min(record.timestamp_us for record in initial_states), "initial_state"
+    eskf_initial = dataset.Records_Get("ESKF15_INITIAL_STATE")
+    if eskf_initial:
+        return min(record.timestamp_us for record in eskf_initial), "eskf15_initial_state"
     corrected = dataset.Records_Get("IMU_CORRECTED")
     if corrected:
         return min(
@@ -1026,6 +1037,10 @@ class SilverStarSslog0SemanticAdapter:
         measurement_channels = RecordedMeasurementChannels_Build(
             with_events.records, numeric_parameters
         )
+        from silverstar_flp.decoder_profiles.eskf15_records import Eskf15Records_Adapt
+
+        eskf_channels, eskf_diagnostics = Eskf15Records_Adapt(with_events.records)
+        measurement_channels = {**measurement_channels, **eskf_channels}
         adapted_series = {**adapted_series, **measurement_channels}
         aliases = {**aliases, **{name: name for name in measurement_channels}}
         context = _Context_Build(self.package, aliases, calibration)
@@ -1035,6 +1050,7 @@ class SilverStarSslog0SemanticAdapter:
             "stable_alias_count": len(aliases),
             "calibration_mode": calibration.mode_name,
             "calibration_ready": calibration.ready,
+            "eskf15_covariance_diagnostics": eskf_diagnostics,
         }
         return replace(
             with_events,

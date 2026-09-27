@@ -125,6 +125,7 @@ def _Result_Aggregate(first: Kf6UpdateResult, second: Kf6UpdateResult) -> int:
 
 class Kf6AlgorithmPlugin(AlgorithmPlugin):
     metadata = AlgorithmMetadata(
+        what_if_quality_revisions=(3,),
         plugin_id="silverstar.algorithm.kf6",
         version="0.2.0-firmware-SILV0008",
         display_name="KF_6",
@@ -759,6 +760,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             "navigation_frame": "ENU",
         },
         estimator_visualization=EstimatorVisualizationSpec(
+            navigation_health_channel="kf6.navigation_health",
             state_groups=(
                 StateGroupSpec(
                     "position",
@@ -782,7 +784,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             measurement_groups=(
                 *(
                     MeasurementGroupSpec(
-                        group_id, label_key, dimension, components, innovation,
+                        group_id,
+                        label_key,
+                        dimension,
+                        components,
+                        innovation,
                         f"kf6.nis.{group_id.removeprefix('gnss_')}",
                         f"kf6.update_result.{group_id.removeprefix('gnss_')}",
                         f"kf6.measurement_r_scale.{group_id.removeprefix('gnss_')}",
@@ -801,24 +807,71 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                         measurement_record_names=("GNSS_MEASUREMENT",),
                         measurement_validity_channel=validity,
                     )
-                    for (group_id, label_key, dimension, components, innovation,
-                         scale_index, soft, hard, unit, stem, validity) in (
-                        ("gnss_position_en", "measurement.gnss_position_en", 2, ("E", "N"),
-                         "kf6.innovation.position_en", 0,
-                         "nis_2d_soft", "nis_2d_hard", "m", "GNSS_Position_EN",
-                         "gnss.measurement.position_enu"),
-                        ("gnss_position_u", "measurement.gnss_position_u", 1, ("U",),
-                         "kf6.innovation.position_u", 0,
-                         "nis_1d_soft", "nis_1d_hard", "m", "GNSS_Position_U",
-                         "gnss.measurement.position_enu"),
-                        ("gnss_velocity_en", "measurement.gnss_velocity_en", 2, ("E", "N"),
-                         "kf6.innovation.velocity_en", 1,
-                         "nis_2d_soft", "nis_2d_hard", "m/s", "GNSS_Velocity_EN",
-                         "gnss.measurement.velocity_enu"),
-                        ("gnss_velocity_u", "measurement.gnss_velocity_u", 1, ("U",),
-                         "kf6.innovation.velocity_u", 1,
-                         "nis_1d_soft", "nis_1d_hard", "m/s", "GNSS_Velocity_U",
-                         "gnss.measurement.velocity_enu"),
+                    for (
+                        group_id,
+                        label_key,
+                        dimension,
+                        components,
+                        innovation,
+                        scale_index,
+                        soft,
+                        hard,
+                        unit,
+                        stem,
+                        validity,
+                    ) in (
+                        (
+                            "gnss_position_en",
+                            "measurement.gnss_position_en",
+                            2,
+                            ("E", "N"),
+                            "kf6.innovation.position_en",
+                            0,
+                            "nis_2d_soft",
+                            "nis_2d_hard",
+                            "m",
+                            "GNSS_Position_EN",
+                            "gnss.measurement.position_enu",
+                        ),
+                        (
+                            "gnss_position_u",
+                            "measurement.gnss_position_u",
+                            1,
+                            ("U",),
+                            "kf6.innovation.position_u",
+                            0,
+                            "nis_1d_soft",
+                            "nis_1d_hard",
+                            "m",
+                            "GNSS_Position_U",
+                            "gnss.measurement.position_enu",
+                        ),
+                        (
+                            "gnss_velocity_en",
+                            "measurement.gnss_velocity_en",
+                            2,
+                            ("E", "N"),
+                            "kf6.innovation.velocity_en",
+                            1,
+                            "nis_2d_soft",
+                            "nis_2d_hard",
+                            "m/s",
+                            "GNSS_Velocity_EN",
+                            "gnss.measurement.velocity_enu",
+                        ),
+                        (
+                            "gnss_velocity_u",
+                            "measurement.gnss_velocity_u",
+                            1,
+                            ("U",),
+                            "kf6.innovation.velocity_u",
+                            1,
+                            "nis_1d_soft",
+                            "nis_1d_hard",
+                            "m/s",
+                            "GNSS_Velocity_U",
+                            "gnss.measurement.velocity_enu",
+                        ),
                     )
                 ),
                 MeasurementGroupSpec(
@@ -956,6 +1009,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             if velocity_shift_ms is None and analysis_options.velocity_shift_ms:
                 velocity_shift_ms = analysis_options.velocity_shift_ms
         task_context = context or TaskContext()
+        if request.quality_policy_revision not in (None, *self.metadata.what_if_quality_revisions):
+            raise ValueError("quality_policy_revision_unsupported")
         availability = self.availability(dataset, request.input_source)
         if not availability.available:
             raise ValueError("replay_unavailable:" + ",".join(availability.missing_inputs))
@@ -1003,8 +1058,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             source_diagnostics["mechanization_verification"] = Mechanization_Verify(
                 dataset, start_timestamp, replay_input_end
             )
-            increments = InertialIncrement_ReadRecorded(dataset.Records_Get("INERTIAL_INCREMENT"),
-                start_timestamp_us=start_timestamp, end_timestamp_us=replay_input_end)
+            increments = InertialIncrement_ReadRecorded(
+                dataset.Records_Get("INERTIAL_INCREMENT"),
+                start_timestamp_us=start_timestamp,
+                end_timestamp_us=replay_input_end,
+            )
         if not increments:
             raise ValueError("replay_no_valid_inertial_increment")
         if mission_bounds.end_reason == MissionReplayEndReason.SOURCE_END:
@@ -1051,11 +1109,29 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         schedule = self._MeasurementParameters_Apply(
             dataset, schedule, parameters, frozen_initial=analysis_frozen_initial
         )
-        if parameters.get("gnss_integrity_enable", 0):
+        metadata = dataset.semantic_context.raw_metadata if dataset.semantic_context else {}
+        quality_revision = (
+            metadata.get("metadata_declarations", {})
+            .get("navigation_replay", {})
+            .get("gnss_integrity_revision", 0)
+        )
+        if request.quality_policy_revision is not None:
+            quality_revision = request.quality_policy_revision
+        filter_instance.require_effective_gain = quality_revision == 3
+        source_diagnostics["quality_policy_revision"] = quality_revision
+        source_diagnostics["quality_policy_override"] = request.quality_policy_revision
+        if request.quality_policy_revision is not None:
+            source_diagnostics["counterfactual_timing_scope"] = (
+                "recorded operations and resolved times retained; absent old operations "
+                "cannot be recovered from logs and are not fabricated"
+            )
+        if parameters.get("gnss_integrity_enable", 0) or quality_revision == 3:
             schedule, integrity_diagnostics = self._IntegritySchedule_Apply(
-                dataset, schedule, parameters
+                dataset, schedule, parameters, revision_override=quality_revision
             )
             source_diagnostics["gnss_integrity"] = integrity_diagnostics
+            if quality_revision == 3:
+                source_diagnostics["window_evidence"] = integrity_diagnostics["window_evidence"]
         firmware_schedule = schedule
         schedule = DiagnosticSchedule_Apply(schedule, analysis_options)
         filter_instance.analysis_position_vertical_disabled = bool(
@@ -1087,8 +1163,10 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             from silverstar_flp.plugins.algorithms.kf6.measurement_time import (
                 MeasurementDelays_Apply,
             )
-            schedule = MeasurementDelays_Apply(dataset, schedule, parameters,
-                                               self.recorded_parameters(dataset))
+
+            schedule = MeasurementDelays_Apply(
+                dataset, schedule, parameters, self.recorded_parameters(dataset)
+            )
             replaced_records = dict(dataset.records)
             for kind in ("GNSS_MEASUREMENT", "BARO_MEASUREMENT"):
                 replaced_records[kind] = tuple(
@@ -1096,7 +1174,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 )
             replay_dataset = replace(dataset, records=replaced_records)
             snapshots, filter_instance, timing_diagnostics = Faithful_Run(
-                replay_dataset, filter_instance, q_nb, increments, parameters,
+                replay_dataset,
+                filter_instance,
+                q_nb,
+                increments,
+                parameters,
                 task_context,
             )
             source_diagnostics.update(timing_diagnostics)
@@ -1116,6 +1198,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             raise ValueError("replay_no_valid_kf6_output")
         warnings = list(availability.warnings)
         fidelity = availability.fidelity
+        if quality_revision == 3:
+            fidelity = ReplayFidelity.APPROXIMATE
+            warnings.append("revision3_cross_validation_scope_limited")
         state_decimation = tuple(system_config.payload.get("log_decimation", ()))
         if schedule_inferred:
             fidelity = ReplayFidelity.APPROXIMATE
@@ -1140,9 +1225,20 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         from silverstar_flp.analysis.measurement_diagnostics import (
             RecomputedMeasurementChannels_Build,
         )
-        channels.update(RecomputedMeasurementChannels_Build(
-            source_diagnostics.get("measurement_events", ())
-        ))
+
+        channels.update(
+            RecomputedMeasurementChannels_Build(source_diagnostics.get("measurement_events", ()))
+        )
+        if quality_revision == 3:
+            from silverstar_flp.analysis.navigation_revision3 import Revision3Health_Build
+
+            channels["kf6.navigation_health"], health_diagnostics = Revision3Health_Build(
+                channels["navigation.position_enu"].timestamp_us,
+                source_diagnostics.get("gnss_group_updates", ()),
+                source_diagnostics.get("measurement_events", ()),
+                start_timestamp,
+            )
+            source_diagnostics.update(health_diagnostics)
         for channel_id in ("navigation.position_enu", "navigation.velocity_enu"):
             series = channels[channel_id]
             channels[channel_id] = replace(
@@ -1228,14 +1324,18 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
 
     def recorded_parameters(self, dataset: FlightDataset) -> Mapping[str, Any]:
         metadata = dataset.semantic_context.raw_metadata if dataset.semantic_context else {}
-        revision = metadata.get("metadata_declarations", {}).get(
-            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        revision = (
+            metadata.get("metadata_declarations", {})
+            .get("navigation_replay", {})
+            .get("gnss_integrity_revision", 0)
+        )
         if revision != 0:
             return super().recorded_parameters(dataset)
         if dataset.semantic_context is None or not self.FirmwareMember_Is(dataset):
             return {}
         records = dataset.semantic_context.FirmwareParameters_Get(
-            self.metadata.firmware_component_ids[0])
+            self.metadata.firmware_component_ids[0]
+        )
         if records is None:
             return {}
         specs = {spec.parameter_id: spec for spec in self.metadata.parameter_schema}
@@ -1256,27 +1356,83 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         self, dataset: FlightDataset, request: ReplayRequest
     ) -> dict[str, float]:
         parameters = self.Parameters_Resolve(dataset, request)
-        metadata = (dataset.semantic_context.raw_metadata
-                    if dataset.semantic_context is not None else {})
-        revision = metadata.get("metadata_declarations", {}).get(
-            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        metadata = (
+            dataset.semantic_context.raw_metadata if dataset.semantic_context is not None else {}
+        )
+        revision = (
+            metadata.get("metadata_declarations", {})
+            .get("navigation_replay", {})
+            .get("gnss_integrity_revision", 0)
+        )
         if revision == 1:
             raise ValueError("gnss_integrity_revision_1_legacy_candidate_unsupported")
-        if revision not in (0, 2):
+        if revision not in (0, 2, 3):
             raise ValueError("gnss_integrity_revision_unsupported")
+        revision = request.quality_policy_revision or revision
+        if revision == 3:
+            for name, value in self.OfflineParameters_Get().items():
+                if name.startswith("gnss_integrity_"):
+                    parameters.setdefault(name, value)
+            runtime = {p.parameter_id: p for p in self.RuntimeParameterSchema_Get(dataset, 3)}
+            baseline = {**self.OfflineParameters_Get(), **self.recorded_parameters(dataset)}
+            for name, value in request.parameters.items():
+                if name not in runtime and value != baseline.get(name):
+                    raise ValueError(f"parameter_retired_revision3:{name}")
+            for name, spec in runtime.items():
+                spec.Value_Validate(parameters[name])
         if revision == 0:
             for name, default in self.OfflineParameters_Get().items():
                 if name.startswith("gnss_integrity_"):
                     parameters.setdefault(name, default)
             if "gnss_integrity_enable" not in request.parameters:
                 parameters["gnss_integrity_enable"] = 0
-        if (parameters["gnss_integrity_recovery_threshold_m"] >=
-                parameters["gnss_integrity_error_threshold_m"]):
+        if revision != 3 and (
+            parameters["gnss_integrity_recovery_threshold_m"]
+            >= parameters["gnss_integrity_error_threshold_m"]
+        ):
             raise ValueError("gnss_integrity_threshold_order_invalid")
         for dimension in ("1d", "2d", "3d"):
             if parameters[f"nis_{dimension}_hard"] <= parameters[f"nis_{dimension}_soft"]:
                 raise ValueError("nis_threshold_order_invalid")
         return parameters
+
+    def RuntimeParameterSchema_Get(self, dataset, quality_policy_revision=None):
+        from dataclasses import replace
+
+        metadata = (
+            dataset.semantic_context.raw_metadata if dataset and dataset.semantic_context else {}
+        )
+        revision = quality_policy_revision or metadata.get("metadata_declarations", {}).get(
+            "navigation_replay", {}
+        ).get("gnss_integrity_revision", 0)
+        if revision != 3:
+            return self.metadata.parameter_schema
+        retired = {
+            "gnss_integrity_" + suffix
+            for suffix in (
+                "recovery_threshold_m",
+                "suspect_duration_ms",
+                "reject_duration_ms",
+                "recovery_duration_ms",
+                "hacc_max_m",
+                "sacc_max_mps",
+            )
+        }
+        return tuple(
+            replace(p, maximum=4.0) if p.parameter_id == "gnss_integrity_position_r_scale" else p
+            for p in self.metadata.parameter_schema
+            if p.parameter_id not in retired
+        )
+
+    def ParameterAudit_Get(self, dataset, request):
+        audit = super().ParameterAudit_Get(dataset, request)
+        runtime = self.RuntimeParameterSchema_Get(dataset, request.quality_policy_revision)
+        active = {p.parameter_id for p in runtime}
+        audit["retired_parameter_ids"] = [
+            p.parameter_id for p in self.metadata.parameter_schema if p.parameter_id not in active
+        ]
+        audit["actual_effective_parameter_ids"] = sorted(active)
+        return audit
 
     def _P0_Resolve(self, dataset: FlightDataset, parameters: Mapping[str, float]) -> np.ndarray:
         recorded = self.recorded_parameters(dataset)
@@ -1300,19 +1456,35 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         return result
 
     def _IntegritySchedule_Apply(
-        self, dataset: FlightDataset, schedule: tuple[_ScheduledMeasurement, ...],
+        self,
+        dataset: FlightDataset,
+        schedule: tuple[_ScheduledMeasurement, ...],
         parameters: Mapping[str, float],
+        *,
+        revision_override: int | None = None,
     ) -> tuple[tuple[_ScheduledMeasurement, ...], dict[str, object]]:
         from silverstar_flp.analysis.gnss_integrity_stream import GnssIntegrityStream_Build
 
-        selected = GnssIntegrityStream_Build(dataset, parameters, consumed_only=True)
         metadata = dataset.semantic_context.raw_metadata if dataset.semantic_context else {}
-        revision = metadata.get("metadata_declarations", {}).get(
-            "navigation_replay", {}).get("gnss_integrity_revision", 0)
+        revision = (
+            metadata.get("metadata_declarations", {})
+            .get("navigation_replay", {})
+            .get("gnss_integrity_revision", 0)
+        )
+        if revision_override is not None:
+            revision = revision_override
+        if revision == 3:
+            from silverstar_flp.analysis.navigation_revision3 import QualitySchedule_Apply
+
+            return QualitySchedule_Apply(dataset, schedule, parameters)
+        selected = GnssIntegrityStream_Build(dataset, parameters, consumed_only=True)
         recorded_parameters = self.recorded_parameters(dataset)
         baseline = recorded_parameters or self.OfflineParameters_Get()
-        old = (GnssIntegrityStream_Build(dataset, baseline, consumed_only=True)
-               if revision == 2 else None)
+        old = (
+            GnssIntegrityStream_Build(dataset, baseline, consumed_only=True)
+            if revision == 2
+            else None
+        )
         noise_recomputed = any(
             np.float32(parameters[name]) != np.float32(baseline.get(name, parameters[name]))
             for name in ("gnss_position_std_horizontal", "gnss_position_std_vertical")
@@ -1336,7 +1508,7 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 raise ValueError("gnss_integrity_native_evidence_missing")
             logged_mask = int(payload["valid_group_mask"])
             baseline_decision = old.by_measurement.get(key) if old else None
-            native_mask = (baseline_decision.admitted_mask if baseline_decision else logged_mask)
+            native_mask = baseline_decision.admitted_mask if baseline_decision else logged_mask
             # The receiver's raw four-group mask is restored from GNSS_NATIVE below.
             native_record = native_by_key.get(key)
             if native_record is None:
@@ -1362,11 +1534,14 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             changed.append(replace(item, record=replace(item.record, payload=payload)))
         diagnostics = {
             "revision": 2,
-            "state_counts": tuple(sum(d.state == state for d in selected.decisions)
-                                  for state in range(3)),
-            "transitions": tuple((d.timestamp_us, d.previous_state, d.state,
-                                  d.reason, d.sequence)
-                for d in selected.decisions if d.state != d.previous_state),
+            "state_counts": tuple(
+                sum(d.state == state for d in selected.decisions) for state in range(3)
+            ),
+            "transitions": tuple(
+                (d.timestamp_us, d.previous_state, d.state, d.reason, d.sequence)
+                for d in selected.decisions
+                if d.state != d.previous_state
+            ),
             "position_disabled_count": position_disabled_count,
             "recorded_mask_mismatches": mask_mismatches,
             "recorded_r_mismatches": r_mismatches,
@@ -1601,7 +1776,9 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     r_scale[0:2] = scales
                     if measurement_events is not None:
                         self._MeasurementEvents_Append(
-                            measurement_events, filter_instance, measurement,
+                            measurement_events,
+                            filter_instance,
+                            measurement,
                             increment.interval_end_timestamp_us,
                         )
                 else:
@@ -1614,8 +1791,11 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                     attempt_mask |= mask
                     if measurement_events is not None:
                         self._MeasurementEvents_Append(
-                            measurement_events, filter_instance, measurement,
-                            increment.interval_end_timestamp_us, baro_result,
+                            measurement_events,
+                            filter_instance,
+                            measurement,
+                            increment.interval_end_timestamp_us,
+                            baro_result,
                         )
             snapshots.append(
                 _ReplaySnapshot(
@@ -1654,8 +1834,10 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
 
     @staticmethod
     def _MeasurementEvents_Append(
-        output: list[dict[str, object]], filter_instance: Kf6Filter,
-        measurement: _ScheduledMeasurement, present: int,
+        output: list[dict[str, object]],
+        filter_instance: Kf6Filter,
+        measurement: _ScheduledMeasurement,
+        present: int,
         baro_result: int | None = None,
     ) -> None:
         payload = measurement.record.payload
@@ -1664,14 +1846,34 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             groups = (("baro", (0,), "variance_m2", "measurement_timestamp_us", 0),)
         else:
             groups = (
-                ("position_en", (0, 1), "position_variance_m2",
-                 "position_measurement_timestamp_us", 0),
-                ("position_u", (2,), "position_variance_m2",
-                 "position_measurement_timestamp_us", 1),
-                ("velocity_en", (0, 1), "velocity_variance_m2ps2",
-                 "velocity_measurement_timestamp_us", 2),
-                ("velocity_u", (2,), "velocity_variance_m2ps2",
-                 "velocity_measurement_timestamp_us", 3),
+                (
+                    "position_en",
+                    (0, 1),
+                    "position_variance_m2",
+                    "position_measurement_timestamp_us",
+                    0,
+                ),
+                (
+                    "position_u",
+                    (2,),
+                    "position_variance_m2",
+                    "position_measurement_timestamp_us",
+                    1,
+                ),
+                (
+                    "velocity_en",
+                    (0, 1),
+                    "velocity_variance_m2ps2",
+                    "velocity_measurement_timestamp_us",
+                    2,
+                ),
+                (
+                    "velocity_u",
+                    (2,),
+                    "velocity_variance_m2ps2",
+                    "velocity_measurement_timestamp_us",
+                    3,
+                ),
             )
         for group, axes, variance_key, time_key, index in groups:
             resolved = int(payload.get(time_key, payload.get("sample_timestamp_us", 0)))
@@ -1691,27 +1893,39 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             else:
                 effective_source = (
                     filter_instance.last_position_effective_variance
-                    if index < 2 else filter_instance.last_velocity_effective_variance
+                    if index < 2
+                    else filter_instance.last_velocity_effective_variance
                 )
                 effective = np.asarray(effective_source, dtype=np.float64)[list(axes)]
                 result = int(filter_instance.last_group_result[index])
                 group_valid = bool(int(payload.get("valid_group_mask", 0)) & (1 << index))
             accepted = result in (0, 1)
             valid = group_valid and 0 < receive <= present and 0 < resolved <= present
-            output.append(dict(
-                group=group, timestamp_us=present, receive_timestamp_us=receive,
-                resolved_measurement_timestamp_us=resolved,
-                operation_sequence=measurement.source_order, valid=valid,
-                input_variance=tuple(float(value) for value in base),
-                effective_variance=tuple(
-                    float(value) for value in (
-                        effective if accepted else np.full(base.shape, np.nan)
-                    )
-                ),
-                receive_age=(present - receive) * .001,
-                fixed_lag_latency=(present - resolved) * .001,
-                r_scale=float(effective[0] / base[0]) if accepted and base[0] > 0 else np.nan,
-            ))
+            output.append(
+                dict(
+                    group=group,
+                    timestamp_us=present,
+                    receive_timestamp_us=receive,
+                    source_id=payload.get("_quality_source_id"),
+                    resolved_measurement_timestamp_us=resolved,
+                    operation_sequence=measurement.source_order,
+                    valid=valid,
+                    result=result,
+                    variance_scale=(
+                        (float(payload.get("_quality_variance_scales", (1.0,) * 4)[index])
+                         if group != "baro" else 1.0)
+                        * (float(effective[0] / base[0]) if result == 1 and base[0] > 0 else 1.0)
+                    ),
+                    input_variance=tuple(float(value) for value in base),
+                    effective_variance=tuple(
+                        float(value)
+                        for value in (effective if accepted else np.full(base.shape, np.nan))
+                    ),
+                    receive_age=(present - receive) * 0.001,
+                    fixed_lag_latency=(present - resolved) * 0.001,
+                    r_scale=float(effective[0] / base[0]) if accepted and base[0] > 0 else np.nan,
+                )
+            )
 
     @staticmethod
     def _Gnss_Apply(
@@ -1809,7 +2023,8 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
 
     @staticmethod
     def _GnssIntegrity_Apply(
-        filter_instance: Kf6Filter, record: DecodedRecord,
+        filter_instance: Kf6Filter,
+        record: DecodedRecord,
     ) -> tuple[int, int, int, np.ndarray]:
         payload = record.payload
         if not bool(payload.get("fusion_allowed", 0)):
@@ -1822,14 +2037,16 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
         admitted = int(payload["valid_group_mask"])
         if filter_instance.analysis_position_vertical_disabled:
             admitted &= ~2
-        filter_instance.Kf6_GnssEpochTrack(Kf6GnssEpoch(
-            timestamp_us=int(payload["sample_timestamp_us"]),
-            position_enu_m=position,
-            velocity_enu_mps=velocity,
-            position_std_m=np.sqrt(np.maximum(position_variance, 0.0)),
-            velocity_std_mps=np.sqrt(np.maximum(velocity_variance, 0.0)),
-            valid_group_mask=native_mask,
-        ))
+        filter_instance.Kf6_GnssEpochTrack(
+            Kf6GnssEpoch(
+                timestamp_us=int(payload["sample_timestamp_us"]),
+                position_enu_m=position,
+                velocity_enu_mps=velocity,
+                position_std_m=np.sqrt(np.maximum(position_variance, 0.0)),
+                velocity_std_mps=np.sqrt(np.maximum(velocity_variance, 0.0)),
+                valid_group_mask=native_mask,
+            )
+        )
         results = [Kf6UpdateResult.REJECTED_INVALID] * 4
         for group in range(4):
             if not admitted & (1 << group):
@@ -1838,23 +2055,40 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
             value = position if group < 2 else velocity
             variance = position_variance if group < 2 else velocity_variance
             result = filter_instance.Kf6_GroupUpdate(selected, value, variance)
-            result = filter_instance.Kf6_GroupRecover(selected, result, value, variance,
-                int(payload["receive_timestamp_us"]))
+            result = filter_instance.Kf6_GroupRecover(
+                selected, result, value, variance, int(payload["receive_timestamp_us"])
+            )
             results[group] = result
         filter_instance.last_position_nis = np.max(filter_instance.last_group_nis[:2])
         filter_instance.last_velocity_nis = np.max(filter_instance.last_group_nis[2:])
         if admitted & 3:
-            filter_instance._Counter_Update("position", Kf6UpdateResult(
-                _Result_Aggregate(results[0], results[1]) if admitted & 3 == 3
-                else int(results[0] if admitted & 1 else results[1])))
+            filter_instance._Counter_Update(
+                "position",
+                Kf6UpdateResult(
+                    _Result_Aggregate(results[0], results[1])
+                    if admitted & 3 == 3
+                    else int(results[0] if admitted & 1 else results[1])
+                ),
+            )
         if admitted & 12:
-            filter_instance._Counter_Update("velocity", Kf6UpdateResult(
-                _Result_Aggregate(results[2], results[3]) if admitted & 12 == 12
-                else int(results[2] if admitted & 4 else results[3])))
-        position_result = (_Result_Aggregate(results[0], results[1]) if admitted & 3 == 3
-            else int(results[0] if admitted & 1 else results[1]))
-        velocity_result = (_Result_Aggregate(results[2], results[3]) if admitted & 12 == 12
-            else int(results[2] if admitted & 4 else results[3]))
+            filter_instance._Counter_Update(
+                "velocity",
+                Kf6UpdateResult(
+                    _Result_Aggregate(results[2], results[3])
+                    if admitted & 12 == 12
+                    else int(results[2] if admitted & 4 else results[3])
+                ),
+            )
+        position_result = (
+            _Result_Aggregate(results[0], results[1])
+            if admitted & 3 == 3
+            else int(results[0] if admitted & 1 else results[1])
+        )
+        velocity_result = (
+            _Result_Aggregate(results[2], results[3])
+            if admitted & 12 == 12
+            else int(results[2] if admitted & 4 else results[3])
+        )
         ratios = np.ones(2, dtype=np.float32)
         if admitted & 1 and position_variance[0] > 0:
             ratios[0] = filter_instance.last_position_effective_variance[0] / position_variance[0]
@@ -2024,14 +2258,19 @@ class Kf6AlgorithmPlugin(AlgorithmPlugin):
                 ),
                 valid=attempted,
             )
-            base = (np.asarray([item.position_innovation for item in snapshots])
-                    if index < 2 else
-                    np.asarray([item.velocity_innovation for item in snapshots]))
+            base = (
+                np.asarray([item.position_innovation for item in snapshots])
+                if index < 2
+                else np.asarray([item.velocity_innovation for item in snapshots])
+            )
             selected = base[:, :2] if index % 2 == 0 else base[:, 2:3]
             channels[f"kf6.innovation.{name}"] = replace(
                 _Series_Create(
-                    timestamps, selected, unit="m" if index < 2 else "m/s",
-                    quantity="innovation", columns=("E", "N") if index % 2 == 0 else ("U",),
+                    timestamps,
+                    selected,
+                    unit="m" if index < 2 else "m/s",
+                    quantity="innovation",
+                    columns=("E", "N") if index % 2 == 0 else ("U",),
                 ),
                 valid=attempted,
             )

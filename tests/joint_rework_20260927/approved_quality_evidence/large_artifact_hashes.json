@@ -1,0 +1,107 @@
+[
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0000/kf6_revision3_what_if_all_channels.npz",
+    "bytes": 693427,
+    "sha256": "2adcdf3fad00382fb38910fe5cae118898cab97edccda9f6dfb68bcc20225fdb"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0000/report.json",
+    "bytes": 5219158,
+    "sha256": "ee0a968dfc1895ab98ac524d6198e3a1d604441b7b29861061aa7dbfc156e4de"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0001/kf6_revision3_what_if_all_channels.npz",
+    "bytes": 829870,
+    "sha256": "28b68505a0d1aa0b6d3c136ccc07a74ac3aa7f365435dcb8a47fdfd60759dc88"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0001/report.json",
+    "bytes": 6124105,
+    "sha256": "f6cb529dac0899b44fd893add33fb80c13d4040b688661913f46a59109dfe6b0"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0002/report.json",
+    "bytes": 4035,
+    "sha256": "7c1db7e5dda77efd214bb3a38a547de18e4153d578671a2b5452c7490c6aa905"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0003/kf6_revision3_what_if_all_channels.npz",
+    "bytes": 5566359,
+    "sha256": "2b0a8fd25cd9f790af9b9b03a78c98c61f1517f9e9e08e99cfe7e50fa4626d6a"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0003/report.json",
+    "bytes": 45583423,
+    "sha256": "60a21d60611635072ab57dde79e1b01ad218a89a4db80810b319a745b76e5315"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0004/kf6_revision3_what_if_all_channels.npz",
+    "bytes": 7266739,
+    "sha256": "6e585784e1f4d324db5076a195f606374af2064414f8651bec710e61ff9255db"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/SS0004/report.json",
+    "bytes": 60395207,
+    "sha256": "c5409f14f556af5c22d2ea003f839d65bb6434d06ddb52d28df10a569832a810"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_kf6/summary.json",
+    "bytes": 124999532,
+    "sha256": "f365f2c667c7de684c267dd1dee32367a7640e4436e891870e0814ac556689f4"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0000/eskf15_what_if_all_channels.npz",
+    "bytes": 2693504,
+    "sha256": "feaae31376e0437e1c8b12bd3e643d606ed3e8b69761525dca59ae36a906c573"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0000/report.json",
+    "bytes": 26469,
+    "sha256": "0c5f34e586af3571419ceb1c6e0c346ae37b531ccabd81e8b55cf223c150783a"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0001/eskf15_what_if_all_channels.npz",
+    "bytes": 3319652,
+    "sha256": "5aa43c1e258a8e051f1e9c15b763d047119c31f646c14b84c22f3801d8b25705"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0001/report.json",
+    "bytes": 28176,
+    "sha256": "9aec4063063dc3390e03164332a5e56f167bba3cf6e585e9cebc6c41c4d2d4b1"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0002/eskf15_what_if_all_channels.npz",
+    "bytes": 33825627,
+    "sha256": "be007a2db88c5f961c17d514df6818894747043438064c77e82fd5bcb7a442ff"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0002/report.json",
+    "bytes": 25998,
+    "sha256": "e40cf8677e8889ad1ab443fab1b3ecd053282c5b0be6e6b61b12ddbef49c44f6"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0003/eskf15_what_if_all_channels.npz",
+    "bytes": 24422469,
+    "sha256": "4ea00d92a3982773f2c5a7f75976cbbc8f51eb3a505fa928b6bf8e3a4dc638d5"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0003/report.json",
+    "bytes": 42369,
+    "sha256": "61b1dd110fe2fd9cbd5eaa9c85e2e93ca258d44d5af837644eaf05bdaa711212"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0004/eskf15_what_if_all_channels.npz",
+    "bytes": 31945960,
+    "sha256": "22c3be5ee52845048d026183ef4b364289163dae2b3736478bf532faea215369"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/SS0004/report.json",
+    "bytes": 47648,
+    "sha256": "0d4337d8756e00dfbaf3235fc7f62beeecadbd30afaaf793fcdcb5b39c930ecb"
+  },
+  {
+    "path": "tests/joint_rework_20260927/five_logs_quality_fix_eskf/summary.json",
+    "bytes": 181748,
+    "sha256": "764359cc93a93597bb426eeb632acc8622906e70fc89e0a57effb21b80704a57"
+  }
+]

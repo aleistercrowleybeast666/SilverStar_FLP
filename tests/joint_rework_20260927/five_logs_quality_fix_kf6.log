@@ -1,0 +1,15 @@
+SS0000 exact import
+SS0000 kf6_revision3_what_if begin
+SS0000 kf6_revision3_what_if finished 4.299663399986457
+SS0001 exact import
+SS0001 kf6_revision3_what_if begin
+SS0001 kf6_revision3_what_if finished 5.939959899988025
+SS0002 exact import
+SS0002 kf6_revision3_what_if begin
+SS0002 kf6_revision3_what_if FAILED ValueError('gnss_origin_unavailable')
+SS0003 exact import
+SS0003 kf6_revision3_what_if begin
+SS0003 kf6_revision3_what_if finished 45.62388349999674
+SS0004 exact import
+SS0004 kf6_revision3_what_if begin
+SS0004 kf6_revision3_what_if finished 66.75014029999147

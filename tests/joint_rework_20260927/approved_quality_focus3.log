@@ -1,0 +1,12 @@
+........................................................................ [ 80%]
+..................                                                       [100%]
+============================== warnings summary ===============================
+tests/test_navigation_quality_gain.py::test_nonfinite_cross_gain_rejects_before_state_or_p_mutation[0-inf]
+tests/test_navigation_quality_gain.py::test_nonfinite_cross_gain_rejects_before_state_or_p_mutation[0--inf]
+tests/test_navigation_quality_gain.py::test_nonfinite_cross_gain_rejects_before_state_or_p_mutation[2-inf]
+tests/test_navigation_quality_gain.py::test_nonfinite_cross_gain_rejects_before_state_or_p_mutation[2--inf]
+  D:\python_software\SilverStar_FLP\src\silverstar_flp\plugins\algorithms\kf6\filter.py:585: RuntimeWarning: invalid value encountered in matmul
+    gain = np.asarray(cross_covariance @ inverse, dtype=np.float32)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+90 passed, 4 warnings in 3.73s

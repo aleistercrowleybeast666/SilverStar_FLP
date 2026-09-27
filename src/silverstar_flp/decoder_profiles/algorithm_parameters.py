@@ -101,7 +101,7 @@ def FirmwareParameters_CheckPlugins(value: Any, *, integrity_revision: int = 0) 
                     present = identifiers & integrity_ids
                     if integrity_revision == 1:
                         raise ValueError("gnss_integrity_revision_1_legacy_candidate_unsupported")
-                    if integrity_revision == 2 and present != integrity_ids:
+                    if integrity_revision in (2, 3) and present != integrity_ids:
                         raise ValueError("gnss_integrity_parameters_incomplete")
                 for item in group["parameters"]:
                     name = item["id"]

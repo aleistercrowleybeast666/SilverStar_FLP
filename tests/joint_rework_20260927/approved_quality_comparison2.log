@@ -1,0 +1,10 @@
+SS0000 kf6_revision3_what_if completed 4 4 changed_epochs 117
+SS0000 eskf15_what_if completed 4 4 changed_epochs 130
+SS0001 kf6_revision3_what_if completed 2 2 changed_epochs 192
+SS0001 eskf15_what_if completed 1 1 changed_epochs 181
+SS0002 kf6_revision3_what_if failed None None changed_epochs None
+SS0002 eskf15_what_if completed 4 4 changed_epochs 0
+SS0003 kf6_revision3_what_if completed 4 4 changed_epochs 761
+SS0003 eskf15_what_if completed 1 2 changed_epochs 865
+SS0004 kf6_revision3_what_if completed 4 4 changed_epochs 1183
+SS0004 eskf15_what_if completed 4 4 changed_epochs 769

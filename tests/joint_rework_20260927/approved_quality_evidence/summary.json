@@ -1,0 +1,38 @@
+{
+  "full_suite": {
+    "passed": 483,
+    "skipped": 9,
+    "seconds": 373.07
+  },
+  "product_source_matches_extracted_wheel": true,
+  "product_source_file_count": 102,
+  "original_inputs_and_old_evidence_unchanged": true,
+  "package": {
+    "wheel": "silverstar_flp-0.0.5-py3-none-any.whl",
+    "bytes": 349169,
+    "sha256": "8526dff3f49dd1bc9f4722f73881e9357745b9d2a91068610c34487b3fdf7869",
+    "build_exit": 0,
+    "smoke_exit": 0,
+    "runtime": {
+      "version": "0.0.5",
+      "plugin": "silverstar.algorithm.estimator.eskf15",
+      "package_path": "D:\\python_software\\SilverStar_FLP\\tests\\joint_rework_20260927\\approved_quality_package_final\\package_final\\unpacked\\silverstar_flp\\__init__.py"
+    },
+    "scope": "offline wheel extraction + offscreen GUI; no install or publish"
+  },
+  "actual_bridge": {
+    "records": 491,
+    "health_equal": 40,
+    "claim": "FAITHFUL",
+    "hashes": {
+      "actual_backend_logger.BIN": "253dd88e57bb7f672ad2ed174979f19f632cee58e71a36eb6d7452455bc20e07",
+      "ActualBackendLoggerBridgeTest.ssdecoder": "2c58fa36a1e40a27801e775b02640f6a460df00d12b58a0640bc3331b4102c46"
+    }
+  },
+  "comparison_exclusions": [
+    "navigation_health value/time/valid arrays: compared separately",
+    "KF6 newly added health channel: old supervisor archive used as baseline",
+    "new result/quality metadata fields: actual values reported, not pretended old fields"
+  ],
+  "runtime_result": "Software gates pass; no hardware/flight/performance certification"
+}

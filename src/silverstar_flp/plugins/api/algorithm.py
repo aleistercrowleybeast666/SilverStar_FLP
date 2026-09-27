@@ -37,6 +37,7 @@ class StateGroupSpec:
     covariance_channel: str
     covariance_diagonal_indices: tuple[int, ...]
     file_stem: str = ""
+    estimate_channel: str = ""
 
     def __post_init__(self) -> None:
         if not self.group_id or not self.label_key or not self.covariance_channel:
@@ -149,6 +150,7 @@ class EstimatorVisualizationSpec:
     state_groups: tuple[StateGroupSpec, ...]
     measurement_groups: tuple[MeasurementGroupSpec, ...]
     full_covariance: FullCovarianceSpec | None = None
+    navigation_health_channel: str = ""
 
     def __post_init__(self) -> None:
         state_ids = tuple(group.group_id for group in self.state_groups)
@@ -239,6 +241,7 @@ class AlgorithmMetadata:
     coordinate_frame_contract: Mapping[str, Any] = field(default_factory=dict)
     exact_validation_reference: str = ""
     offline_default_parameters: Mapping[str, Any] = field(default_factory=dict)
+    what_if_quality_revisions: tuple[int, ...] = ()
 
     def ParameterSchemaIdentity_Get(self) -> str:
         payload = [spec.ToDict() for spec in self.parameter_schema]
@@ -315,9 +318,14 @@ class ReplayRequest:
     mode: ReplayMode = ReplayMode.RECORDED_CONFIGURATION
     input_source: str = "corrected_imu"
     parameters: Mapping[str, Any] = field(default_factory=dict)
+    quality_policy_revision: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mode", ReplayMode(self.mode))
+        if self.quality_policy_revision is not None and (
+            self.mode != ReplayMode.WHAT_IF or type(self.quality_policy_revision) is not int
+        ):
+            raise ValueError("quality_policy_override_requires_what_if")
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
 
 
@@ -372,6 +380,11 @@ class AlgorithmPlugin(ABC):
         return MappingProxyType(values)
 
     def Parameters_Resolve(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
+        if (
+            request.quality_policy_revision is not None
+            and request.quality_policy_revision not in self.metadata.what_if_quality_revisions
+        ):
+            raise ValueError("quality_policy_revision_unsupported")
         self.metadata.Parameters_Validate(request.parameters, complete=False)
         if request.mode == ReplayMode.RECORDED_CONFIGURATION:
             configuration = self.ConfigurationAvailability_Get(dataset)
@@ -394,6 +407,10 @@ class AlgorithmPlugin(ABC):
             raise ValueError("replay_mode_invalid")
         self.metadata.Parameters_Validate(values)
         return values
+
+    def RuntimeParameterSchema_Get(self, dataset, quality_policy_revision=None):
+        """Executable values for the selected policy; saved historical values may be larger."""
+        return self.metadata.parameter_schema
 
     def ParameterAudit_Get(self, dataset: FlightDataset, request: ReplayRequest) -> dict[str, Any]:
         firmware = (request.mode == ReplayMode.RECORDED_CONFIGURATION) or (

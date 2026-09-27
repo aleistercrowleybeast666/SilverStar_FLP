@@ -1,0 +1,393 @@
+{
+  "source": "SS0000",
+  "source_sha256": "f774a990536b3b39c38f09639a7f1d9a5100ea15f3d219ee1667d351d3fac381",
+  "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+  "data_quality": {
+    "status": "clean",
+    "valid_record_count": 17408,
+    "crc_failure_count": 0,
+    "length_failure_count": 0,
+    "resync_count": 0,
+    "sequence_gap_count": 0,
+    "sequence_missing_count": 0,
+    "unknown_record_count": 0,
+    "decoder_failure_count": 0,
+    "damaged_span_count": 0,
+    "logger_overflow_count": 0,
+    "logger_queue_overflow_count": 0,
+    "imu_queue_overflow_count": 0,
+    "logger_overflow_event_count": 0,
+    "gap_segments": 0,
+    "missing_ids": 0,
+    "missing_sequence_ids": 0,
+    "queue_overflow": {
+      "logger": 0,
+      "imu": 0
+    },
+    "sequence_gaps": [],
+    "mission_record_continuity": "continuous",
+    "structural_integrity": "normal",
+    "truncated_tail": false,
+    "record_counts": {
+      "EVENT": 84,
+      "CALIBRATION_RESULT": 1,
+      "DECODER_PROFILE_DESCRIPTOR": 1,
+      "SYSTEM_CONFIG": 2,
+      "DEVICE_DESCRIPTOR": 24,
+      "ALGORITHM_DESCRIPTOR": 8,
+      "LOG_STREAM_DESCRIPTOR": 56,
+      "ALIGNMENT_RESULT": 1,
+      "ESTIMATOR": 533,
+      "MISSION_CONFIG": 1,
+      "GNSS_RECOVERY": 45,
+      "GNSS_NATIVE": 581,
+      "BARO_NATIVE": 4653,
+      "POWER": 217,
+      "HEALTH": 24,
+      "STATS": 24,
+      "INITIAL_STATE": 1,
+      "TELEMETRY_DIAG": 24,
+      "IMU_CORRECTED": 4652,
+      "ESTIMATOR_STEP": 2325,
+      "INERTIAL_INCREMENT": 2325,
+      "GNSS_MEASUREMENT": 580,
+      "BARO_MEASUREMENT": 1220,
+      "LANDING_DIAGNOSTIC": 26
+    }
+  },
+  "initial_state": {
+    "alignment_algorithm": 3,
+    "hardware_mode": 0,
+    "mode_verified": 0,
+    "origin_valid_flags": 3,
+    "alignment_sample_count": 101,
+    "gnss_sample_count": 100,
+    "barometer_sample_count": 100,
+    "reserved": 0,
+    "q_nb": [
+      0.9999845623970032,
+      -7.270641071954742e-05,
+      0.00555944861844182,
+      4.0421377889288124e-07
+    ],
+    "acceleration_mean_b_mps2": [
+      -0.10846289247274399,
+      -0.0014184328028932214,
+      9.754372596740723
+    ],
+    "gyro_mean_b_radps": [
+      -3.1641517125535756e-05,
+      0.0,
+      -0.001075811218470335
+    ],
+    "magnetic_field_mean_b_uT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "gnss_origin_latitude_e7": 225895063,
+    "gnss_origin_longitude_e7": 1139754043,
+    "gnss_origin_height_mm": 29524,
+    "gnss_origin_position_std_m": [
+      0.5236680507659912,
+      0.3174187242984772,
+      0.3442642390727997
+    ],
+    "initial_velocity_enu_mps": [
+      0.023010000586509705,
+      0.006049999967217445,
+      -0.06697000563144684
+    ],
+    "initial_velocity_std_mps": [
+      0.3729158043861389,
+      0.3729158043861389,
+      0.3729158043861389
+    ],
+    "barometer_origin_altitude_m": 61.94999694824219,
+    "barometer_origin_std_m": 0.0,
+    "p0_diagonal": [
+      4.0,
+      4.0,
+      9.0,
+      0.25,
+      0.25,
+      0.25
+    ]
+  },
+  "A_recorded_endpoint_enu_m": [
+    73.4533920288086,
+    -182.41128540039062,
+    -238.18162536621094
+  ],
+  "B_legacy_kf6": {
+    "status": "completed",
+    "error": null,
+    "fidelity": "APPROXIMATE",
+    "endpoint_enu_m": [
+      73.9207534790039,
+      -183.5604248046875,
+      -239.74212646484375
+    ],
+    "final_velocity_enu_mps": [
+      23.4055118560791,
+      -57.54561233520508,
+      -78.1540298461914
+    ]
+  },
+  "C_revision3_kf6": {
+    "status": "completed",
+    "error": null,
+    "fidelity": "APPROXIMATE",
+    "endpoint_enu_m": [
+      282.1622619628906,
+      -667.0371704101562,
+      -1116.981689453125
+    ],
+    "final_velocity_enu_mps": [
+      23.853227615356445,
+      -58.93483352661133,
+      -82.75920867919922
+    ],
+    "elapsed_s": 9.854468400008045,
+    "acceptance": {
+      "fusion_groups": [
+        {
+          "last_source": 0,
+          "last_receive_us": 139817746,
+          "last_physically_valid_us": 139817746,
+          "last_update_attempt_us": 139824567,
+          "last_successful_fusion_us": 122982563,
+          "last_recovery_us": 0,
+          "received": 580,
+          "attempted": 580,
+          "accepted": 160,
+          "soft_weighted": 5,
+          "nis_rejected": 420,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 16842004,
+          "last_result": 2,
+          "last_nis": 20901.052734375
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 139817746,
+          "last_physically_valid_us": 139817746,
+          "last_update_attempt_us": 139824567,
+          "last_successful_fusion_us": 122101559,
+          "last_recovery_us": 0,
+          "received": 580,
+          "attempted": 580,
+          "accepted": 138,
+          "soft_weighted": 3,
+          "nis_rejected": 442,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 17723008,
+          "last_result": 2,
+          "last_nis": 23569.974609375
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 139817746,
+          "last_physically_valid_us": 139817746,
+          "last_update_attempt_us": 139824567,
+          "last_successful_fusion_us": 133892562,
+          "last_recovery_us": 0,
+          "received": 573,
+          "attempted": 463,
+          "accepted": 161,
+          "soft_weighted": 7,
+          "nis_rejected": 302,
+          "invalid_rejected": 110,
+          "longest_no_fusion_us": 10142006,
+          "last_result": 2,
+          "last_nis": 6134.4638671875
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 139817746,
+          "last_physically_valid_us": 139817746,
+          "last_update_attempt_us": 139824567,
+          "last_successful_fusion_us": 134292567,
+          "last_recovery_us": 0,
+          "received": 573,
+          "attempted": 463,
+          "accepted": 154,
+          "soft_weighted": 19,
+          "nis_rejected": 309,
+          "invalid_rejected": 110,
+          "longest_no_fusion_us": 10781000,
+          "last_result": 2,
+          "last_nis": 3806.2236328125
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 139814680,
+          "last_physically_valid_us": 139814680,
+          "last_update_attempt_us": 139824567,
+          "last_successful_fusion_us": 121793562,
+          "last_recovery_us": 0,
+          "received": 1220,
+          "attempted": 1220,
+          "accepted": 270,
+          "soft_weighted": 10,
+          "nis_rejected": 950,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 18031005,
+          "last_result": 2,
+          "last_nis": null
+        }
+      ],
+      "fusion_timeout_policy": "2s degraded/dead reckoning; 10s required-group invalid",
+      "health_scope": "recorded outer operation evidence; no reset or covariance inflation inferred",
+      "final_health": 4,
+      "health_counts": {
+        "0": 29,
+        "1": 710,
+        "2": 100,
+        "3": 700,
+        "4": 786
+      },
+      "first_health_us": {
+        "0": 116607565,
+        "1": 116897568,
+        "2": 123991560,
+        "3": 124992562,
+        "4": 131984559
+      },
+      "window_evidence": [],
+      "all_output_finite": true,
+      "maximum_position_step_m": 79.43513310153102,
+      "baro_accept_count": 270,
+      "baro_reject_count": 950,
+      "reanchor_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "execution_mismatches": [],
+      "diagnostics_derivation": "Health computed from preserved outer-update outcomes; no numerical state recalculation or successful fusion inferred from receiver liveness."
+    }
+  },
+  "D_eskf15": {
+    "source": "SS0000",
+    "source_sha256": "f774a990536b3b39c38f09639a7f1d9a5100ea15f3d219ee1667d351d3fac381",
+    "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+    "source_bytes": 1575879,
+    "inputs_unchanged": true,
+    "legacy_kf6_status": "completed",
+    "legacy_kf6_error": null,
+    "eskf15_status": "completed",
+    "eskf15_fidelity": "APPROXIMATE",
+    "warnings": [
+      "eskf15_host_parity_scope_limited",
+      "eskf15_legacy_log_what_if",
+      "eskf15_native_epoch_unavailable"
+    ],
+    "interpretation": "旧固件真实日志上的新 ESKF What-if；无外部真值，不以末位置差或内部一致性声称绝对精度。",
+    "epoch_count": 2325,
+    "duration_s": 23.217001999999997,
+    "quaternion_norm_max_error": 2.220446049250313e-16,
+    "full_covariance_min_eigenvalue": 1.2337237063667796e-06,
+    "full_covariance_all_finite": true,
+    "nominal_output_all_finite": true,
+    "final_navigation_health": 4,
+    "health_epoch_counts": {
+      "0": 29,
+      "1": 589,
+      "2": 200,
+      "3": 600,
+      "4": 907
+    },
+    "maximum_gyro_bias_norm_radps": 0.023002048690006112,
+    "maximum_accel_bias_norm_mps2": 0.3319372409769342,
+    "recorded_kf6_endpoint_enu_m": [
+      73.4533920288086,
+      -182.41128540039062,
+      -238.18162536621094
+    ],
+    "eskf15_what_if_endpoint_enu_m": [
+      603.3093232813397,
+      -1443.3146225138328,
+      -2496.8669650223223
+    ],
+    "first_failure": null,
+    "first_health_state_us": {
+      "0": 116607565,
+      "1": 116897568,
+      "2": 122782563,
+      "3": 124782569,
+      "4": 130776563
+    },
+    "maximum_position_step_m": 3.6605697233415633,
+    "last_velocity_enu_mps": [
+      66.73103694886268,
+      -156.8265104296798,
+      -258.58756779363796
+    ],
+    "runtime_seconds_host_python": 37.258860900008585,
+    "replay_step_count": 72115,
+    "maximum_single_replay_steps": 62,
+    "reset_count": 0,
+    "imu_clip_evidence": "unavailable: old log lacks declared effective range/readback/clip flags; no inferred success",
+    "fusion_groups": {
+      "position_en": {
+        "outcome_counts": {
+          "0": 151,
+          "1": 4,
+          "2": 425
+        },
+        "maximum_effective_fusion_gap_s": 17.042004,
+        "last_effective_fusion_us": 122782563
+      },
+      "position_u": {
+        "outcome_counts": {
+          "0": 126,
+          "1": 4,
+          "2": 450
+        },
+        "maximum_effective_fusion_gap_s": 18.042009,
+        "last_effective_fusion_us": 121782558
+      },
+      "velocity_en": {
+        "outcome_counts": {
+          "0": 119,
+          "1": 6,
+          "2": 338,
+          "3": 110,
+          "18": 7
+        },
+        "maximum_effective_fusion_gap_s": 17.481005,
+        "last_effective_fusion_us": 122343562
+      },
+      "velocity_u": {
+        "outcome_counts": {
+          "0": 72,
+          "1": 9,
+          "2": 382,
+          "3": 110,
+          "18": 7
+        },
+        "maximum_effective_fusion_gap_s": 19.050005,
+        "last_effective_fusion_us": 120774562
+      },
+      "baro": {
+        "outcome_counts": {
+          "0": 252,
+          "1": 7,
+          "2": 961
+        },
+        "maximum_effective_fusion_gap_s": 18.241004999999998,
+        "last_effective_fusion_us": 121583562
+      }
+    },
+    "window_count": 0,
+    "window_valid_count": 0,
+    "window_evidence_scope": "旧 GNSS_NATIVE 缺可信 iTOW，接收/样本时刻的窗口为近似证据"
+  },
+  "interpretation": "No external truth; endpoints are outputs, not accuracy. All new algorithms on these old logs are approximate What-if.",
+  "C_scope": "New physical/quality/window variance and outer fusion health; retained recorded operation/resolved-time schedule. Missing old operations are not fabricated.",
+  "new_quality_parameters": "Four active window parameters; six revision-2 values retained as inactive legacy snapshot. Saved runs use unchanged 120ms/10m/cap4 defaults.",
+  "imu_evidence": "Legacy logs lack actual range/readback/clipping flags; no saturation or hardware qualification inferred.",
+  "source_and_decoder_unchanged": true
+}

@@ -90,7 +90,8 @@ class FixedLagReplay:
         initial = self.checkpoints[0][1]
         return all(np.array_equal(getattr(initial, field), getattr(self.state, field))
                    for field in ('process_accel_std_mps2', 'nis_soft_threshold',
-                                 'nis_hard_threshold', 'nis_max_r_scale'))
+                                 'nis_hard_threshold', 'nis_max_r_scale',
+                                 'require_effective_gain'))
 
     def _Prune(self):
         while len(self.checkpoints) > 1 and self.checkpoints[1][0] <= self.present - self.WINDOW_US:
@@ -406,6 +407,7 @@ def EpochState_Restore(dataset, epoch, template):
     state.covariance = covariance
     state.analysis_position_vertical_disabled = template.analysis_position_vertical_disabled
     state.outage_required = template.outage_required
+    state.require_effective_gain = template.require_effective_gain
     q = np.asarray(start.payload['q_nb'], dtype=np.float32)
     if q.shape != (4,) or not np.isfinite(q).all() or abs(np.linalg.norm(q)-1) > .01:
         raise ValueError('replay_epoch_attitude_invalid')
@@ -654,9 +656,16 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                         group=("position_en", "position_u", "velocity_en", "velocity_u")[g],
                         timestamp_us=history.present,
                         receive_timestamp_us=event.receive_us,
+                        source_id=p.get("_quality_source_id"),
                         resolved_measurement_timestamp_us=resolved,
                         operation_sequence=order,
                         valid=bool(int(p["valid_group_mask"]) & (1 << g)),
+                        result=int(outcome["results"][g]),
+                        variance_scale=(
+                            float(p.get("_quality_variance_scales", (1.0,) * 4)[g])
+                            * (float(effective[0] / base[0])
+                               if int(outcome["results"][g]) == 1 and base[0] > 0 else 1.0)
+                        ),
                         input_variance=tuple(float(value) for value in base),
                         effective_variance=tuple(
                             float(value) for value in (
@@ -672,6 +681,7 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                         dict(
                             timestamp_us=history.present,
                             source="Recomputed",
+                            source_id=p.get("_quality_source_id"),
                             group=name,
                             valid=bool(event.valid_mask & (1 << g))
                             and not (g == 1 and history.state.analysis_position_vertical_disabled),
@@ -702,6 +712,8 @@ def Faithful_Run(dataset, filter_instance, initial_q, increments, parameters, co
                     resolved_measurement_timestamp_us=event.measurement_us,
                     operation_sequence=order,
                     valid=bool(p.get("valid_mask", 1) & 1),
+                    result=int(baro_result),
+                    variance_scale=effective / base if int(baro_result) == 1 and base > 0 else 1.0,
                     input_variance=(base,),
                     effective_variance=(effective if accepted else float("nan"),),
                     receive_age=(history.present - event.receive_us) * .001,

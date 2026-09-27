@@ -1,0 +1,14 @@
+[
+  {
+    "log": "SS0001",
+    "actual_navigation_start_us": 20153257,
+    "old_offline_derived_start_us": 20163578,
+    "difference_us": 10321
+  },
+  {
+    "log": "SS0003",
+    "actual_navigation_start_us": 207311260,
+    "old_offline_derived_start_us": 207325556,
+    "difference_us": 14296
+  }
+]

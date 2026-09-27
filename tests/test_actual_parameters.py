@@ -140,6 +140,8 @@ def test_actual_default_replay_equals_frozen_legacy_multiplier_one(tmp_path, sou
     ds = SyntheticParameters_Attach(ds, tmp_path / "package")
     with np.load(FIXTURES / "legacy_default_outputs.npz") as baseline:
         for plugin in builtin_registry().algorithms:
+            if not any(key.startswith(plugin.metadata.plugin_id + ".") for key in baseline.files):
+                continue  # Frozen outputs cover only algorithms that existed in that firmware.
             result = plugin.run(ds, ReplayRequest(input_source=source))
             for key, value in plugin.recorded_parameters(ds).items():
                 assert result.parameters[key] == value
@@ -251,6 +253,8 @@ def test_matching_dynamic_package_replay_and_actual_baro_export(tmp_path):
     with np.load(FIXTURES / "legacy_dynamic_outputs.npz") as baseline:
         for plugin in builtin_registry().algorithms:
             name = plugin.metadata.plugin_id.rsplit(".", 1)[-1]
+            if not plugin.FirmwareMember_Is(dataset):
+                continue
             result = plugin.run(dataset, ReplayRequest())
             results[name] = result
             if name == 'pure_ins':

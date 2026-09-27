@@ -740,3 +740,328 @@ Final top-level FLP pytest: **371 passed, 10 skipped, 0 failed** in 300.95 s. Th
 **Retained legacy compatibility:** `analysis/landing_window.py` is reached by the public `RecoveryReplay_Run` → `analysis.recovery._Landing_Replay` path for approximate recovery replay, so it remains after the GUI button removal. `core/project.py` and `core/analysis_source.py` explicitly reject persisted Integrity-assisted configurations/results instead of silently reclassifying them. Revision-0 logs remain readable, revision-1 integrity is rejected, and fixed-lag/measurement-time/normal What-if infrastructure remains active. Historical VALIDATION/CHANGELOG entries retain their original version facts. The only remaining `0.0.2` matches outside historical reports are in historical `docs/Actual_Parameters_Validation.md`; there is no current runtime, manifest, package, CLI or UI identity at 0.0.2.
 
 **Joint software decision: READY FOR CONTROLLED FIELD RETEST**, contingent on the FCCG matrix and complete regression described in its paired `VALIDATION.md`. GSHC stayed frozen. No commit, push, tag, release, flash, physical output, reset, clean or shutdown was performed.
+
+## 2026-09-27 — joint ESKF15 / navigation revision 3 closeout
+
+This new entry supersedes no historical result. FLP baseline is `c4605f4`; the
+single runtime/package authority is now **0.0.5**, the minimum for new 35-record
+decoders. Historical decoder 1.2 and KF6 revision 2 retain their meanings.
+The FCCG-owned `navigation_v1.json` and both FLP copies have SHA256
+`68d4e3edc6be4c110c4c973990c12a1464290d28e1c9254a51c96a1f41832b5e`.
+
+### Implementation and compatibility
+
+The registered ESKF15 plugin implements float64 nominal p/v/q/bg/ba, full 15×15
+P, right multiplicative Hamilton scalar-first body-to-ENU attitude, independent
+Jacobian checks, second-order Phi, positive-weight Simpson Q, Joseph update and
+SO(3) right-Jacobian reset. Calibrated BODY half-interval input belongs to the
+filter; it removes residual biases and applies coning/sculling exactly once.
+The bounded delayed replay preserves body inputs and repropagates bias changes;
+capacity, step-limit and callback failure roll back the transaction.
+
+Quality revision 3 uses bounded satellite/R degradation, two native-epoch
+10 s windows offset 5 s, 120 ms gap handling and 6 s evidence TTL. Each of five
+groups tracks actual outer effective-fusion evaluation time; received or
+internally replayed samples cannot reset that clock. The 2 s / 10 s policy is
+degradation / INVALID without an unsupported automatic reset. MODEL_MISMATCH
+is latched. Legacy revision-2 integrity remains separately reproducible.
+Six obsolete KF parameters remain in historical/project snapshots but become
+read-only for revision 3; its 30 effective parameters and R cap <=4 are explicit.
+Out-of-range old configuration is rejected, not silently clamped.
+
+New records preserve source, epoch, calibration generation and algorithm
+identity. ESKF_INITIAL_STATE plus four complete initial P pieces supply the
+numerical initialization; a legacy KF INITIAL_STATE is not required to invent
+that state. Full-P pieces assemble by identity rather than adjacency. Initial
+P always remains mandatory. Flight may explicitly disable periodic full P;
+then cross-covariance comparison is **unavailable**, while nominal state,
+P diagonals and measurement decisions remain compared. Enabled or unknown
+periodic policy, missing/conflicting pieces, CRC/gaps or identity mismatch
+prevent a FAITHFUL claim.
+
+Unattempted operations have no defined innovation/NIS/effective R. C leaves
+those wire slots zero, Python uses undefined values; only matching explicit
+`admitted=0` and exact result code allow these diagnostics to be reported
+unavailable. Physical validity, admission and result still compare exactly.
+Attempted diagnostics keep strict numeric comparison; no tolerance was widened.
+
+### Final commands and executed gates
+
+All commands ran in this repository with `.venv/Scripts/python.exe`,
+`PYTHONDONTWRITEBYTECODE=1`, `PYTHONPATH=src`, `QT_QPA_PLATFORM=offscreen`.
+The opt-in C tests used `SILVERSTAR_FCCG_ROOT=D:/python_software/SilverStar_FCCG`
+and `SILVERSTAR_ESKF_GENERATED=.../tests/joint_rework_20260927/verified_matrix/eskf15_flight`.
+
+| Gate | Final command / scope | Result |
+|---|---|---|
+| Complete product suite | `python -m pytest` on every top-level `tests/test_*.py`, `-q --basetemp=tests/joint_rework_20260927/final_complete_temp -o cache_dir=tests/joint_rework_20260927/final_complete_cache` | **426 passed, 9 skipped, 0 failed; 382.54 s; exit 0** |
+| Style | `python -m ruff check src tools` and every top-level `tests/*.py` | exit 0 |
+| Syntax | `compileall` over src, tools and top-level tests; pycache prefix below tests | all true, exit 0 |
+| Whitespace | `git diff --check` | exit 0 |
+| Real logger product closure | `python tests/joint_rework_20260927/audit_actual_backend_logger.py` | exact import / FAITHFUL comparison / GUI / export, exit 0 |
+| Offline package | `python tests/joint_rework_20260927/package_final_smoke.py` | offline no-deps/no-index wheel build and extracted-package GUI/plugin smoke, exit 0 |
+
+The nine skips are unchanged opt-in historical inputs: one
+`SILVERSTAR_CURRENT_LOG_ROOT`; one old joint C golden requiring its separate
+generated project/BIN; three `SILVERSTAR_SS_TEST_0_ROOT`; three
+`SILVERSTAR_SS0007_PATH`; one `SILVERSTAR_SS0014_ROOT`. Their absent inputs are
+not replaced. All newly introduced ESKF C/codec/window/delay/golden tests ran.
+The five supplied SS_0_5_TEST_3 logs were independently processed in this task.
+
+Compact logs, numerical JSON, hashes and inspected GUI PNGs are in
+`tests/joint_rework_20260927/evidence_final/`. The clause-by-clause matrix is
+`tests/joint_rework_20260927/REQUIREMENTS_TO_TESTS.md`.
+
+### C / Python / actual log closure
+
+Four direct actual-C versus float64 scenarios execute 2000 predictions and
+1000 grouped updates. Maximum absolute p/v/q/bg/ba/P/NIS differences are
+`1.0312e-5 / 9.4158e-6 / 7.5329e-6 / 5.6799e-7 / 5.1747e-7 / 3.1266e-6 / 1.6924e-5`.
+The unchanged tolerance is absolute 2e-4, relative 3e-4, selected for float32
+rounding at sub-mm/sub-mrad scales; discrete decisions are exact. Independent
+finite-difference Jacobians and analytic dynamics provide a separate oracle.
+Delayed 100/250 Hz tests cover 200 epochs and 18 mid-interval events, 600 ms
+history and caller-owned 192-entry C buffer; max differences are 3.17e-6 and
+5.39e-6, max C replay work 72 and 178 steps. The native-window test covers
+750 samples/12 completed windows, max R-scale difference 4.87e-7.
+
+The final **659-record** direct actual-C-core/codec fixtures pass both ordered
+and deliberately interleaved BODY/P arrival cases against the final decoder
+SHA256 `cff101c71022b6ecd05dba1d37c84f717f446215e79b952cabedd274a74aad36`.
+Maximum full-P difference is 1.633e-6. Missing P, unknown policy, altered bias,
+calibration mismatch and admission mismatch remain explicit negative tests.
+
+A separate **491-record / 58,931-byte** actual production bridge uses real NONE
+calibration, production FlightTask calibration snapshot, generated descriptor,
+production LoggerTask header/append/flush, actual ESKF backend and LoggerBus.
+Its BIN hash is `a7c93727e53b9b6220479137a6e04f0ff51729da4f690861bf4beb127469549c`;
+exact decoder hash is `15c53b534e3c5f643f765a2468b9870015d440875224abec263a5115bb6101d8`.
+FLP reports clean framing/CRC/sequence and FAITHFUL, with maximum p/v/q/P
+differences `9.512e-9 / 1.2761e-7 / 8.663e-8 / 7.302e-7`. Per GNSS group two
+unattempted rows, and one baro row, have numeric diagnostics explicitly
+unavailable after exact admission/result checks. Actual input hashes are
+unchanged. This bridge uses synthetic input/clock and a host fwrite/fflush sink;
+separate FCCG FatFs/DMA tests cover storage timing/admission. Neither is flight.
+Earlier marker-only throughput BINs were correctly rejected for absent READY
+calibration and were not relabeled as faithful data.
+
+The real BODY-only bridge opened the actual ESKF state-estimation GUI, showing
+Recorded and Replay bias XYZ and 15-dimensional uncertainty. Inspected 1000×700
+en/light and zh/dark snapshots are retained. Product export generated **361
+files, zero failures**; two absent legacy corrected-IMU plots are explicitly
+skipped, without synthesizing legacy IMU data from half-interval means.
+The full suite additionally exercises GUI switching during an independent
+explicit-source export, cancellation/restart, category directories, GIF frame
+duration, both languages/themes and existing text-scale/touch simulations.
+These offscreen checks are not physical monitor/touchscreen validation.
+
+The offline 0.0.5 wheel is 348,590 bytes, SHA256
+`2c376ae831b155c3358b96881157cfb03fdaeba6593773ae1ad04d5242d4dabb`.
+The unpacked package, not the source tree, loaded the ESKF plugin and bundled
+contract/translations and started the GUI. No package was installed or published.
+
+### Long counterexamples and five immutable logs
+
+The 600 s correct-position / 0.2 m/s biased-velocity case executes 30,000
+predictions, accepts all 6000 position attempts, and completes 118 windows with
+R scale 1; no cumulative position ban occurs. The 300 s 1.2 m/s drifting-position
+case has bounded R 1.44, 140 accepted / 2860 NIS-rejected position attempts and
+ends INVALID. That is a retained fault outcome, not proof of drift correction;
+the 10 m window threshold cannot detect arbitrary tiny drift. Severe tilt,
+bad baro prediction, independent bad groups, all-aid-invalid, history bounds,
+callback failure, invalid P and clipped/time-invalid IMU cases also run.
+
+All five original BINs and the original exact decoder were read-only and
+SHA256-checked before/after. Per-log reports retain A recorded output,
+B old-revision replay, C revision-3 KF6 What-if and D ESKF15 What-if. Old same-
+revision replay remains APPROXIMATE wherever recorded parity is incomplete.
+
+| Log | KF6 old / revision-3 replay | ESKF15 final health | Interpretation |
+|---|---|---|---|
+| SS0000 | completed, approximate | INVALID | Severe drift and long rejected-fusion intervals retained. |
+| SS0001 | completed, approximate | HEALTHY | Health reflects available internal evidence, not external accuracy truth. |
+| SS0002 | both fail `gnss_origin_unavailable` | INVALID | No origin was inserted; no GNSS fusion evidence. |
+| SS0003 | completed, approximate | HEALTHY | Four-way differences and complete diagnostics retained. |
+| SS0004 | completed, approximate | INVALID | Severe drift / long rejection retained; no performance PASS. |
+
+Four-way plots/results live under `four_way_comparison/SS0000` through `SS0004`;
+ESKF q/bias/all-15-P diagnostics under `five_logs_contract_final/`. All five D
+outputs are finite, P minimum eigenvalues positive, q norm error below 2.3e-16;
+these mathematical properties do not establish flight performance. The logs
+lack the new raw-body contract/actual range/clip flags and trusted native time.
+Legacy source identity is unknown/single-canonical unless real NAV_QUALITY
+supplies it; no source is guessed. New-policy runs are approximate What-if.
+No endpoint truth or future sample corrected the online algorithm.
+
+FLP implementation status: **IMPLEMENTATION_COMPLETE / SOFTWARE_GATES_PASS**.
+Joint target resource/driver/readiness decisions belong to the paired FCCG and
+GSHC reports. Physical status remains **HARDWARE_UNVERIFIED / NOT_FIELD_VALIDATED**;
+successful joint software gates permit the next JY901B+M9N bench validation,
+not a launch-readiness claim. No original input, external installation, hardware,
+flash, physical output, or NVM was modified by FLP work. Existing untracked
+`tests/.tmp_*` data were preserved. Large BIN/NPZ/build caches stay local with
+compact hash manifests; root coordinates authorized repository pushes.
+
+### Final independent-review delta
+
+The read-only cross-repository review found that C BODY prediction previously
+trimmed old history before rejecting a new CLIPPED/invalid input. At exactly
+600 ms, a rejected sample left live state unchanged but moved the authoritative
+anchor by 10 ms. The final `navigation_eskf_replay.c` first plans the prefix and
+replays it into the existing `working` scratch; only successful core prediction
+allows anchor/history commit. No full-state/global buffer or ABI was added.
+Scratch and genuine failure counters are distinguished from authoritative
+live state, anchor, body/event storage and counts.
+
+After this C-only implementation change, **20 targeted tests passed in 18.82 s,
+exit 0** (`evidence_final/transaction_delta.log`). They cover CLIPPED, NaN,
+live non-PSD and prefix non-PSD failures at the trim boundary with byte-identical
+authoritative state/history; successful two-prefix commit and removal of its
+old event; 192-slot overflow rejection; existing C/Python math, 100/250 Hz delay,
+window, final two decoder/codec golden cases and identity policies. Ruff and
+diff checks pass. The earlier 426-pass full suite is retained with its actual
+scope; it is not falsely relabeled as a later full rerun. Firmware health/source
+review findings and final target gate reruns are recorded by FCCG's owner.
+
+### Final bridge refresh and pending quality integration
+
+The latest frozen production bridge remains **491 records / 58,931 bytes**.
+BIN SHA256 is
+`253dd88e57bb7f672ad2ed174979f19f632cee58e71a36eb6d7452455bc20e07`;
+exact decoder SHA256 is
+`2c58fa36a1e40a27801e775b02640f6a460df00d12b58a0640bc3331b4102c46`.
+A fresh current-source product import/replay/export completed with exit 0 in
+`tests/joint_rework_20260927/bridge-final-review.log`. Framing, CRC, sequence and
+decoder validation are clean. The product reports EXACT / FAITHFUL numerical
+replay; the 99 physical/admission/result decisions agree exactly. Maximum
+position / velocity / quaternion / complete-P absolute differences remain
+`9.51171e-9 / 1.27610e-7 / 8.66238e-8 / 7.30176e-7`.
+Unattempted numeric diagnostics retain the explicit unavailable handling
+specified above; attempted values use the unchanged strict comparator.
+
+A separate exact-timestamp health audit compares **20 ESKF15_STATE plus 20
+NAV_QUALITY samples: 40/40 equal, no missing sample**, including WARMUP, HEALTHY
+and DEGRADED. Health is not silently included in the existing numerical-parity
+claim. The approved supervisor change recognizes actual SOFT results, which is
+sufficient for this fixture's changed C health samples. It does **not** establish
+coverage of an ACCEPTED update with R>1 whose multiplier is still absent from
+one pending consumer path. The repeated BODY-only product export produced
+361 files, zero failures, and the same two explicit unavailable legacy
+corrected-IMU plot skips. No equivalent legacy IMU inputs were fabricated.
+
+Old bridge outputs and four pending product files were SHA256-protected before
+and after: **1,086 files unchanged**. Full audit lists remain local under
+`bridge_final_review/protected_before.json` and `protected_after.json`; compact
+results, the separate health audit and protection-summary hashes are listed in
+`COMMIT_EVIDENCE_LIST.txt`. Earlier hashes and results above retain their original
+scope and were not overwritten or relabeled.
+
+Current final-review state is **QUALITY_INTEGRATION_PENDING_APPROVAL**, superseding
+the earlier implementation-complete statement for these newly found cases.
+Two already approved changes exist: the common supervisor validates finite
+positive gain and supports quality-aware degradation; KF6 exposes an opt-in
+finite/nonzero-float32-gain guard with legacy-default behavior preserved.
+Existing focused tests passed 38 cases in 10.68 s after those two changes.
+The four remaining integration files (KF6 plugin/fixed-lag, revision-3 policy
+adapter, ESKF15 plugin) remain unchanged after automatic approval review rejected
+their writes. Root has an outstanding user confirmation; no retry or patch
+application was performed. Thus the guard is not yet enabled by the revision-3
+KF6 product path, and total variance scales are not yet fully wired to health.
+This bridge pass does not close those missing branches.
+
+The earlier 426-pass full suite and five-log results are historical evidence,
+not a full rerun of this partial integration. In particular, the old SS0001/3
+HEALTHY labels are not final acceptance under the pending scale-aware policy.
+Nominal ESKF arithmetic is expected unchanged because health is observational;
+KF6 numerical changes should be confined to zero/nonfinite actual-gain cases.
+These are expectations, not measured post-patch results. SS0002 origin failure
+and the prior INVALID/drift outcomes remain visible. The exact four-file scope,
+new regression cases, fresh five-log output directories, complete-suite commands
+and offline package procedure are in
+`tests/joint_rework_20260927/APPROVAL_VALIDATION_PLAN.md`.
+
+### Authorized quality-integration final results
+
+The user explicitly approved continuing FLP changes. The four pending integrations
+are now applied; the preceding approval-hold status is historical. Revision 3
+enables the actual finite/nonzero float32-gain guard through live filters, clones,
+checkpoints and explicit epoch restoration. Revision 2 retains its original
+default arithmetic/admission. Zero and nonfinite K fail before x/P mutation;
+a tiny nonzero K is not rejected merely because K*K underflows. The effective-
+fusion clock requires finite positive gain and an actually accepted result.
+
+Health receives actual satellite, PosEN-only window and robust variance factors.
+Ordinary ACCEPTED uses robust factor 1, avoiding a float32 effective-R/base-R
+roundtrip slightly below 1. SOFT results retain their actual robust factor.
+No threshold or covariance gate was loosened. Physical rejection, independently
+required groups, initial unknown quality, timeout priority and callback/replay
+ownership remain explicit. `tests/test_navigation_quality_gain.py` adds 52
+focused cases. The final focused run passed 90 tests; its four deliberately
+injected NaN/Inf matmul warnings were subsequently asserted locally with
+`pytest.warns`. The initial fixture failures and logs remain preserved.
+
+The final complete suite passed **483 tests, 9 skipped, 373.07 s, exit 0**.
+A prior 483-pass run and intermediate wheel were retained before restoring
+three acceleration-bias unit strings to their original UTF-8 m/s² spelling.
+That correction is display metadata only; all five long runs serialize numeric
+arrays/parameters/diagnostics without these unit labels, so their numerical
+evidence remains valid. Final unit/spec assertions and the complete suite run
+on the corrected source, and the final wheel below contains that source.
+No warnings occur in that final run. Skips are the unchanged optional external
+fixtures: current-log (1), old joint C golden (1), SS_TEST_0 (3), SS0007 (3),
+SS0014 (1). The new C oracle, native history/window tests and both 659-record
+ordered/interleaved actual-codec fixtures all ran. Full source/tool/top-level
+test Ruff and source compileall passed. These results supersede the earlier
+partial-integration software status; that earlier evidence was not overwritten.
+
+Fresh KF6 revision-3 and ESKF15 regressions read all five original BINs with the
+original exact decoder. SS0002 KF6 still fails `gnss_origin_unavailable`.
+All four successful KF6 runs preserve all **165 existing arrays** exactly.
+ESKF SS0000/1/3/4 preserve all **141 non-health arrays** each; SS0002 has 45
+such arrays because GNSS measurements are absent. All are exactly equal (including
+nominal state, q/bias/P and measurement diagnostics, with NaNs compared in place).
+Health arrays are compared separately, and newly added KF6 health channels are
+compared to the saved old supervisor archive. No new diagnostic metadata is
+misrepresented as an unchanged old field.
+
+| Log | KF6 final health | ESKF previous → final | KF6 / ESKF changed health epochs |
+|---|---|---|---|
+| SS0000 | INVALID | INVALID → INVALID | 117 / 130 |
+| SS0001 | DEGRADED | HEALTHY → HEALTHY | 192 / 181 |
+| SS0002 | `gnss_origin_unavailable` | INVALID → INVALID | unavailable / 0 |
+| SS0003 | INVALID | HEALTHY → DEGRADED | 761 / 865 |
+| SS0004 | INVALID | INVALID → INVALID | 1183 / 769 |
+
+The full old/new health counts, first timestamps for every health state and
+five-group longest-no-fusion durations are in `approved_quality_comparison.json`.
+All ESKF longest-no-fusion durations remain identical. KF6 SS0001/3 VelU
+initial gaps change from 280000 to 290321 us and 290000 to 304296 us:
+the old offline-derived report started its supervisor at the first output,
+whereas the current product starts at the actual navigation START epoch.
+Formal immutable-log imports confirm those exact 10321/14296 us offsets in
+`approved_quality_clock_basis.json`; no fusion/state outcome changed.
+Other KF6 group maxima remain identical. SS0000/2/4 ESKF INVALID and severe
+drift remain failures,
+not performance PASS. SS0003 is now DEGRADED. Internal HEALTHY on SS0001 is not
+external accuracy or flight readiness. The 73-file old-report/NPZ/plot hash
+snapshot and all original input hashes remain unchanged.
+
+The frozen actual production bridge remains clean and FAITHFUL numerically:
+491 records; 99 measurement physical/admission/result outcomes exact;
+40/40 exact-timestamp recorded/replay health values match. Its entire numerical
+parity diagnostic object is identical to the previous audit; maximum full-P
+error remains 7.30176e-7. BIN/decoder hashes are the final pair documented above.
+Unattempted numeric fields are unavailable only after exact outcome comparison.
+Export implementation and channels are unchanged; the prior 361-file product
+export is retained rather than repeated.
+
+The final offline 0.0.5 wheel is **349,169 bytes**, SHA256
+`8526dff3f49dd1bc9f4722f73881e9357745b9d2a91068610c34487b3fdf7869`. Build and extracted-wheel GUI/plugin smoke both exit 0.
+All 102 current Python/JSON product source files match the wheel extraction byte-for-byte.
+No package was installed or published. New compact evidence is explicitly listed
+in `COMMIT_EVIDENCE_LIST.txt`; large regression NPZ/JSON artifacts stay local with
+hashes in `approved_quality_evidence/large_artifact_hashes.json`.
+
+Current FLP status: **IMPLEMENTATION_COMPLETE / SOFTWARE_GATES_PASS** for the
+authorized scope, with **HARDWARE_UNVERIFIED / NOT_FIELD_VALIDATED** unchanged.
+No original data, hardware, NVM, physical output, flash, or shutdown was touched.

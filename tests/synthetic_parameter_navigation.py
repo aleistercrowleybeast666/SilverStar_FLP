@@ -32,7 +32,10 @@ def NavigationPair_Open(
     semantics = json.loads(
         (fixtures / "synthetic_navigation_semantics.json").read_text(encoding="utf8")
     )
-    semantics["firmware_algorithm_parameters"] = FirmwareSets_Build(overrides)
+    semantics["firmware_algorithm_parameters"] = [
+        group for group in FirmwareSets_Build(overrides)
+        if group["component"] in semantics["algorithms"]
+    ]
     files, hashes = _PackageFiles_Build(catalog_document=catalog, semantics_document=semantics)
     package, _ = _Package_Write(directory / "SYNTHETIC_navigation.ssdecoder", files=files)
     records = {r["name"]: r for r in catalog["records"]}

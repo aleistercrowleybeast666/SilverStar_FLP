@@ -180,7 +180,10 @@ def ReplayConfiguration_Validate(configuration: Any) -> None:
         "parameter_schema_identity",
         "provenance",
     }
-    if not isinstance(configuration, dict) or set(configuration) != fields:
+    if not isinstance(configuration, dict) or set(configuration) not in (
+        fields,
+        fields | {"quality_policy_revision"},
+    ):
         raise ValueError("project_replay_configuration_invalid")
     try:
         plugin = builtin_registry().Algorithm_Get(configuration["algorithm_id"])
@@ -195,6 +198,12 @@ def ReplayConfiguration_Validate(configuration: Any) -> None:
     if configuration["mode"] == "integrity_assisted":
         raise ValueError("project_legacy_integrity_assistance_unsupported")
     ReplayMode(configuration["mode"])
+    if "quality_policy_revision" in configuration and (
+        configuration["mode"] != ReplayMode.WHAT_IF
+        or type(configuration["quality_policy_revision"]) is not int
+        or configuration["quality_policy_revision"] not in plugin.metadata.what_if_quality_revisions
+    ):
+        raise ValueError("project_quality_policy_revision_invalid")
     if configuration["input_source"] not in ("corrected_imu", "recorded_inertial_increment"):
         raise ValueError("project_replay_input_invalid")
     if configuration["provenance"] not in (

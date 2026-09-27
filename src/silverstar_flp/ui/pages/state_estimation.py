@@ -130,6 +130,10 @@ class StateEstimationPage(QWidget):
         self.reset_charts_button.clicked.connect(self._ChartViews_Reset)
         source_row.addWidget(self.reset_charts_button)
         layout.addLayout(source_row)
+        self.navigation_health_label = QLabel()
+        self.navigation_health_label.setObjectName("warningLabel")
+        self.navigation_health_label.setWordWrap(True)
+        layout.addWidget(self.navigation_health_label)
 
         self.tabs = QTabWidget()
         self._CovarianceTab_Build()
@@ -142,8 +146,11 @@ class StateEstimationPage(QWidget):
             self.navigation_diagnostics[kind] = panel
             self.tabs.addTab(panel, translator.Text_Get("diagnostic." + kind))
         self.gnss_integrity = GnssIntegrityPage(translator)
-        self.tabs.insertTab(self.tabs.indexOf(self.navigation_diagnostics["landing"]),
-                            self.gnss_integrity, translator.Text_Get("diagnostic.gnss_integrity"))
+        self.tabs.insertTab(
+            self.tabs.indexOf(self.navigation_diagnostics["landing"]),
+            self.gnss_integrity,
+            translator.Text_Get("diagnostic.gnss_integrity"),
+        )
         layout.addWidget(self.tabs)
         self.Language_Apply(translator)
 
@@ -156,9 +163,7 @@ class StateEstimationPage(QWidget):
         self.covariance_display_label = QLabel()
         self.covariance_display_combo = StandardComboBox()
         self.state_group_combo.currentIndexChanged.connect(self._Covariance_Refresh)
-        self.covariance_display_combo.currentIndexChanged.connect(
-            self._Covariance_Refresh
-        )
+        self.covariance_display_combo.currentIndexChanged.connect(self._Covariance_Refresh)
         controls.addWidget(self.state_group_label)
         controls.addWidget(self.state_group_combo)
         controls.addSpacing(12)
@@ -168,6 +173,9 @@ class StateEstimationPage(QWidget):
         layout.addLayout(controls)
         self.covariance_plot = self._Plot_Create()
         layout.addWidget(self.covariance_plot)
+        self.state_estimate_plot = self._Plot_Create()
+        self.state_estimate_plot.hide()
+        layout.addWidget(self.state_estimate_plot)
         self.tabs.addTab(widget, "")
 
     def _InnovationTab_Build(self) -> None:
@@ -176,9 +184,7 @@ class StateEstimationPage(QWidget):
         controls = QHBoxLayout()
         self.innovation_measurement_label = QLabel()
         self.innovation_measurement_combo = StandardComboBox()
-        self.innovation_measurement_combo.currentIndexChanged.connect(
-            self._Innovation_Refresh
-        )
+        self.innovation_measurement_combo.currentIndexChanged.connect(self._Innovation_Refresh)
         controls.addWidget(self.innovation_measurement_label)
         controls.addWidget(self.innovation_measurement_combo)
         controls.addStretch(1)
@@ -223,8 +229,7 @@ class StateEstimationPage(QWidget):
         TouchScroll_Enable(self.nis_summary)
         self.nis_summary.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.nis_summary.verticalHeader().setVisible(False)
-        self.nis_summary.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch)
+        self.nis_summary.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         summary_layout.addWidget(self.nis_summary, 1)
         self.nis_pages.addWidget(summary_page)
         self.tabs.addTab(widget, "")
@@ -243,9 +248,7 @@ class StateEstimationPage(QWidget):
         controls = QHBoxLayout()
         self.measurement_group_label = QLabel()
         self.measurement_group_combo = StandardComboBox()
-        self.measurement_group_combo.currentIndexChanged.connect(
-            self._Measurements_Refresh
-        )
+        self.measurement_group_combo.currentIndexChanged.connect(self._Measurements_Refresh)
         controls.addWidget(self.measurement_group_label)
         controls.addWidget(self.measurement_group_combo)
         controls.addStretch(1)
@@ -278,6 +281,7 @@ class StateEstimationPage(QWidget):
     def _Plots_Get(self) -> tuple[pg.PlotWidget, ...]:
         return (
             self.covariance_plot,
+            self.state_estimate_plot,
             self.innovation_plot,
             self.nis_plot,
             self.measurement_uncertainty_plot,
@@ -337,24 +341,25 @@ class StateEstimationPage(QWidget):
         self._visualization = visualization
         if selected.kind == AnalysisSourceKind.RECORDED:
             self._source_parameters = plugin.recorded_parameters(self._dataset)
-            self.diagnostic_label.setText(
-                self._translator.Text_Get("state.recorded_diagnostic")
-            )
+            self.diagnostic_label.setText(self._translator.Text_Get("state.recorded_diagnostic"))
         else:
             entry = self._resolver.store.SourceEntry_Get(selected.source_id)
             self._source_parameters = entry.parameters if entry is not None else {}
-            self.diagnostic_label.setText(
-                self._translator.Text_Get("state.recomputed_diagnostic")
-            )
+            self.diagnostic_label.setText(self._translator.Text_Get("state.recomputed_diagnostic"))
         if selected_without_estimator:
-            self.diagnostic_label.setText(
-                self._translator.Text_Get("state.selected_no_estimator")
-            )
+            self.diagnostic_label.setText(self._translator.Text_Get("state.selected_no_estimator"))
         self._FirmwareEstimatorDiagnostic_Append()
         self.source_value_label.setText(
             _Source_Label(self._translator, self._resolver, selected.source_id)
         )
         self.gnss_integrity.Parameters_Set(self._source_parameters)
+        entry = self._resolver.store.SourceEntry_Get(selected.source_id)
+        from silverstar_flp.decoder_profiles.eskf15_records import NavigationWindows_Get
+
+        windows = entry.diagnostics.get("window_evidence") if entry is not None else None
+        if entry is None and self._dataset.Records_Get("NAV_QUALITY"):
+            windows = NavigationWindows_Get(self._dataset.Records_Get("NAV_QUALITY"))
+        self.gnss_integrity.WindowEvidence_Set(windows)
         self._Selectors_Refresh()
         self._Refresh()
 
@@ -379,9 +384,7 @@ class StateEstimationPage(QWidget):
             values=", ".join(unmatched),
         )
         current = self.diagnostic_label.text().strip()
-        self.diagnostic_label.setText(
-            f"{current} · {diagnostic}" if current else diagnostic
-        )
+        self.diagnostic_label.setText(f"{current} · {diagnostic}" if current else diagnostic)
 
     def _SourceScore_Get(self, source: AnalysisSource) -> int:
         if self._resolver is None or source.algorithm_id is None:
@@ -408,8 +411,7 @@ class StateEstimationPage(QWidget):
                 )
             )
         return sum(
-            bool(channel_id)
-            and self._resolver.Series_Get(channel_id, source.source_id) is not None
+            bool(channel_id) and self._resolver.Series_Get(channel_id, source.source_id) is not None
             for channel_id in channels
         )
 
@@ -484,6 +486,18 @@ class StateEstimationPage(QWidget):
     def _Refresh(self) -> None:
         if self._visualization is None:
             return
+        health = self._Series_Get(self._visualization.navigation_health_channel)
+        self.navigation_health_label.setVisible(health is not None)
+        if health is not None and health.count:
+            names = ("warmup", "healthy", "degraded", "dead_reckoning", "invalid")
+            value = int(health.values[-1])
+            state = names[value] if 0 <= value < len(names) else "invalid"
+            self.navigation_health_label.setText(
+                self._translator.Text_Get(
+                    "state.navigation_health",
+                    value=self._translator.Text_Get("navigation." + state),
+                )
+            )
         self._Covariance_Refresh()
         self._Innovation_Refresh()
         self._Nis_Refresh()
@@ -493,24 +507,18 @@ class StateEstimationPage(QWidget):
     def _StartTimestamp_Get(self) -> int:
         if self._dataset is None:
             return 0
-        return (
-            self._dataset.start_timestamp_us
-            or self._dataset.diagnostics.first_timestamp_us
-            or 0
-        )
+        return self._dataset.start_timestamp_us or self._dataset.diagnostics.first_timestamp_us or 0
 
     def _Series_Get(self, channel_id: str) -> TimeSeries | None:
-        if (
-            not channel_id
-            or self._resolver is None
-            or self._estimator_source is None
-        ):
+        if not channel_id or self._resolver is None or self._estimator_source is None:
             return None
         return self._resolver.Series_Get(channel_id, self._estimator_source.source_id)
 
     def _ReferenceSeries_Get(self, channel_id: str) -> TimeSeries | None:
         if (
-            not channel_id or self._resolver is None or self._estimator_source is None
+            not channel_id
+            or self._resolver is None
+            or self._estimator_source is None
             or self._estimator_source.kind == AnalysisSourceKind.RECORDED
         ):
             return None
@@ -521,20 +529,14 @@ class StateEstimationPage(QWidget):
     def _ReferenceLabel_Get(self) -> str:
         if self._resolver is None:
             return self._translator.Text_Get("status.recorded")
-        return _Source_Label(
-            self._translator, self._resolver, ReplayResultStore.RECORDED_SOURCE_ID
-        )
+        return _Source_Label(self._translator, self._resolver, ReplayResultStore.RECORDED_SOURCE_ID)
 
     def _StateGroup_Get(self) -> StateGroupSpec | None:
         if self._visualization is None:
             return None
         group_id = self.state_group_combo.currentData()
         return next(
-            (
-                group
-                for group in self._visualization.state_groups
-                if group.group_id == group_id
-            ),
+            (group for group in self._visualization.state_groups if group.group_id == group_id),
             None,
         )
 
@@ -555,8 +557,9 @@ class StateEstimationPage(QWidget):
         )
 
     def _Covariance_Refresh(self) -> None:
-        _Plot_Reset((self.covariance_plot,))
+        _Plot_Reset((self.covariance_plot, self.state_estimate_plot))
         group = self._StateGroup_Get()
+        self.state_estimate_plot.setVisible(bool(group and group.estimate_channel))
         if group is None:
             return
         group_label = self._translator.Text_Get(group.label_key)
@@ -570,7 +573,9 @@ class StateEstimationPage(QWidget):
             (self._Series_Get(group.covariance_channel), False),
         ):
             raw = _Series_ComponentsSelect(
-                raw_source, group.covariance_diagonal_indices, group.component_names,
+                raw_source,
+                group.covariance_diagonal_indices,
+                group.component_names,
             )
             if raw is None:
                 continue
@@ -583,18 +588,25 @@ class StateEstimationPage(QWidget):
                 columns = tuple(
                     self._translator.Text_Get(
                         "state.standard_deviation_trace",
-                        group=group_label, component=name,
+                        group=group_label,
+                        component=name,
                     )
                     for name in group.component_names
                 )
             series = TimeSeries(
-                timestamp_us=raw.timestamp_us, values=values, unit=unit,
-                quantity="covariance", source=raw.source,
+                timestamp_us=raw.timestamp_us,
+                values=values,
+                unit=unit,
+                quantity="covariance",
+                source=raw.source,
                 valid=raw.valid & np.all(np.isfinite(values), axis=1),
-                columns=columns, metadata=raw.metadata,
+                columns=columns,
+                metadata=raw.metadata,
             )
             _Series_Plot(
-                self.covariance_plot, series, self._StartTimestamp_Get(),
+                self.covariance_plot,
+                series,
+                self._StartTimestamp_Get(),
                 colors=colors,
                 prefix=f"{self._ReferenceLabel_Get()} · " if reference else "",
                 reference=reference,
@@ -603,12 +615,30 @@ class StateEstimationPage(QWidget):
             f"{self._translator.Text_Get('chart.covariance')} · {group_label}"
         )
         self.covariance_plot.setLabel("left", unit)
+        if group.estimate_channel:
+            for series, reference in (
+                (self._ReferenceSeries_Get(group.estimate_channel), True),
+                (self._Series_Get(group.estimate_channel), False),
+            ):
+                _Series_Plot(
+                    self.state_estimate_plot,
+                    series,
+                    self._StartTimestamp_Get(),
+                    colors=colors,
+                    prefix=f"{self._ReferenceLabel_Get()} · " if reference else "",
+                    reference=reference,
+                )
+            self.state_estimate_plot.setTitle(
+                self._translator.Text_Get("state.estimate_title", group=group_label)
+            )
+            self.state_estimate_plot.setLabel("left", group.unit)
 
     def _MeasurementSeries_Get(
         self,
         channel_id: str,
         group: MeasurementGroupSpec,
-        *, reference: bool = False,
+        *,
+        reference: bool = False,
     ) -> TimeSeries | None:
         return _Series_ComponentsSelect(
             (self._ReferenceSeries_Get(channel_id) if reference else self._Series_Get(channel_id)),
@@ -622,14 +652,15 @@ class StateEstimationPage(QWidget):
         if group is None:
             return
         series = self._MeasurementSeries_Get(group.innovation_channel, group)
-        reference = self._MeasurementSeries_Get(
-            group.innovation_channel, group, reference=True
-        )
+        reference = self._MeasurementSeries_Get(group.innovation_channel, group, reference=True)
         label = self._translator.Text_Get(group.label_key)
         _Series_Plot(
-            self.innovation_plot, reference, self._StartTimestamp_Get(),
+            self.innovation_plot,
+            reference,
+            self._StartTimestamp_Get(),
             colors=TraceColorAllocator(),
-            prefix=f"{self._ReferenceLabel_Get()} · ", reference=True,
+            prefix=f"{self._ReferenceLabel_Get()} · ",
+            reference=True,
         )
         _Series_Plot(
             self.innovation_plot,
@@ -638,9 +669,7 @@ class StateEstimationPage(QWidget):
             colors=TraceColorAllocator(),
             prefix=f"{self._translator.Text_Get('chart.innovation')} ",
         )
-        self.innovation_plot.setTitle(
-            f"{self._translator.Text_Get('chart.innovation')} · {label}"
-        )
+        self.innovation_plot.setTitle(f"{self._translator.Text_Get('chart.innovation')} · {label}")
         if series is not None:
             self.innovation_plot.setLabel("left", series.unit)
 
@@ -652,9 +681,12 @@ class StateEstimationPage(QWidget):
         series = self._Series_Get(group.nis_channel)
         colors = TraceColorAllocator()
         _Series_Plot(
-            self.nis_plot, self._ReferenceSeries_Get(group.nis_channel),
-            self._StartTimestamp_Get(), colors=colors,
-            prefix=f"{self._ReferenceLabel_Get()} · NIS", reference=True,
+            self.nis_plot,
+            self._ReferenceSeries_Get(group.nis_channel),
+            self._StartTimestamp_Get(),
+            colors=colors,
+            prefix=f"{self._ReferenceLabel_Get()} · NIS",
+            reference=True,
         )
         _Series_Plot(
             self.nis_plot,
@@ -666,7 +698,9 @@ class StateEstimationPage(QWidget):
         )
         for threshold in group.NisThresholds_Get():
             self._NisThreshold_Plot(
-                series, threshold.parameter_id, threshold.label_key,
+                series,
+                threshold.parameter_id,
+                threshold.label_key,
                 Qt.PenStyle.DashDotLine if threshold.hard else Qt.PenStyle.DashLine,
                 colors,
             )
@@ -694,8 +728,7 @@ class StateEstimationPage(QWidget):
         if not np.isfinite(threshold):
             return
         selected = np.flatnonzero(
-            series.valid
-            & (series.timestamp_us >= np.uint64(self._StartTimestamp_Get()))
+            series.valid & (series.timestamp_us >= np.uint64(self._StartTimestamp_Get()))
         )
         if selected.size == 0:
             return
@@ -711,8 +744,11 @@ class StateEstimationPage(QWidget):
         )
 
     def _MeasurementSigma_Get(
-        self, channel_id: str, group: MeasurementGroupSpec,
-        *, reference: bool = False,
+        self,
+        channel_id: str,
+        group: MeasurementGroupSpec,
+        *,
+        reference: bool = False,
     ) -> TimeSeries | None:
         variance = self._MeasurementSeries_Get(channel_id, group, reference=reference)
         if variance is None:
@@ -721,8 +757,11 @@ class StateEstimationPage(QWidget):
         values[values <= 0] = np.nan
         sigma = np.sqrt(values)
         return TimeSeries(
-            timestamp_us=variance.timestamp_us, values=sigma, unit=group.unit,
-            quantity="measurement_sigma", source=variance.source,
+            timestamp_us=variance.timestamp_us,
+            values=sigma,
+            unit=group.unit,
+            quantity="measurement_sigma",
+            source=variance.source,
             valid=variance.valid & np.all(np.isfinite(sigma), axis=1),
             columns=group.component_names,
             metadata={**variance.metadata, "display_derived": True},
@@ -773,13 +812,17 @@ class StateEstimationPage(QWidget):
         ):
             reference = self._MeasurementSigma_Get(channel_id, group, reference=True)
             _Series_Plot(
-                self.measurement_uncertainty_plot, reference, self._StartTimestamp_Get(),
+                self.measurement_uncertainty_plot,
+                reference,
+                self._StartTimestamp_Get(),
                 colors=sigma_colors,
                 prefix=f"{self._ReferenceLabel_Get()} · {self._translator.Text_Get(label_key)} · ",
                 reference=True,
             )
             _Series_Plot(
-                self.measurement_uncertainty_plot, series, self._StartTimestamp_Get(),
+                self.measurement_uncertainty_plot,
+                series,
+                self._StartTimestamp_Get(),
                 colors=sigma_colors,
                 prefix=f"{self._translator.Text_Get(label_key)} · ",
             )
@@ -789,8 +832,11 @@ class StateEstimationPage(QWidget):
         if effective_sigma is None or not np.any(effective_sigma.valid):
             unavailable.append(self._translator.Text_Get("state.effective_sigma"))
         self.measurement_unavailable_label.setText(
-            self._translator.Text_Get("state.measurement_unavailable",
-                                      values=", ".join(unavailable)) if unavailable else ""
+            self._translator.Text_Get(
+                "state.measurement_unavailable", values=", ".join(unavailable)
+            )
+            if unavailable
+            else ""
         )
         timing_colors = TraceColorAllocator()
         receive_age = self._Series_Get(group.measurement_age_channel)
@@ -800,13 +846,17 @@ class StateEstimationPage(QWidget):
             (fixed_lag, "state.fixed_lag_latency", group.fixed_lag_latency_channel),
         ):
             _Series_Plot(
-                self.measurement_age_plot, self._ReferenceSeries_Get(channel_id),
-                self._StartTimestamp_Get(), colors=timing_colors,
+                self.measurement_age_plot,
+                self._ReferenceSeries_Get(channel_id),
+                self._StartTimestamp_Get(),
+                colors=timing_colors,
                 prefix=f"{self._ReferenceLabel_Get()} · {self._translator.Text_Get(label_key)}",
                 reference=True,
             )
             _Series_Plot(
-                self.measurement_age_plot, series, self._StartTimestamp_Get(),
+                self.measurement_age_plot,
+                series,
+                self._StartTimestamp_Get(),
                 colors=timing_colors,
                 prefix=self._translator.Text_Get(label_key),
             )
@@ -821,9 +871,14 @@ class StateEstimationPage(QWidget):
         self._MeasurementAxes_Align()
 
     def _NisSummary_Set(self) -> None:
-        groups = () if self._visualization is None else tuple(
-            group for group in self._visualization.measurement_groups
-            if group.measurement_group_id.startswith("gnss_")
+        groups = (
+            ()
+            if self._visualization is None
+            else tuple(
+                group
+                for group in self._visualization.measurement_groups
+                if group.measurement_group_id.startswith("gnss_")
+            )
         )
         self.nis_summary.clearContents()
         for row, group in enumerate(groups[:4]):
@@ -839,8 +894,7 @@ class StateEstimationPage(QWidget):
                     results.timestamp_us.astype(np.float64) - self._StartTimestamp_Get()
                 ) * 1e-6
                 visible = (
-                    results.valid & (times >= self._interval[0])
-                    & (times <= self._interval[1])
+                    results.valid & (times >= self._interval[0]) & (times <= self._interval[1])
                 )
                 values = raw[visible]
             counts = (int(np.count_nonzero(values == code)) for code in (0, 1, 2))
@@ -851,16 +905,21 @@ class StateEstimationPage(QWidget):
                     raw = raw[:, 0]
                 times = (nis.timestamp_us.astype(np.float64) - self._StartTimestamp_Get()) * 1e-6
                 visible = (
-                    nis.valid & np.isfinite(raw) & (times >= self._interval[0])
+                    nis.valid
+                    & np.isfinite(raw)
+                    & (times >= self._interval[0])
                     & (times <= self._interval[1])
                 )
                 valid = raw[visible]
                 if valid.size:
                     p95 = float(np.percentile(valid, 95))
             latest = self._UpdateResult_Text(values[-1]) if values.size else "—"
-            cells = (self._translator.Text_Get(group.label_key),
-                     *(str(value) for value in counts),
-                     self._Number_Text(p95), latest)
+            cells = (
+                self._translator.Text_Get(group.label_key),
+                *(str(value) for value in counts),
+                self._Number_Text(p95),
+                latest,
+            )
             for column, value in enumerate(cells):
                 self.nis_summary.setItem(row, column, QTableWidgetItem(value))
 
@@ -915,12 +974,13 @@ class StateEstimationPage(QWidget):
 
     def Language_Apply(self, translator: Translator) -> None:
         self.gnss_integrity.Language_Apply(translator)
-        self.tabs.setTabText(self.tabs.indexOf(self.gnss_integrity),
-                             translator.Text_Get("diagnostic.gnss_integrity"))
+        self.tabs.setTabText(
+            self.tabs.indexOf(self.gnss_integrity), translator.Text_Get("diagnostic.gnss_integrity")
+        )
         for kind, panel in self.navigation_diagnostics.items():
             panel.translator = translator
             panel.model.translator = translator
-            if hasattr(panel, '_dataset'):
+            if hasattr(panel, "_dataset"):
                 panel.Dataset_Set(panel._dataset, panel._resolver)
             self.tabs.setTabText(
                 self.tabs.indexOf(panel), translator.Text_Get("diagnostic." + kind)
@@ -928,14 +988,11 @@ class StateEstimationPage(QWidget):
         self._translator = translator
         self.source_label.setText(translator.Text_Get("label.estimator_source"))
         self.reset_charts_button.setText(translator.Text_Get("action.reset_charts"))
-        self.reset_charts_button.setToolTip(
-            translator.Text_Get("action.reset_charts_tooltip")
-        )
+        self.reset_charts_button.setToolTip(translator.Text_Get("action.reset_charts_tooltip"))
         selected_nis = self.nis_display_combo.currentData()
         self.nis_display_combo.blockSignals(True)
         self.nis_display_combo.clear()
-        for key, value in (("state.nis_curve", "curve"),
-                           ("state.nis_groups", "groups")):
+        for key, value in (("state.nis_curve", "curve"), ("state.nis_groups", "groups")):
             self.nis_display_combo.addItem(translator.Text_Get(key), value)
         nis_index = self.nis_display_combo.findData(selected_nis)
         self.nis_display_combo.setCurrentIndex(max(nis_index, 0))
@@ -961,13 +1018,16 @@ class StateEstimationPage(QWidget):
             self.tabs.setTabText(index, translator.Text_Get(code))
         for plot in self._Plots_Get():
             plot.setLabel("bottom", translator.Text_Get("timeline.time"))
-        self.nis_summary.setHorizontalHeaderLabels([
-            translator.Text_Get("state.measurement"),
-            translator.Text_Get("state.accepted_count"),
-            translator.Text_Get("state.soft_count"),
-            translator.Text_Get("state.rejected_count"),
-            "NIS P95", translator.Text_Get("state.latest"),
-        ])
+        self.nis_summary.setHorizontalHeaderLabels(
+            [
+                translator.Text_Get("state.measurement"),
+                translator.Text_Get("state.accepted_count"),
+                translator.Text_Get("state.soft_count"),
+                translator.Text_Get("state.rejected_count"),
+                "NIS P95",
+                translator.Text_Get("state.latest"),
+            ]
+        )
         if self._visualization is not None:
             self._Selectors_Refresh()
             self._Refresh()

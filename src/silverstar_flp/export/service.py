@@ -2448,6 +2448,9 @@ class FlightExporter:
             ),
         )
         for file_stem, channel_id, title, ylabel in observed:
+            if resolver.RecordedSeries_Get(channel_id) is None:
+                skip(f"standard_plot:{file_stem}", title, "channel_unavailable:" + channel_id)
+                continue
             path = directory / f"{file_stem}{suffix}.png"
             attempt(
                 f"standard_plot:{file_stem}",
@@ -2504,6 +2507,27 @@ class FlightExporter:
                 group.group_id,
                 group.file_stem,
             )
+            if group.estimate_channel:
+                estimate = resolver.Series_Get(group.estimate_channel, source.source_id)
+                estimate_title = f"{metadata.display_name} · {source_label} · {group_label}"
+                estimate_id = f"standard_plot:estimate:{metadata.plugin_id}:{group.group_id}"
+                estimate_path = directory / (
+                    f"{algorithm_stem}_{source_stem}_{group_stem}_Estimate{suffix}.png"
+                )
+                if estimate is None:
+                    skip(estimate_id, estimate_title, "state_estimate_channel_unavailable")
+                else:
+                    attempt(
+                        estimate_id, estimate_path,
+                        lambda p=estimate_path, s=estimate, t=estimate_title, u=group.unit: (
+                            self._StandardDiagnosticPlot_Write(
+                                dataset, s, p, t, u, language, theme,
+                                empty_message=labels["no_valid_diagnostics"].format(group=t),
+                                end_timestamp_us=estimator_bounds.end_timestamp_us,
+                            )
+                        ),
+                        estimate_title,
+                    )
             quantity = labels["state_std_quantity"]
             group_quantity = (
                 f"{group_label}{quantity}"

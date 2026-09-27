@@ -1,4 +1,5 @@
 """Receiver-native GNSS consistency and receiver-information views."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -28,6 +29,7 @@ class GnssIntegrityPage(QWidget):
         self._parameters = {}
         self._result = None
         self._vertical = None
+        self._window_evidence = None
         self._origin = 0
         self._interval = (0.0, float("inf"))
         layout = QVBoxLayout(self)
@@ -78,8 +80,7 @@ class GnssIntegrityPage(QWidget):
         information_layout.addWidget(self.quality_plot, 1)
         information_layout.addWidget(self.satellite_plot, 1)
         self.pages.addWidget(information_page)
-        self.plots = (self.closure_plot, self.vertical_plot,
-                      self.quality_plot, self.satellite_plot)
+        self.plots = (self.closure_plot, self.vertical_plot, self.quality_plot, self.satellite_plot)
         for plot in self.plots:
             plot.addLegend()
             _Plot_Prepare(plot, self._theme)
@@ -88,7 +89,8 @@ class GnssIntegrityPage(QWidget):
     def _SpeedView_Align(self):
         self._speed_view.setGeometry(self.quality_plot.getViewBox().sceneBoundingRect())
         self._speed_view.linkedViewChanged(
-            self.quality_plot.getViewBox(), self._speed_view.XAxis,
+            self.quality_plot.getViewBox(),
+            self._speed_view.XAxis,
         )
 
     def _Display_Changed(self, index):
@@ -105,6 +107,33 @@ class GnssIntegrityPage(QWidget):
         # Display evidence from old logs even when their firmware lacked the policy.
         self._parameters["gnss_integrity_enable"] = 1
         self._Rebuild()
+
+    def WindowEvidence_Set(self, evidence):
+        self._window_evidence = evidence
+        self._WindowEvidence_Render()
+
+    def _WindowEvidence_Render(self):
+        if self._window_evidence is None:
+            return
+        self.closure_plot.clear()
+        if self.closure_plot.getPlotItem().legend is not None:
+            self.closure_plot.getPlotItem().legend.clear()
+        usable = [item for item in self._window_evidence if item["valid"]]
+        if usable:
+            times = [
+                ((item.get("evaluation_us") or item["end_us"]) - self._origin) * 1e-6
+                for item in usable
+            ]
+            closure = [float(np.linalg.norm(item["closure_en"])) for item in usable]
+            self._Trace_Draw(
+                self.closure_plot,
+                times,
+                closure,
+                self._translator.Text_Get("integrity.window_error"),
+                "#2b77c2",
+            )
+        self.horizontal_note.setText(self._translator.Text_Get("integrity.window_explanation"))
+        self._Status_Refresh()
 
     def _Rebuild(self):
         if self._dataset is None:
@@ -126,8 +155,13 @@ class GnssIntegrityPage(QWidget):
 
     @staticmethod
     def _Trace_Draw(plot, time, values, name, color):
-        plot.plot(time, np.asarray(values, dtype=np.float64),
-                  pen=pg.mkPen(color, width=1.5), connect="finite", name=name)
+        plot.plot(
+            time,
+            np.asarray(values, dtype=np.float64),
+            pen=pg.mkPen(color, width=1.5),
+            connect="finite",
+            name=name,
+        )
 
     def _RecordedTransitions_Get(self):
         if self._dataset is None:
@@ -145,24 +179,59 @@ class GnssIntegrityPage(QWidget):
 
     def _Markers_Draw(self, plot, time, result):
         for index in np.flatnonzero(result.chain_reset):
-            plot.addItem(pg.InfiniteLine(
-                pos=float(time[index]), angle=90, pen=pg.mkPen("#9299a5", width=1),
-            ))
+            plot.addItem(
+                pg.InfiniteLine(
+                    pos=float(time[index]),
+                    angle=90,
+                    pen=pg.mkPen("#9299a5", width=1),
+                )
+            )
         recorded = self._RecordedTransitions_Get()
         if recorded:
-            transitions = ((float(timestamp - self._origin) * 1e-6, state)
-                           for timestamp, state in recorded)
+            transitions = (
+                (float(timestamp - self._origin) * 1e-6, state) for timestamp, state in recorded
+            )
         else:
-            transitions = ((float(time[index]), int(result.state[index]))
-                           for index in range(1, len(result.state))
-                           if result.state[index] != result.state[index - 1])
+            transitions = (
+                (float(time[index]), int(result.state[index]))
+                for index in range(1, len(result.state))
+                if result.state[index] != result.state[index - 1]
+            )
         for stamp, state in transitions:
             color = ("#1a9d6c", "#ec8a20", "#d84a4a")[state]
-            plot.addItem(pg.InfiniteLine(
-                pos=stamp, angle=90, pen=pg.mkPen(color, width=2),
-            ))
+            plot.addItem(
+                pg.InfiniteLine(
+                    pos=stamp,
+                    angle=90,
+                    pen=pg.mkPen(color, width=2),
+                )
+            )
 
     def _Status_Refresh(self):
+        if self._window_evidence is not None:
+            end_us = (
+                self._origin + int(self._interval[1] * 1e6)
+                if np.isfinite(self._interval[1])
+                else None
+            )
+            eligible = [
+                item
+                for item in self._window_evidence
+                if item["valid"]
+                and (
+                    end_us is None
+                    or (item.get("evaluation_us") or item["end_us"])
+                    <= end_us
+                    <= (item.get("evaluation_us") or item["end_us"]) + 6_000_000
+                )
+            ]
+            self.status_label.setText(
+                self._translator.Text_Get(
+                    "integrity.window_weight" if eligible else "integrity.window_warmup",
+                    value=f"{eligible[-1]['variance_scale']:.3g}" if eligible else "1",
+                )
+            )
+            return
         if self._result is None or not self._result.timestamp_us.size:
             self.status_label.setText("")
             return
@@ -177,15 +246,19 @@ class GnssIntegrityPage(QWidget):
                 current = state
             prefix = "integrity.recorded_state"
         else:
-            index = (int(np.searchsorted(self._result.timestamp_us, end_timestamp,
-                                      side="right")) - 1 if end_timestamp is not None
-                     else len(self._result.timestamp_us) - 1)
+            index = (
+                int(np.searchsorted(self._result.timestamp_us, end_timestamp, side="right")) - 1
+                if end_timestamp is not None
+                else len(self._result.timestamp_us) - 1
+            )
             current = int(self._result.state[max(index, 0)])
             prefix = "integrity.offline_state"
         state_key = ("normal", "suspect", "rejected")[current]
-        self.status_label.setText(self._translator.Text_Get(prefix).format(
-            state=self._translator.Text_Get("integrity.state." + state_key),
-        ))
+        self.status_label.setText(
+            self._translator.Text_Get(prefix).format(
+                state=self._translator.Text_Get("integrity.state." + state_key),
+            )
+        )
 
     def _Render(self):
         result = self._result
@@ -198,47 +271,74 @@ class GnssIntegrityPage(QWidget):
         time = (result.timestamp_us.astype(np.float64) - self._origin) * 1e-6
         horizontal = result.closure_norm_m.copy()
         horizontal[result.chain_reset] = np.nan
-        self._Trace_Draw(self.closure_plot, time, horizontal,
-                         label("integrity.horizontal_error"), "#2b77c2")
+        self._Trace_Draw(
+            self.closure_plot, time, horizontal, label("integrity.horizontal_error"), "#2b77c2"
+        )
         for threshold, key, color in (
-            (self._parameters.get("gnss_integrity_error_threshold_m", 10.0),
-             "integrity.error_threshold", "#d84a4a"),
-            (self._parameters.get("gnss_integrity_recovery_threshold_m", 4.0),
-             "integrity.recovery_threshold", "#1a9d6c"),
+            (
+                self._parameters.get("gnss_integrity_error_threshold_m", 10.0),
+                "integrity.error_threshold",
+                "#d84a4a",
+            ),
+            (
+                self._parameters.get("gnss_integrity_recovery_threshold_m", 4.0),
+                "integrity.recovery_threshold",
+                "#1a9d6c",
+            ),
         ):
-            self.closure_plot.addItem(pg.InfiniteLine(
-                pos=float(threshold), angle=0,
-                pen=pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine),
-                label=label(key),
-            ))
+            self.closure_plot.addItem(
+                pg.InfiniteLine(
+                    pos=float(threshold),
+                    angle=0,
+                    pen=pg.mkPen(color, width=1, style=Qt.PenStyle.DashLine),
+                    label=label(key),
+                )
+            )
         self._Markers_Draw(self.closure_plot, time, result)
         vertical_time = (vertical.timestamp_us.astype(np.float64) - self._origin) * 1e-6
-        self._Trace_Draw(self.vertical_plot, vertical_time, vertical.error_m,
-                         label("integrity.vertical_error"), "#2b77c2")
-        self.vertical_plot.addItem(pg.InfiniteLine(
-            pos=0, angle=0, pen=pg.mkPen("#9299a5", width=1,
-                                           style=Qt.PenStyle.DashLine),
-            label=label("integrity.zero_reference"),
-        ))
+        self._Trace_Draw(
+            self.vertical_plot,
+            vertical_time,
+            vertical.error_m,
+            label("integrity.vertical_error"),
+            "#2b77c2",
+        )
+        self.vertical_plot.addItem(
+            pg.InfiniteLine(
+                pos=0,
+                angle=0,
+                pen=pg.mkPen("#9299a5", width=1, style=Qt.PenStyle.DashLine),
+                label=label("integrity.zero_reference"),
+            )
+        )
         for index in np.flatnonzero(vertical.chain_reset):
-            self.vertical_plot.addItem(pg.InfiniteLine(
-                pos=float(vertical_time[index]), angle=90,
-                pen=pg.mkPen("#9299a5", width=1),
-            ))
+            self.vertical_plot.addItem(
+                pg.InfiniteLine(
+                    pos=float(vertical_time[index]),
+                    angle=90,
+                    pen=pg.mkPen("#9299a5", width=1),
+                )
+            )
         for index, key, color in (
             (0, "integrity.hacc", "#2b77c2"),
             (1, "integrity.vacc", "#1a9d6c"),
         ):
-            self._Trace_Draw(self.quality_plot, time, result.quality[:, index],
-                             label(key), color)
+            self._Trace_Draw(self.quality_plot, time, result.quality[:, index], label(key), color)
         speed_item = pg.PlotDataItem(
-            time, result.quality[:, 2], pen=pg.mkPen("#ec8a20", width=1.5),
+            time,
+            result.quality[:, 2],
+            pen=pg.mkPen("#ec8a20", width=1.5),
             connect="finite",
         )
         self._speed_view.addItem(speed_item)
         self.quality_plot.getPlotItem().legend.addItem(speed_item, label("integrity.sacc"))
-        self._Trace_Draw(self.satellite_plot, time, result.quality[:, 3],
-                         label("integrity.satellites_label"), "#9467bd")
+        self._Trace_Draw(
+            self.satellite_plot,
+            time,
+            result.quality[:, 3],
+            label("integrity.satellites_label"),
+            "#9467bd",
+        )
         self.closure_plot.setTitle(label("integrity.horizontal_title"))
         self.vertical_plot.setTitle(label("integrity.vertical_title"))
         self.quality_plot.setTitle(label("integrity.receiver_precision"))
@@ -252,6 +352,7 @@ class GnssIntegrityPage(QWidget):
         self.horizontal_note.setText(label("integrity.horizontal_explanation"))
         self.vertical_note.setText(label("integrity.vertical_offline_only"))
         self.TimeRange_Set(*self._interval)
+        self._WindowEvidence_Render()
 
     def TimeRange_Set(self, start: float, end: float):
         self._interval = (start, end)
@@ -259,7 +360,7 @@ class GnssIntegrityPage(QWidget):
             if self._result is None or not len(self._result.timestamp_us):
                 return
             end = (float(self._result.timestamp_us[-1]) - self._origin) * 1e-6
-        end = max(end, start + .001)
+        end = max(end, start + 0.001)
         for plot in self.plots:
             plot.setLimits(xMin=start, xMax=end)
             plot.setXRange(start, end, padding=0)

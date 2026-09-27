@@ -1,0 +1,1120 @@
+{
+  "source": "SS0004",
+  "source_sha256": "f19bc4350816b2b3fabd298a788f78e7abf30556a563800ef6da178772b1938c",
+  "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+  "data_quality": {
+    "status": "clean",
+    "valid_record_count": 197904,
+    "crc_failure_count": 0,
+    "length_failure_count": 0,
+    "resync_count": 0,
+    "sequence_gap_count": 0,
+    "sequence_missing_count": 0,
+    "unknown_record_count": 0,
+    "decoder_failure_count": 0,
+    "damaged_span_count": 0,
+    "logger_overflow_count": 0,
+    "logger_queue_overflow_count": 0,
+    "imu_queue_overflow_count": 0,
+    "logger_overflow_event_count": 0,
+    "gap_segments": 0,
+    "missing_ids": 0,
+    "missing_sequence_ids": 0,
+    "queue_overflow": {
+      "logger": 0,
+      "imu": 0
+    },
+    "sequence_gaps": [],
+    "mission_record_continuity": "continuous",
+    "structural_integrity": "normal",
+    "truncated_tail": false,
+    "record_counts": {
+      "EVENT": 78,
+      "CALIBRATION_RESULT": 1,
+      "DECODER_PROFILE_DESCRIPTOR": 1,
+      "SYSTEM_CONFIG": 2,
+      "DEVICE_DESCRIPTOR": 24,
+      "ALGORITHM_DESCRIPTOR": 8,
+      "LOG_STREAM_DESCRIPTOR": 56,
+      "ALIGNMENT_RESULT": 1,
+      "ESTIMATOR": 6045,
+      "MISSION_CONFIG": 1,
+      "GNSS_RECOVERY": 382,
+      "GNSS_NATIVE": 6678,
+      "BARO_NATIVE": 53608,
+      "IMU_CORRECTED": 53608,
+      "POWER": 2479,
+      "HEALTH": 268,
+      "STATS": 268,
+      "INITIAL_STATE": 1,
+      "ESTIMATOR_STEP": 26803,
+      "TELEMETRY_DIAG": 268,
+      "INERTIAL_INCREMENT": 26803,
+      "BARO_MEASUREMENT": 13772,
+      "GNSS_MEASUREMENT": 6677,
+      "LANDING_DIAGNOSTIC": 72
+    }
+  },
+  "initial_state": {
+    "alignment_algorithm": 3,
+    "hardware_mode": 0,
+    "mode_verified": 0,
+    "origin_valid_flags": 3,
+    "alignment_sample_count": 101,
+    "gnss_sample_count": 100,
+    "barometer_sample_count": 100,
+    "reserved": 0,
+    "q_nb": [
+      0.9997800588607788,
+      -0.015725791454315186,
+      0.013877568766474724,
+      0.00021828377794008702
+    ],
+    "acceleration_mean_b_mps2": [
+      -0.2708261013031006,
+      -0.3067598342895508,
+      9.748841285705566
+    ],
+    "gyro_mean_b_radps": [
+      -2.1094345356686972e-05,
+      -7.383021147688851e-05,
+      -0.0012340188259258866
+    ],
+    "magnetic_field_mean_b_uT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "gnss_origin_latitude_e7": 225895282,
+    "gnss_origin_longitude_e7": 1139754044,
+    "gnss_origin_height_mm": 31921,
+    "gnss_origin_position_std_m": [
+      0.053654514253139496,
+      0.030050046741962433,
+      0.04511524736881256
+    ],
+    "initial_velocity_enu_mps": [
+      0.0020200000144541264,
+      0.005410000216215849,
+      -0.013470000587403774
+    ],
+    "initial_velocity_std_mps": [
+      0.3307686150074005,
+      0.3307686150074005,
+      0.3307686150074005
+    ],
+    "barometer_origin_altitude_m": 58.62999725341797,
+    "barometer_origin_std_m": 0.0,
+    "p0_diagonal": [
+      4.0,
+      4.0,
+      9.0,
+      0.25,
+      0.25,
+      0.25
+    ]
+  },
+  "A_recorded_endpoint_enu_m": [
+    10576.7529296875,
+    4920.298828125,
+    -6825.8232421875
+  ],
+  "B_legacy_kf6": {
+    "status": "completed",
+    "error": null,
+    "fidelity": "APPROXIMATE",
+    "endpoint_enu_m": [
+      10589.0546875,
+      4925.75,
+      -6833.87939453125
+    ],
+    "final_velocity_enu_mps": [
+      410.11669921875,
+      181.77444458007812,
+      -268.5899963378906
+    ]
+  },
+  "C_revision3_kf6": {
+    "status": "completed",
+    "error": null,
+    "fidelity": "APPROXIMATE",
+    "endpoint_enu_m": [
+      10589.0546875,
+      4925.75,
+      -6833.87939453125
+    ],
+    "final_velocity_enu_mps": [
+      410.11669921875,
+      181.77444458007812,
+      -268.5899963378906
+    ],
+    "elapsed_s": 93.97488480000175,
+    "acceptance": {
+      "fusion_groups": [
+        {
+          "last_source": 0,
+          "last_receive_us": 544660793,
+          "last_physically_valid_us": 544660793,
+          "last_update_attempt_us": 544669515,
+          "last_successful_fusion_us": 494140509,
+          "last_recovery_us": 0,
+          "received": 6677,
+          "attempted": 6677,
+          "accepted": 5417,
+          "soft_weighted": 5,
+          "nis_rejected": 1260,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 50529006,
+          "last_result": 2,
+          "last_nis": 134069.484375
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 544660793,
+          "last_physically_valid_us": 544660793,
+          "last_update_attempt_us": 544669515,
+          "last_successful_fusion_us": 495380513,
+          "last_recovery_us": 0,
+          "received": 6677,
+          "attempted": 6677,
+          "accepted": 5448,
+          "soft_weighted": 42,
+          "nis_rejected": 1229,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 49289002,
+          "last_result": 2,
+          "last_nis": 28589.26171875
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 544660793,
+          "last_physically_valid_us": 544660793,
+          "last_update_attempt_us": 544669515,
+          "last_successful_fusion_us": 493782512,
+          "last_recovery_us": 0,
+          "received": 6670,
+          "attempted": 6670,
+          "accepted": 5197,
+          "soft_weighted": 244,
+          "nis_rejected": 1473,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 50887003,
+          "last_result": 2,
+          "last_nis": 112268.6328125
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 544660793,
+          "last_physically_valid_us": 544660793,
+          "last_update_attempt_us": 544669515,
+          "last_successful_fusion_us": 494780509,
+          "last_recovery_us": 0,
+          "received": 6670,
+          "attempted": 6670,
+          "accepted": 5424,
+          "soft_weighted": 5,
+          "nis_rejected": 1246,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 49889006,
+          "last_result": 2,
+          "last_nis": 17936.064453125
+        },
+        {
+          "last_source": 0,
+          "last_receive_us": 544674534,
+          "last_physically_valid_us": 544674534,
+          "last_update_attempt_us": 544679518,
+          "last_successful_fusion_us": 495490512,
+          "last_recovery_us": 0,
+          "received": 13772,
+          "attempted": 13772,
+          "accepted": 11275,
+          "soft_weighted": 21,
+          "nis_rejected": 2497,
+          "invalid_rejected": 0,
+          "longest_no_fusion_us": 49189006,
+          "last_result": 2,
+          "last_nis": null
+        }
+      ],
+      "fusion_timeout_policy": "2s degraded/dead reckoning; 10s required-group invalid",
+      "health_scope": "recorded outer operation evidence; no reset or covariance inflation inferred",
+      "final_health": 4,
+      "health_counts": {
+        "0": 30,
+        "1": 21777,
+        "2": 260,
+        "3": 641,
+        "4": 4095
+      },
+      "first_health_us": {
+        "0": 276955525,
+        "1": 277253514,
+        "2": 396508512,
+        "3": 497388512,
+        "4": 503790517
+      },
+      "window_evidence": [
+        {
+          "window_id": 0,
+          "start_us": 276926711,
+          "end_us": 286926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.2356475587319835,
+            -0.15770563829621498
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 1,
+          "start_us": 281926711,
+          "end_us": 291926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.3672896282716511,
+            -0.39496193264394774
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 2,
+          "start_us": 286926711,
+          "end_us": 296926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.15541056258410535,
+            -0.14329475199909858
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 3,
+          "start_us": 291926711,
+          "end_us": 301926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.3344179285545543,
+            -0.35768058534005
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 4,
+          "start_us": 296926711,
+          "end_us": 306926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.7325269367944189,
+            -0.25828527398809165
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 5,
+          "start_us": 301926711,
+          "end_us": 311926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.48575730087079094,
+            0.2116441089226191
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 6,
+          "start_us": 306926711,
+          "end_us": 316926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.06055090745504366,
+            0.06809749289315725
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 7,
+          "start_us": 311926711,
+          "end_us": 321926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.07572269581515823,
+            0.02206049399761767
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 8,
+          "start_us": 316926711,
+          "end_us": 326926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.7057919628813485,
+            -0.02114149399964127
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 9,
+          "start_us": 321926711,
+          "end_us": 331926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.5487051615880043,
+            0.07186491093592196
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 10,
+          "start_us": 326926711,
+          "end_us": 336926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.0188427076220954,
+            -0.15850081391487691
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 11,
+          "start_us": 331926711,
+          "end_us": 341926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.0916672533358347,
+            -0.5299611566324103
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 12,
+          "start_us": 336926711,
+          "end_us": 346926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.058800208923141195,
+            -0.31331507147258364
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 13,
+          "start_us": 341926711,
+          "end_us": 351926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.0239571564696863,
+            0.31277773050273083
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 14,
+          "start_us": 346926711,
+          "end_us": 356926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            2.705303383874819,
+            0.4644841074659336
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 15,
+          "start_us": 351926711,
+          "end_us": 361926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            2.033851144388394,
+            0.061460695760864326
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 16,
+          "start_us": 356926711,
+          "end_us": 366926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.6038262248300212,
+            -0.15669767769890264
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 17,
+          "start_us": 361926711,
+          "end_us": 371926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.4028694079100131,
+            0.051223820190120506
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 18,
+          "start_us": 366926711,
+          "end_us": 376926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.27538521785665254,
+            0.25413461402520454
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 19,
+          "start_us": 371926711,
+          "end_us": 381926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.056290641766007565,
+            1.3132285077058903
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 20,
+          "start_us": 376926711,
+          "end_us": 386926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.8542965386691234,
+            1.3404385943383605
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 21,
+          "start_us": 381926711,
+          "end_us": 391926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.05904201583369928,
+            0.4279318952850666
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 22,
+          "start_us": 386926711,
+          "end_us": 396926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.9151608802573845,
+            0.9366984002241097
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 23,
+          "start_us": 391926711,
+          "end_us": 401926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.7373918130112982,
+            0.8705140652559127
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 24,
+          "start_us": 396926711,
+          "end_us": 406926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.2811885929855382,
+            0.3241523060082976
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 25,
+          "start_us": 401926711,
+          "end_us": 411926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.296648705938043,
+            0.7057554422602923
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 26,
+          "start_us": 406926711,
+          "end_us": 416926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.6528973971310377,
+            1.2321501716713357
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 27,
+          "start_us": 411926711,
+          "end_us": 421926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.476536325473778,
+            0.7789425371550607
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 28,
+          "start_us": 416926711,
+          "end_us": 426926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.4114786912315047,
+            0.39851632148773675
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 29,
+          "start_us": 421926711,
+          "end_us": 431926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.10865186574462715,
+            0.3853731223017096
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 30,
+          "start_us": 426926711,
+          "end_us": 436926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.36806888091172496,
+            0.2930447631278188
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 31,
+          "start_us": 431926711,
+          "end_us": 441926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.4051221419223374,
+            -0.029919248120220843
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 32,
+          "start_us": 436926711,
+          "end_us": 446926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.30007556425144344,
+            -0.5460274929809419
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 33,
+          "start_us": 441926711,
+          "end_us": 451926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.037242005714425375,
+            -0.5362702936369068
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 34,
+          "start_us": 446926711,
+          "end_us": 456926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.34787712730664033,
+            -0.5503089483957986
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 35,
+          "start_us": 451926711,
+          "end_us": 461926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -1.4083979868118455,
+            -0.5104171855978406
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 36,
+          "start_us": 456926711,
+          "end_us": 466926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.5133736692977457,
+            0.19369450780405106
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 37,
+          "start_us": 461926711,
+          "end_us": 471926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.5957727175961196,
+            0.2082848831880364
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 38,
+          "start_us": 466926711,
+          "end_us": 476926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.3233425139059527,
+            -0.7438139362786191
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 39,
+          "start_us": 471926711,
+          "end_us": 481926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.1507978475167242,
+            -0.6537597722699695
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 40,
+          "start_us": 476926711,
+          "end_us": 486926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.15789498288354586,
+            0.12011094884387363
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 41,
+          "start_us": 481926711,
+          "end_us": 491926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.4748930853347959,
+            0.8028776961796779
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 42,
+          "start_us": 486926711,
+          "end_us": 496926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            -0.09557371108208201,
+            2.1499499686561236
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 43,
+          "start_us": 491926711,
+          "end_us": 501926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.9771857659739953,
+            2.0032165208448047
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 44,
+          "start_us": 496926711,
+          "end_us": 506926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.8675164327772167,
+            -0.310303622008107
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 45,
+          "start_us": 501926711,
+          "end_us": 511926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.32200242388568623,
+            1.7250197826758278
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 46,
+          "start_us": 506926711,
+          "end_us": 516926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            3.0555644972912552,
+            5.380948051336157
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 47,
+          "start_us": 511926711,
+          "end_us": 521926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            4.840637119972056,
+            3.588614010587409
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 48,
+          "start_us": 516926711,
+          "end_us": 526926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            3.061274632515304,
+            0.8136403317591325
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 49,
+          "start_us": 521926711,
+          "end_us": 531926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            2.0576253497967065,
+            0.5434099550633142
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 50,
+          "start_us": 526926711,
+          "end_us": 536926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            1.7740594123601874,
+            0.7542610660921673
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        },
+        {
+          "window_id": 51,
+          "start_us": 531926711,
+          "end_us": 541926711,
+          "valid": true,
+          "reason": "complete",
+          "closure_en": [
+            0.5871691485352613,
+            1.1058773112479428
+          ],
+          "coverage": 1.0,
+          "variance_scale": 1.0,
+          "evaluation_us": null
+        }
+      ],
+      "all_output_finite": true,
+      "maximum_position_step_m": 6.271236674960121,
+      "baro_accept_count": 11275,
+      "baro_reject_count": 2497,
+      "reanchor_counts": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "execution_mismatches": [],
+      "diagnostics_derivation": "Health computed from preserved outer-update outcomes; no numerical state recalculation or successful fusion inferred from receiver liveness."
+    }
+  },
+  "D_eskf15": {
+    "source": "SS0004",
+    "source_sha256": "f19bc4350816b2b3fabd298a788f78e7abf30556a563800ef6da178772b1938c",
+    "decoder_sha256": "8af5886f04914019db565d008eba575f8f56bf61c4225b019f899e26fa589857",
+    "source_bytes": 17979491,
+    "inputs_unchanged": true,
+    "legacy_kf6_status": "completed",
+    "legacy_kf6_error": null,
+    "eskf15_status": "completed",
+    "eskf15_fidelity": "APPROXIMATE",
+    "warnings": [
+      "eskf15_host_parity_scope_limited",
+      "eskf15_legacy_log_what_if",
+      "eskf15_native_epoch_unavailable"
+    ],
+    "interpretation": "旧固件真实日志上的新 ESKF What-if；无外部真值，不以末位置差或内部一致性声称绝对精度。",
+    "epoch_count": 26803,
+    "duration_s": 267.723993,
+    "quaternion_norm_max_error": 2.220446049250313e-16,
+    "full_covariance_min_eigenvalue": 3.05305424885246e-07,
+    "full_covariance_all_finite": true,
+    "nominal_output_all_finite": true,
+    "final_navigation_health": 4,
+    "health_epoch_counts": {
+      "0": 30,
+      "1": 21849,
+      "2": 105,
+      "3": 696,
+      "4": 4123
+    },
+    "maximum_gyro_bias_norm_radps": 0.03897918763740496,
+    "maximum_accel_bias_norm_mps2": 0.2746767431490073,
+    "recorded_kf6_endpoint_enu_m": [
+      10576.7529296875,
+      4920.298828125,
+      -6825.8232421875
+    ],
+    "eskf15_what_if_endpoint_enu_m": [
+      3263.387477276899,
+      -9960.830230795851,
+      -5503.463727490595
+    ],
+    "first_failure": null,
+    "first_health_state_us": {
+      "0": 276955525,
+      "1": 277253514,
+      "2": 495510519,
+      "3": 496559512,
+      "4": 503509511
+    },
+    "maximum_position_step_m": 5.483479883354366,
+    "last_velocity_enu_mps": [
+      129.1476465389011,
+      -386.4551691986706,
+      -207.22624739322362
+    ],
+    "runtime_seconds_host_python": 682.2963351000217,
+    "replay_step_count": 834967,
+    "maximum_single_replay_steps": 63,
+    "reset_count": 0,
+    "imu_clip_evidence": "unavailable: old log lacks declared effective range/readback/clip flags; no inferred success",
+    "fusion_groups": {
+      "position_en": {
+        "outcome_counts": {
+          "0": 5410,
+          "1": 3,
+          "2": 1264
+        },
+        "maximum_effective_fusion_gap_s": 50.69801,
+        "last_effective_fusion_us": 493981508
+      },
+      "position_u": {
+        "outcome_counts": {
+          "0": 5389,
+          "1": 38,
+          "2": 1250
+        },
+        "maximum_effective_fusion_gap_s": 50.128006,
+        "last_effective_fusion_us": 494551512
+      },
+      "velocity_en": {
+        "outcome_counts": {
+          "0": 5344,
+          "1": 35,
+          "2": 1291,
+          "18": 7
+        },
+        "maximum_effective_fusion_gap_s": 51.178008999999996,
+        "last_effective_fusion_us": 493501509
+      },
+      "velocity_u": {
+        "outcome_counts": {
+          "0": 5238,
+          "1": 129,
+          "2": 1303,
+          "18": 7
+        },
+        "maximum_effective_fusion_gap_s": 50.457006,
+        "last_effective_fusion_us": 494222512
+      },
+      "baro": {
+        "outcome_counts": {
+          "0": 11233,
+          "1": 13,
+          "2": 2526
+        },
+        "maximum_effective_fusion_gap_s": 49.758005999999995,
+        "last_effective_fusion_us": 494921512
+      }
+    },
+    "window_count": 52,
+    "window_valid_count": 52,
+    "window_evidence_scope": "旧 GNSS_NATIVE 缺可信 iTOW，接收/样本时刻的窗口为近似证据"
+  },
+  "interpretation": "No external truth; endpoints are outputs, not accuracy. All new algorithms on these old logs are approximate What-if.",
+  "C_scope": "New physical/quality/window variance and outer fusion health; retained recorded operation/resolved-time schedule. Missing old operations are not fabricated.",
+  "new_quality_parameters": "Four active window parameters; six revision-2 values retained as inactive legacy snapshot. Saved runs use unchanged 120ms/10m/cap4 defaults.",
+  "imu_evidence": "Legacy logs lack actual range/readback/clipping flags; no saturation or hardware qualification inferred.",
+  "source_and_decoder_unchanged": true
+}
