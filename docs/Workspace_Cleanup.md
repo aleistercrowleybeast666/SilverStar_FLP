@@ -14,11 +14,14 @@ uses only nonrecursive `rmdir` for empty directories. Busy or changed targets ar
 Run it after local test/export/package jobs have finished.
 
 Candidates are Python bytecode, documented cache trees (`__pycache__`, `.pytest_cache`,
-`.ruff_cache`, `.mypy_cache`), and known generated suffixes only beneath root build/dist,
-`.acceptance`, `.codex_pytest_*`, and `.codex_container_stage_*`. Arbitrary root PNG/JSON/CSV
-files and unknown suffixes are not candidates. The virtual environment, Git internals, docs,
-fixtures, golden directories, tracked files, source files, and `.BIN`/`.sslog`/`.ssdecoder`/
-`.ssflp` inputs are preserved. A directory containing any protected file remains in place.
+`.ruff_cache`, `.mypy_cache`), and known generated suffixes beneath root build/dist, `.acceptance`,
+`.codex_pytest_*`, and `.codex_container_stage_*`. Under `tests`, the same suffix allowlist applies
+only to named `.tmp_*`, `.pytest*`, and `.integrity-*` workspaces and nested `*_temp` / `*_cache`
+directories. Arbitrary root PNG/JSON/CSV files and unknown suffixes are not candidates. The virtual
+environment, Git internals, docs, fixtures, golden directories, tracked files, and `.BIN`, `.sslog`,
+`.ssdecoder`, `.ssflp`, `.ssproject`, and `.zip` inputs are preserved. Small evidence summaries,
+manifests, final logs, GUI screenshots, and finished acceptance GIFs are retained. A directory
+containing any protected file remains in place.
 
 Some historical `.codex_pytest_*` and `.codex_container_stage_*` outputs are already tracked.
 New ignore rules prevent adding future leftovers; they do not remove existing tracked files.
@@ -26,7 +29,8 @@ This task does not rewrite history or silently untrack/delete those assets. No r
 decoder, project, or source archive is removed.
 
 New acceptance runs use `.acceptance/<run-name>` or pytest `tmp_path`; long-term fixtures belong
-in `tests/fixtures` and must be reviewed and explicitly added. See
+in `tests/fixtures` and must be reviewed and explicitly added. Named test basetemp workspaces are
+ignored by Git and eligible for bounded cleanup. See
 [Display_DataQuality.md](Display_DataQuality.md) for the display/quality contract.
 
 ## Explicit historical test retirement

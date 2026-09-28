@@ -11,7 +11,11 @@ from pathlib import Path
 
 _CACHE_NAMES = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"})
 _GENERATED_ROOTS = frozenset({"build", "dist", ".acceptance"})
-_PROTECTED_SUFFIXES = frozenset({".bin", ".sslog", ".ssdecoder", ".ssflp"})
+_TEST_WORKSPACE_PREFIXES = (".tmp_", ".pytest", ".integrity-")
+_TEST_WORKSPACE_SUFFIXES = ("_temp", "_cache")
+_PROTECTED_SUFFIXES = frozenset(
+    {".bin", ".sslog", ".ssdecoder", ".ssflp", ".ssproject", ".zip"}
+)
 _GENERATED_SUFFIXES = frozenset(
     {
         ".pyc",
@@ -64,6 +68,42 @@ def _Root_Validate(root: Path) -> Path:
     return root
 
 
+def _Generated_Check(parts: tuple[str, ...]) -> bool:
+    if not parts:
+        return False
+    if parts[0] in _GENERATED_ROOTS or parts[0].startswith(
+        (".codex_pytest_", ".codex_container_stage_")
+    ):
+        return True
+    if parts[0] != "tests" or len(parts) < 2:
+        return False
+    if parts[1].startswith(_TEST_WORKSPACE_PREFIXES):
+        return True
+    return any(part.endswith(_TEST_WORKSPACE_SUFFIXES) for part in parts[1:])
+
+
+def _Evidence_Preserve(parts: tuple[str, ...], path: Path) -> bool:
+    name = path.name.casefold()
+    suffix = path.suffix.casefold()
+    if suffix in {".sha256", ".sha256sum", ".md5"} or "manifest" in name:
+        return True
+    if name in {"summary.json", "evidence.json", "final.json"}:
+        return True
+    if suffix == ".log" and (name.startswith("final") or "_final" in name):
+        return True
+    if suffix in {".png", ".jpg", ".jpeg"} and (
+        "screenshot" in name
+        or (
+            parts[0] == ".acceptance"
+            and len(parts) > 1
+            and parts[1] in {"dialogs_gui", "parameters25"}
+        )
+    ):
+        return True
+    # Acceptance JSON/log summaries and finished replay GIFs remain review evidence.
+    return parts[0] == ".acceptance" and suffix in {".json", ".log", ".gif"}
+
+
 def _Tracked_Get(root: Path) -> frozenset[str]:
     result = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z", "--cached"], check=True, capture_output=True
@@ -93,10 +133,10 @@ def _Target_Validate(root: Path, path: Path, tracked: frozenset[str]) -> bool:
         path.resolve(strict=True).relative_to(root)
         if path.suffix.casefold() in _PROTECTED_SUFFIXES:
             return False
+        if path.is_file() and _Evidence_Preserve(parts, path):
+            return False
         cache = any(part in _CACHE_NAMES for part in parts)
-        generated = parts[0] in _GENERATED_ROOTS or parts[0].startswith(
-            (".codex_pytest_", ".codex_container_stage_")
-        )
+        generated = _Generated_Check(parts)
         if path.is_dir():
             return cache or generated
         if not path.is_file():

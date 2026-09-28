@@ -23,3 +23,7 @@ projects/*.ssflp
 /packaging-temp/
 # Tests use tmp_path / .acceptance; do not globally ignore PNG/JSON/CSV or source logs.
 tests/.integrity-*/
+/tests/.tmp_*/
+/tests/.pytest-*/
+/tests/joint_rework_*/**/*_temp/
+/tests/joint_rework_*/**/*_cache/

@@ -39,6 +39,10 @@ def test_cleanup_dry_run_apply_and_protected_inputs(tmp_path):
             "src/change.py",
             "build/unknown.xyz",
             "build/keep.json",
+            "build/user_project.ssproject",
+            "build/user_archive.zip",
+            "src/pkg/__pycache__/user_project.ssproject",
+            "src/pkg/__pycache__/user_archive.zip",
             "main.zip",
         )
     ]
@@ -49,7 +53,7 @@ def test_cleanup_dry_run_apply_and_protected_inputs(tmp_path):
     result, removed = WorkspaceClean_Apply(root, targets)
     assert result == WorkspaceCleanResult.APPLIED
     assert generated in removed and not generated.exists()
-    assert not cache.parent.exists()
+    assert cache in removed and not cache.exists() and cache.parent.exists()
     assert all(path.exists() for path in protected)
 
 
@@ -95,6 +99,11 @@ def test_gitignore_does_not_hide_sources_or_fixtures(tmp_path):
     for path in (
         ".codex_pytest_new/a.json",
         ".acceptance/export.png",
+        "tests/.tmp_release/full/report.json",
+        "tests/.pytest-full/basetemp/result.csv",
+        "tests/.integrity-generated/result.json",
+        "tests/joint_rework_20260927/approved_quality_final_temp/report.json",
+        "tests/joint_rework_20260927/compile_cache/result.pyc",
         "build/a.png",
         "src/pkg/__pycache__/a.pyc",
     ):
@@ -106,9 +115,31 @@ def test_gitignore_does_not_hide_sources_or_fixtures(tmp_path):
         "flight.BIN",
         "profile.ssdecoder",
         "project.ssflp",
+        "tests/source.py",
         "unknown.json",
     ):
         assert subprocess.run(["git", "-C", str(root), "check-ignore", "-q", path]).returncode == 1
+
+
+def test_test_workspaces_clean_only_generated_files_and_keep_evidence(tmp_path):
+    root = _Repository_Create(tmp_path)
+    generated = _File_Write(root, "tests/.tmp_full/basetemp/export.csv")
+    synthetic_input = _File_Write(root, "tests/.tmp_full/basetemp/input.BIN")
+    summary = _File_Write(root, "tests/.tmp_full/basetemp/summary.json")
+    acceptance_csv = _File_Write(root, ".acceptance/run/final_export/events.csv")
+    acceptance_summary = _File_Write(root, ".acceptance/run/summary.json")
+    acceptance_gif = _File_Write(root, ".acceptance/run/Flight_Replay.gif")
+    gui_screenshot = _File_Write(root, ".acceptance/dialogs_gui/about_en_US_dark.png")
+    targets = WorkspaceClean_Plan(root)
+    assert generated in targets and acceptance_csv in targets
+    assert all(
+        path not in targets
+        for path in (synthetic_input, summary, acceptance_summary, acceptance_gif, gui_screenshot)
+    )
+    result, removed = WorkspaceClean_Apply(root, targets)
+    assert result == WorkspaceCleanResult.APPLIED
+    assert generated in removed and acceptance_csv in removed
+    assert all(path.exists() for path in (synthetic_input, summary, acceptance_summary, acceptance_gif, gui_screenshot))
 
 
 def test_explicit_retirement_removes_tracked_test_outputs_only(tmp_path):
